@@ -2,9 +2,16 @@ import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy initialize to avoid build-time errors
+let openai: OpenAI | null = null
+function getOpenAI() {
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return openai
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -81,7 +88,7 @@ ${projectContext.milestones.map((m, i) => `${i + 1}. [${m.status}] ${m.title}${m
     ]
 
     // Call OpenAI API
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: 'gpt-4o',
       max_tokens: 4096,
       messages: formattedMessages,

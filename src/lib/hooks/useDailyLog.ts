@@ -153,19 +153,23 @@ export function useDailyLog(userId: string | undefined) {
 
     // First submission - award XP
     const xpBonus = 20
+    const currentXp = todayLog.xp_earned || 0
 
     const { data, error } = await client
       .from('daily_logs')
       .update({
         morning_energy: morningEnergy,
         morning_mood: morningMood,
-        xp_earned: todayLog.xp_earned + xpBonus,
+        xp_earned: currentXp + xpBonus,
       })
       .eq('id', todayLog.id)
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('Failed to update daily_logs:', error)
+      throw error
+    }
 
     // Try to update profile XP, but don't fail if RPC doesn't exist
     try {

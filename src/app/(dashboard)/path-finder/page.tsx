@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { PathFinderContent } from '@/components/path-finder/PathFinderContent'
-import type { PathFinderProgress } from '@/lib/supabase/types'
 
 export default async function PathFinderPage() {
   const supabase = await createClient()
@@ -18,19 +17,5 @@ export default async function PathFinderPage() {
     .eq('id', user.id)
     .single()
 
-  // Get path finder progress
-  const { data: progressData } = await supabase
-    .from('path_finder_progress')
-    .select('*')
-    .eq('user_id', user.id)
-    .single()
-
-  const progress = progressData as PathFinderProgress | null
-
-  return (
-    <PathFinderContent
-      profile={profile}
-      initialProgress={progress}
-    />
-  )
+  return <PathFinderContent profile={profile} />
 }

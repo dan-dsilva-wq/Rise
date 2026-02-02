@@ -1,15 +1,15 @@
 import { NextRequest } from 'next/server'
-import OpenAI from 'openai'
+import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 
-let openai: OpenAI | null = null
-function getOpenAI() {
-  if (!openai) {
-    openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+let anthropic: Anthropic | null = null
+function getAnthropic() {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
     })
   }
-  return openai
+  return anthropic
 }
 
 interface ChatMessage {
@@ -69,22 +69,23 @@ Only after thorough exploration, when you have a clear picture, suggest somethin
 
 Remember: This conversation could change their life. Take it seriously. Don't rush.`
 
-    const formattedMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: 'system', content: systemPrompt },
-      ...messages.map(msg => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      })),
-    ]
+    const formattedMessages = messages.map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    }))
 
-    const response = await getOpenAI().chat.completions.create({
-      model: 'gpt-4o',
+    const response = await getAnthropic().messages.create({
+      model: 'claude-opus-4-5-20250514',
       max_tokens: 1000,
-      temperature: 0.8,
+      system: systemPrompt,
       messages: formattedMessages,
     })
 
-    const assistantMessage = response.choices[0]?.message?.content || ''
+    // Extract text from response
+    const assistantMessage = response.content
+      .filter(block => block.type === 'text')
+      .map(block => (block as Anthropic.TextBlock).text)
+      .join('\n')
 
     return Response.json({
       message: assistantMessage,

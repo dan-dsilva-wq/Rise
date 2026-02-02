@@ -17,8 +17,8 @@ export const metadata: Metadata = {
     title: 'Rise',
   },
   icons: {
-    icon: '/icon-192.svg',
-    apple: '/icon-192.svg',
+    icon: '/logo.png',
+    apple: '/logo.png',
   },
 }
 
@@ -39,7 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <head>
-        <link rel="apple-touch-icon" href="/icon-192.svg" />
+        <link rel="apple-touch-icon" href="/logo.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>

@@ -167,7 +167,12 @@ export function useDailyLog(userId: string | undefined) {
 
     if (error) throw error
 
-    await client.rpc('increment_xp', { user_id: userId, xp_amount: xpBonus })
+    // Try to update profile XP, but don't fail if RPC doesn't exist
+    try {
+      await client.rpc('increment_xp', { user_id: userId, xp_amount: xpBonus })
+    } catch (rpcError) {
+      console.warn('Could not update profile XP via RPC:', rpcError)
+    }
 
     setTodayLog(data as DailyLog)
     return xpBonus

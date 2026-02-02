@@ -41,6 +41,8 @@ export function DashboardContent({
   const [energy, setEnergy] = useState(initialTodayLog?.morning_energy || 5)
   const [mood, setMood] = useState(initialTodayLog?.morning_mood || 5)
   const [showMoodSaved, setShowMoodSaved] = useState(false)
+  const [savingMood, setSavingMood] = useState(false)
+  const [moodError, setMoodError] = useState<string | null>(null)
 
   const currentProfile = profile || initialProfile
   const currentLog = todayLog || initialTodayLog
@@ -87,6 +89,8 @@ export function DashboardContent({
   }
 
   const handleSaveMood = async () => {
+    setSavingMood(true)
+    setMoodError(null)
     try {
       const xp = await updateMoodEnergy(energy, mood)
       if (xp > 0) {
@@ -98,6 +102,10 @@ export function DashboardContent({
       setTimeout(() => setShowMoodSaved(false), 2000)
     } catch (error) {
       console.error('Error saving mood:', error)
+      setMoodError('Failed to save. Try again.')
+      setTimeout(() => setMoodError(null), 3000)
+    } finally {
+      setSavingMood(false)
     }
   }
 
@@ -256,7 +264,7 @@ export function DashboardContent({
                   onMoodChange={setMood}
                 />
                 <div className="mt-6 flex items-center gap-3">
-                  <Button onClick={handleSaveMood} className="flex-1">
+                  <Button onClick={handleSaveMood} isLoading={savingMood} className="flex-1">
                     Save check-in
                   </Button>
                   <AnimatePresence>
@@ -268,6 +276,16 @@ export function DashboardContent({
                         className="text-teal-400 text-sm"
                       >
                         Saved!
+                      </motion.span>
+                    )}
+                    {moodError && (
+                      <motion.span
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -10 }}
+                        className="text-red-400 text-sm"
+                      >
+                        {moodError}
                       </motion.span>
                     )}
                   </AnimatePresence>

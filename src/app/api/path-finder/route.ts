@@ -75,7 +75,7 @@ Remember: This conversation could change their life. Take it seriously. Don't ru
     }))
 
     const response = await getAnthropic().messages.create({
-      model: 'claude-opus-4-5-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 1000,
       system: systemPrompt,
       messages: formattedMessages,

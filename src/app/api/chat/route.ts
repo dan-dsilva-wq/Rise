@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 
-const anthropic = new Anthropic()
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -69,25 +71,24 @@ You can help with:
 ${projectContext.milestones.map((m, i) => `${i + 1}. [${m.status}] ${m.title}${m.description ? ` - ${m.description}` : ''}`).join('\n')}`
     }
 
-    // Format messages for Claude API
-    const formattedMessages = messages.map(msg => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    }))
+    // Format messages for OpenAI API
+    const formattedMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...messages.map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      })),
+    ]
 
-    // Call Claude API
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    // Call OpenAI API
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
       max_tokens: 4096,
-      system: systemPrompt,
       messages: formattedMessages,
     })
 
     // Extract text from response
-    const assistantMessage = response.content
-      .filter(block => block.type === 'text')
-      .map(block => (block as Anthropic.TextBlock).text)
-      .join('\n')
+    const assistantMessage = response.choices[0]?.message?.content || ''
 
     // Save to project_logs
     if (projectId) {

@@ -1,0 +1,563 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string
+          display_name: string | null
+          timezone: string
+          total_xp: number
+          current_level: number
+          current_streak: number
+          longest_streak: number
+          unlock_tier: number
+          grace_days_used_this_week: number
+          week_start_date: string
+          partner_sharing_enabled: boolean
+          partner_email: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          display_name?: string | null
+          timezone?: string
+          total_xp?: number
+          current_level?: number
+          current_streak?: number
+          longest_streak?: number
+          unlock_tier?: number
+          grace_days_used_this_week?: number
+          week_start_date?: string
+          partner_sharing_enabled?: boolean
+          partner_email?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          display_name?: string | null
+          timezone?: string
+          total_xp?: number
+          current_level?: number
+          current_streak?: number
+          longest_streak?: number
+          unlock_tier?: number
+          grace_days_used_this_week?: number
+          week_start_date?: string
+          partner_sharing_enabled?: boolean
+          partner_email?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      daily_logs: {
+        Row: {
+          id: string
+          user_id: string
+          log_date: string
+          wake_time: string | null
+          im_up_pressed_at: string | null
+          time_to_rise_minutes: number | null
+          morning_energy: number | null
+          morning_mood: number | null
+          feet_on_floor: boolean
+          light_exposure: boolean
+          drank_water: boolean
+          evening_energy: number | null
+          evening_mood: number | null
+          day_rating: number | null
+          movement_minutes: number
+          went_outside: boolean
+          gratitude_entry: string | null
+          reflection_notes: string | null
+          xp_earned: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          log_date: string
+          wake_time?: string | null
+          im_up_pressed_at?: string | null
+          time_to_rise_minutes?: number | null
+          morning_energy?: number | null
+          morning_mood?: number | null
+          feet_on_floor?: boolean
+          light_exposure?: boolean
+          drank_water?: boolean
+          evening_energy?: number | null
+          evening_mood?: number | null
+          day_rating?: number | null
+          movement_minutes?: number
+          went_outside?: boolean
+          gratitude_entry?: string | null
+          reflection_notes?: string | null
+          xp_earned?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          log_date?: string
+          wake_time?: string | null
+          im_up_pressed_at?: string | null
+          time_to_rise_minutes?: number | null
+          morning_energy?: number | null
+          morning_mood?: number | null
+          feet_on_floor?: boolean
+          light_exposure?: boolean
+          drank_water?: boolean
+          evening_energy?: number | null
+          evening_mood?: number | null
+          day_rating?: number | null
+          movement_minutes?: number
+          went_outside?: boolean
+          gratitude_entry?: string | null
+          reflection_notes?: string | null
+          xp_earned?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      habits: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          emoji: string
+          description: string | null
+          frequency: string
+          frequency_days: number[]
+          anchor_habit_id: string | null
+          anchor_position: 'before' | 'after' | null
+          current_streak: number
+          longest_streak: number
+          xp_value: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          emoji?: string
+          description?: string | null
+          frequency?: string
+          frequency_days?: number[]
+          anchor_habit_id?: string | null
+          anchor_position?: 'before' | 'after' | null
+          current_streak?: number
+          longest_streak?: number
+          xp_value?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          emoji?: string
+          description?: string | null
+          frequency?: string
+          frequency_days?: number[]
+          anchor_habit_id?: string | null
+          anchor_position?: 'before' | 'after' | null
+          current_streak?: number
+          longest_streak?: number
+          xp_value?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      habit_completions: {
+        Row: {
+          id: string
+          habit_id: string
+          user_id: string
+          completion_date: string
+          xp_earned: number
+          completed_at: string
+        }
+        Insert: {
+          id?: string
+          habit_id: string
+          user_id: string
+          completion_date: string
+          xp_earned?: number
+          completed_at?: string
+        }
+        Update: {
+          id?: string
+          habit_id?: string
+          user_id?: string
+          completion_date?: string
+          xp_earned?: number
+          completed_at?: string
+        }
+      }
+      achievements: {
+        Row: {
+          id: string
+          code: string
+          name: string
+          description: string | null
+          emoji: string
+          unlock_condition: Json
+          xp_reward: number
+          display_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          code: string
+          name: string
+          description?: string | null
+          emoji?: string
+          unlock_condition: Json
+          xp_reward?: number
+          display_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          code?: string
+          name?: string
+          description?: string | null
+          emoji?: string
+          unlock_condition?: Json
+          xp_reward?: number
+          display_order?: number
+          created_at?: string
+        }
+      }
+      user_achievements: {
+        Row: {
+          id: string
+          user_id: string
+          achievement_id: string
+          unlocked_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          achievement_id: string
+          unlocked_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          achievement_id?: string
+          unlocked_at?: string
+        }
+      }
+      daily_prompts: {
+        Row: {
+          id: string
+          prompt_text: string
+          author: string | null
+          category: string
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          prompt_text: string
+          author?: string | null
+          category?: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          prompt_text?: string
+          author?: string | null
+          category?: string
+          is_active?: boolean
+          created_at?: string
+        }
+      }
+      // Rise 2.0 Tables
+      path_finder_progress: {
+        Row: {
+          id: string
+          user_id: string
+          current_node_id: string
+          visited_nodes: string[]
+          selected_path: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          current_node_id?: string
+          visited_nodes?: string[]
+          selected_path?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          current_node_id?: string
+          visited_nodes?: string[]
+          selected_path?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      projects: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          description: string | null
+          status: 'discovery' | 'planning' | 'building' | 'launched' | 'paused'
+          path_node_id: string | null
+          target_income: number
+          actual_income: number
+          progress_percent: number
+          started_at: string
+          launched_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          description?: string | null
+          status?: 'discovery' | 'planning' | 'building' | 'launched' | 'paused'
+          path_node_id?: string | null
+          target_income?: number
+          actual_income?: number
+          progress_percent?: number
+          started_at?: string
+          launched_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          description?: string | null
+          status?: 'discovery' | 'planning' | 'building' | 'launched' | 'paused'
+          path_node_id?: string | null
+          target_income?: number
+          actual_income?: number
+          progress_percent?: number
+          started_at?: string
+          launched_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      milestones: {
+        Row: {
+          id: string
+          project_id: string
+          user_id: string
+          title: string
+          description: string | null
+          sort_order: number
+          status: 'pending' | 'in_progress' | 'completed'
+          due_date: string | null
+          xp_reward: number
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          user_id: string
+          title: string
+          description?: string | null
+          sort_order?: number
+          status?: 'pending' | 'in_progress' | 'completed'
+          due_date?: string | null
+          xp_reward?: number
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          user_id?: string
+          title?: string
+          description?: string | null
+          sort_order?: number
+          status?: 'pending' | 'in_progress' | 'completed'
+          due_date?: string | null
+          xp_reward?: number
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      daily_missions: {
+        Row: {
+          id: string
+          user_id: string
+          project_id: string | null
+          milestone_id: string | null
+          title: string
+          description: string | null
+          mission_date: string
+          status: 'pending' | 'in_progress' | 'completed' | 'skipped'
+          xp_reward: number
+          priority: number
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          project_id?: string | null
+          milestone_id?: string | null
+          title: string
+          description?: string | null
+          mission_date: string
+          status?: 'pending' | 'in_progress' | 'completed' | 'skipped'
+          xp_reward?: number
+          priority?: number
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          project_id?: string | null
+          milestone_id?: string | null
+          title?: string
+          description?: string | null
+          mission_date?: string
+          status?: 'pending' | 'in_progress' | 'completed' | 'skipped'
+          xp_reward?: number
+          priority?: number
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      project_logs: {
+        Row: {
+          id: string
+          project_id: string
+          user_id: string
+          role: 'user' | 'assistant' | 'system'
+          content: string
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          user_id: string
+          role: 'user' | 'assistant' | 'system'
+          content: string
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          user_id?: string
+          role?: 'user' | 'assistant' | 'system'
+          content?: string
+          metadata?: Json
+          created_at?: string
+        }
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      increment_xp: {
+        Args: {
+          user_id: string
+          xp_amount: number
+        }
+        Returns: undefined
+      }
+      update_streak: {
+        Args: {
+          user_id: string
+        }
+        Returns: number
+      }
+      reset_weekly_grace_days: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      complete_mission: {
+        Args: {
+          mission_id: string
+        }
+        Returns: number
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+// Convenience types
+export type Profile = Database['public']['Tables']['profiles']['Row']
+export type DailyLog = Database['public']['Tables']['daily_logs']['Row']
+export type Habit = Database['public']['Tables']['habits']['Row']
+export type HabitCompletion = Database['public']['Tables']['habit_completions']['Row']
+export type Achievement = Database['public']['Tables']['achievements']['Row']
+export type UserAchievement = Database['public']['Tables']['user_achievements']['Row']
+export type DailyPrompt = Database['public']['Tables']['daily_prompts']['Row']
+
+// Insert types
+export type ProfileInsert = Database['public']['Tables']['profiles']['Insert']
+export type DailyLogInsert = Database['public']['Tables']['daily_logs']['Insert']
+export type HabitInsert = Database['public']['Tables']['habits']['Insert']
+
+// Update types
+export type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
+export type DailyLogUpdate = Database['public']['Tables']['daily_logs']['Update']
+
+// Rise 2.0 Types
+export type PathFinderProgress = Database['public']['Tables']['path_finder_progress']['Row']
+export type Project = Database['public']['Tables']['projects']['Row']
+export type Milestone = Database['public']['Tables']['milestones']['Row']
+export type DailyMission = Database['public']['Tables']['daily_missions']['Row']
+export type ProjectLog = Database['public']['Tables']['project_logs']['Row']
+
+// Rise 2.0 Insert types
+export type PathFinderProgressInsert = Database['public']['Tables']['path_finder_progress']['Insert']
+export type ProjectInsert = Database['public']['Tables']['projects']['Insert']
+export type MilestoneInsert = Database['public']['Tables']['milestones']['Insert']
+export type DailyMissionInsert = Database['public']['Tables']['daily_missions']['Insert']
+export type ProjectLogInsert = Database['public']['Tables']['project_logs']['Insert']
+
+// Rise 2.0 Update types
+export type ProjectUpdate = Database['public']['Tables']['projects']['Update']
+export type MilestoneUpdate = Database['public']['Tables']['milestones']['Update']
+export type DailyMissionUpdate = Database['public']['Tables']['daily_missions']['Update']

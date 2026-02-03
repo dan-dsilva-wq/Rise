@@ -44,6 +44,7 @@ export function ProjectDetailContent({
     deleteProject,
     addMilestone,
     completeMilestone,
+    uncompleteMilestone,
     deleteMilestone,
   } = useProject(initialProject?.id, user?.id, initialProject, initialMilestones)
 
@@ -103,6 +104,14 @@ export function ProjectDetailContent({
 
   const handleCompleteMilestone = async (milestoneId: string) => {
     const xp = await completeMilestone(milestoneId)
+    if (xp > 0) {
+      await refreshProfile()
+    }
+    return xp
+  }
+
+  const handleUncompleteMilestone = async (milestoneId: string) => {
+    const xp = await uncompleteMilestone(milestoneId)
     if (xp > 0) {
       await refreshProfile()
     }
@@ -277,6 +286,7 @@ export function ProjectDetailContent({
             milestones={currentMilestones}
             projectId={currentProject.id}
             onComplete={handleCompleteMilestone}
+            onUncomplete={handleUncompleteMilestone}
             onAdd={() => setShowAddMilestone(true)}
             onDelete={deleteMilestone}
             showAddButton

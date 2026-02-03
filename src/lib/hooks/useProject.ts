@@ -262,6 +262,34 @@ export function useProject(
     return milestone.xp_reward
   }
 
+  const uncompleteMilestone = async (milestoneId: string): Promise<number> => {
+    if (!userId) return 0
+
+    const milestone = milestones.find(m => m.id === milestoneId)
+    if (!milestone || milestone.status !== 'completed') return 0
+
+    const { error } = await client
+      .from('milestones')
+      .update({
+        status: 'pending',
+        completed_at: null,
+      })
+      .eq('id', milestoneId)
+
+    if (error) {
+      console.error('Error uncompleting milestone:', error)
+      return 0
+    }
+
+    // Deduct XP (negative increment)
+    await client.rpc('increment_xp', { user_id: userId, xp_amount: -milestone.xp_reward })
+
+    // Refresh data
+    await fetchProject()
+
+    return milestone.xp_reward
+  }
+
   const deleteMilestone = async (milestoneId: string): Promise<boolean> => {
     const { error } = await client
       .from('milestones')
@@ -332,6 +360,7 @@ export function useProject(
     addMilestone,
     updateMilestone,
     completeMilestone,
+    uncompleteMilestone,
     deleteMilestone,
     reorderMilestones,
     refresh: fetchProject,

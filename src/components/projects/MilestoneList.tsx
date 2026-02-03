@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, Circle, Clock, Sparkles, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, Circle, Clock, Sparkles, ChevronRight, Plus, Trash2, AlertTriangle } from 'lucide-react'
 import type { Milestone } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/Button'
 
@@ -11,6 +11,7 @@ interface MilestoneListProps {
   milestones: Milestone[]
   projectId: string
   onComplete: (id: string) => Promise<number>
+  onUncomplete?: (id: string) => Promise<number>
   onAdd?: () => void
   onDelete?: (id: string) => void
   showAddButton?: boolean
@@ -21,6 +22,7 @@ export function MilestoneList({
   milestones,
   projectId,
   onComplete,
+  onUncomplete,
   onAdd,
   onDelete,
   showAddButton = false,
@@ -29,6 +31,8 @@ export function MilestoneList({
   const router = useRouter()
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [recentXp, setRecentXp] = useState<{ id: string; amount: number } | null>(null)
+  const [uncompleteConfirm, setUncompleteConfirm] = useState<Milestone | null>(null)
+  const [uncompletingId, setUncompletingId] = useState<string | null>(null)
 
   // Filter out discarded milestones
   const activeMilestones = milestones.filter(m => m.status !== 'discarded')
@@ -36,7 +40,15 @@ export function MilestoneList({
   const totalCount = activeMilestones.length
 
   const handleComplete = async (milestone: Milestone) => {
-    if (milestone.status === 'completed' || completingId) return
+    if (completingId || uncompletingId) return
+
+    // If already completed, show confirmation to uncomplete
+    if (milestone.status === 'completed') {
+      if (onUncomplete) {
+        setUncompleteConfirm(milestone)
+      }
+      return
+    }
 
     setCompletingId(milestone.id)
 
@@ -48,6 +60,22 @@ export function MilestoneList({
     }
 
     setCompletingId(null)
+  }
+
+  const handleConfirmUncomplete = async () => {
+    if (!uncompleteConfirm || !onUncomplete) return
+
+    setUncompletingId(uncompleteConfirm.id)
+    setUncompleteConfirm(null)
+
+    const xp = await onUncomplete(uncompleteConfirm.id)
+
+    if (xp > 0) {
+      setRecentXp({ id: uncompleteConfirm.id, amount: -xp })
+      setTimeout(() => setRecentXp(null), 2000)
+    }
+
+    setUncompletingId(null)
   }
 
   const handleMilestoneClick = (milestone: Milestone) => {
@@ -104,23 +132,23 @@ export function MilestoneList({
               `}
             >
               <div className="p-3 flex items-start gap-3">
-                {/* Status Icon - clicking marks complete */}
+                {/* Status Icon - clicking marks complete/uncomplete */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
                     handleComplete(milestone)
                   }}
-                  disabled={isCompleted || isCompleting}
+                  disabled={isCompleting || uncompletingId === milestone.id}
                   className={`
                     flex-shrink-0 mt-0.5 transition-colors
                     ${isCompleted
-                      ? 'text-teal-500 cursor-default'
+                      ? 'text-teal-500 hover:text-teal-300'
                       : 'text-slate-500 hover:text-teal-400'
                     }
                   `}
-                  title={isCompleted ? 'Completed' : 'Mark as complete'}
+                  title={isCompleted ? 'Click to mark incomplete' : 'Mark as complete'}
                 >
-                  {isCompleting ? (
+                  {isCompleting || uncompletingId === milestone.id ? (
                     <motion.div
                       animate={{ rotate: 360 }}
                       transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
@@ -217,6 +245,58 @@ export function MilestoneList({
           )}
         </div>
       )}
+
+      {/* Uncomplete Confirmation Modal */}
+      <AnimatePresence>
+        {uncompleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+            onClick={() => setUncompleteConfirm(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-slate-800 border border-slate-700 rounded-xl p-5 max-w-sm w-full shadow-xl"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-full bg-amber-500/20">
+                  <AlertTriangle className="w-5 h-5 text-amber-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-white">Mark as incomplete?</h3>
+              </div>
+
+              <p className="text-slate-400 text-sm mb-2">
+                Are you sure you want to mark this milestone as incomplete?
+              </p>
+              <p className="text-slate-500 text-sm mb-5">
+                <span className="text-amber-400 font-medium">-{uncompleteConfirm.xp_reward} XP</span> will be deducted from your total.
+              </p>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="ghost"
+                  className="flex-1"
+                  onClick={() => setUncompleteConfirm(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30"
+                  onClick={handleConfirmUncomplete}
+                >
+                  Yes, mark incomplete
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

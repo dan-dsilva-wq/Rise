@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
-import { ArrowLeft, LogOut, User, Bell, Shield, Heart, RotateCcw } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowLeft, LogOut, User, Bell, Shield, Heart, RotateCcw, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -15,6 +15,12 @@ export default function SettingsPage() {
   const [signingOut, setSigningOut] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [resetMessage, setResetMessage] = useState<string | null>(null)
+  const [comingSoonToast, setComingSoonToast] = useState<string | null>(null)
+
+  const showComingSoon = useCallback((feature: string) => {
+    setComingSoonToast(feature)
+    setTimeout(() => setComingSoonToast(null), 2500)
+  }, [])
 
   const handleSignOut = async () => {
     setSigningOut(true)
@@ -88,27 +94,54 @@ export default function SettingsPage() {
           </h3>
 
           <div className="space-y-3">
-            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/50 transition-colors text-left">
-              <Bell className="w-5 h-5 text-slate-400" />
+            <button
+              onClick={() => showComingSoon('Notifications')}
+              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/30 transition-colors text-left group"
+            >
+              <Bell className="w-5 h-5 text-slate-500" />
               <div className="flex-1">
-                <p className="text-slate-200">Notifications</p>
-                <p className="text-sm text-slate-500">Morning reminders</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-slate-400">Notifications</p>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-xs text-slate-500">
+                    <Clock className="w-3 h-3" />
+                    Soon
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600">Morning reminders</p>
               </div>
             </button>
 
-            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/50 transition-colors text-left">
-              <Shield className="w-5 h-5 text-slate-400" />
+            <button
+              onClick={() => showComingSoon('Privacy settings')}
+              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/30 transition-colors text-left group"
+            >
+              <Shield className="w-5 h-5 text-slate-500" />
               <div className="flex-1">
-                <p className="text-slate-200">Privacy</p>
-                <p className="text-sm text-slate-500">Data and sharing</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-slate-400">Privacy</p>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-xs text-slate-500">
+                    <Clock className="w-3 h-3" />
+                    Soon
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600">Data and sharing</p>
               </div>
             </button>
 
-            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/50 transition-colors text-left">
-              <Heart className="w-5 h-5 text-slate-400" />
+            <button
+              onClick={() => showComingSoon('Partner Sharing')}
+              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/30 transition-colors text-left group"
+            >
+              <Heart className="w-5 h-5 text-slate-500" />
               <div className="flex-1">
-                <p className="text-slate-200">Partner Sharing</p>
-                <p className="text-sm text-slate-500">Share progress with someone</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-slate-400">Partner Sharing</p>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-xs text-slate-500">
+                    <Clock className="w-3 h-3" />
+                    Soon
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600">Share progress with someone</p>
               </div>
             </button>
           </div>
@@ -169,6 +202,27 @@ export default function SettingsPage() {
           Rise v1.0.0 · Made with care
         </p>
       </main>
+
+      {/* Coming Soon Toast */}
+      <AnimatePresence>
+        {comingSoonToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className="px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 shadow-lg">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-teal-400" />
+                <span className="text-sm text-slate-200">
+                  {comingSoonToast} coming soon!
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

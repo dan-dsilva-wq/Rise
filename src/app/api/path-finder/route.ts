@@ -97,6 +97,8 @@ fact: <concise fact>
 
 ## Project Actions (USE THESE PROACTIVELY!)
 
+**CRITICAL: You MUST include the actual tags in your response to make changes happen. Simply saying "I'll add that" or "Done!" does NOTHING - the system only acts when it sees the actual [TAG] blocks. Always include the full tag block when taking action.**
+
 ### Create a new project (do this as soon as you have a direction!):
 [CREATE_PROJECT]
 name: <2-5 word project name>

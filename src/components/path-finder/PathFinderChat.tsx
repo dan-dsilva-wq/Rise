@@ -587,6 +587,16 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         }
       }
 
+      // Detect if AI claimed to do something but didn't include tags
+      const claimsAction = /(?:done|i've added|i've created|i added|i created|added (?:the |a )?milestone|created (?:the |a )?project|updated (?:the |your )?milestone|marked.*complete|set.*milestone)/i.test(data.message)
+      const noActionsPerformed = !data.projectActions || data.projectActions.length === 0
+
+      if (claimsAction && noActionsPerformed) {
+        addDebugLog('warn', 'AI claimed action but no tags', data.message.slice(0, 100))
+        // Append a note to the message
+        data.message += '\n\n⚠️ *It looks like I said I did something but forgot to actually do it. Please ask me again and I\'ll make sure to include the proper action this time.*'
+      }
+
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',

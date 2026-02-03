@@ -31,3 +31,7 @@ CREATE POLICY "Users can insert own briefings"
 CREATE POLICY "Users can update own briefings"
   ON morning_briefings FOR UPDATE
   USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own briefings"
+  ON morning_briefings FOR DELETE
+  USING (auth.uid() = user_id);

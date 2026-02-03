@@ -26,7 +26,7 @@ export function DashboardContent({
 
   const currentProfile = profile || initialProfile
 
-  // Fetch morning briefing
+  // Fetch morning briefing (API auto-checks if focus milestone is still valid)
   useEffect(() => {
     fetchBriefing()
   }, [])

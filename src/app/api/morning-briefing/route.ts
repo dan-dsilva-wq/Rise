@@ -49,7 +49,29 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (existingBriefing) {
-      return Response.json({ briefing: existingBriefing, cached: true })
+      // Check if the focus milestone is still valid (not completed/discarded)
+      if (existingBriefing.focus_milestone_id) {
+        const { data: milestone } = await client
+          .from('milestones')
+          .select('id, status')
+          .eq('id', existingBriefing.focus_milestone_id)
+          .single()
+
+        // If milestone is completed or discarded, regenerate the briefing
+        if (!milestone || milestone.status === 'completed' || milestone.status === 'discarded') {
+          // Delete old briefing and regenerate
+          await client
+            .from('morning_briefings')
+            .delete()
+            .eq('id', existingBriefing.id)
+
+          // Fall through to generate new briefing
+        } else {
+          return Response.json({ briefing: existingBriefing, cached: true })
+        }
+      } else {
+        return Response.json({ briefing: existingBriefing, cached: true })
+      }
     }
 
     // No briefing yet - need to generate one

@@ -14,9 +14,12 @@ interface NavItem {
 // Home icon component
 function HomeIcon({ isActive }: { isActive: boolean }) {
   return (
-    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-      isActive ? 'bg-teal-500/20' : 'bg-slate-700'
-    }`}>
+    <div
+      className={`w-6 h-6 rounded-full flex items-center justify-center ${
+        isActive ? 'bg-teal-500/20' : 'bg-slate-700'
+      }`}
+      aria-hidden="true"
+    >
       <span className={`text-xs font-bold ${
         isActive ? 'text-teal-400' : 'text-slate-300'
       }`}>R</span>
@@ -35,7 +38,11 @@ export function BottomNavigation() {
   const pathname = usePathname()
 
   return (
-    <nav className="bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
+    <nav
+      className="bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom"
+      role="navigation"
+      aria-label="Main navigation"
+    >
       <div className="max-w-lg mx-auto px-2 py-3 flex items-center justify-around">
         {NAV_ITEMS.map((item) => {
           const isActive = item.href === '/'
@@ -46,6 +53,8 @@ export function BottomNavigation() {
             <Link
               key={item.href}
               href={item.href}
+              aria-label={item.label}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex flex-col items-center gap-1 px-3 py-1 transition-colors ${
                 isActive
                   ? 'text-teal-400'
@@ -55,7 +64,7 @@ export function BottomNavigation() {
               {item.isLogo ? (
                 <HomeIcon isActive={isActive} />
               ) : item.icon ? (
-                <item.icon className="w-6 h-6" />
+                <item.icon className="w-6 h-6" aria-hidden="true" />
               ) : null}
               <span className="text-xs">{item.label}</span>
             </Link>

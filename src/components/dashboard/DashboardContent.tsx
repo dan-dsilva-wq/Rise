@@ -111,9 +111,19 @@ export function DashboardContent({
                     <Rocket className="w-5 h-5 text-teal-400" />
                     <span className="text-sm font-medium text-teal-400 uppercase tracking-wide">Today's Mission</span>
                   </div>
-                  <h2 className="text-2xl font-bold text-white leading-tight">
-                    {briefing.mission_summary}
-                  </h2>
+                  {(() => {
+                    const [headline, detail] = briefing.mission_summary.split('|||')
+                    return (
+                      <>
+                        <h2 className="text-2xl font-bold text-white leading-tight">
+                          {headline}
+                        </h2>
+                        {detail && (
+                          <p className="text-slate-400 mt-2">{detail}</p>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
 
                 {/* AI Nudge */}

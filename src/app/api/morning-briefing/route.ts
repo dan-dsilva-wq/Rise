@@ -147,20 +147,17 @@ export async function GET(request: NextRequest) {
     // Generate briefing with AI
     if (!process.env.ANTHROPIC_API_KEY) {
       // Fallback if no API key
-      const fallbackBriefing = {
-        mission_summary: focusMilestone
-          ? `Today's focus: ${focusMilestone.title}`
-          : "Review your projects and pick something to work on.",
-        nudge: "Small progress is still progress. What's one thing you can do in the next 30 minutes?",
-      }
+      const headline = focusMilestone?.title || "Make progress"
+      const detail = focusProject ? `Continue working on ${focusProject.name}` : ""
+      const fallbackSummary = detail ? `${headline}|||${detail}` : headline
 
       const { data: savedBriefing } = await client
         .from('morning_briefings')
         .insert({
           user_id: user.id,
           briefing_date: today,
-          mission_summary: fallbackBriefing.mission_summary,
-          nudge: fallbackBriefing.nudge,
+          mission_summary: fallbackSummary,
+          nudge: "Small progress is still progress. What's one thing you can do in the next 30 minutes?",
           focus_project_id: focusProject?.id || null,
           focus_milestone_id: focusMilestone?.id || null,
         })
@@ -177,12 +174,12 @@ export async function GET(request: NextRequest) {
 - Specific to their current projects and milestones
 - Encouraging but not cheesy
 - Actionable - tells them exactly what to focus on
-- Brief - mission summary is 1-2 sentences, nudge is 1-2 sentences
 
 Respond in JSON format:
 {
-  "mission_summary": "What they should work on today (be specific, reference actual milestone)",
-  "nudge": "A motivating thought specific to where they are in their journey"
+  "mission_headline": "2-5 word summary of today's focus (e.g. 'Build the landing page')",
+  "mission_detail": "One sentence with more context about the task",
+  "nudge": "A motivating thought specific to where they are in their journey (1-2 sentences)"
 }`,
       messages: [{
         role: 'user',
@@ -196,32 +193,40 @@ Respond in JSON format:
       .map(block => (block as Anthropic.TextBlock).text)
       .join('')
 
-    let briefingContent: { mission_summary: string; nudge: string }
+    let briefingContent: { mission_headline: string; mission_detail: string; nudge: string }
     try {
       // Try to parse JSON from response
       const jsonMatch = aiText.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
-        briefingContent = JSON.parse(jsonMatch[0])
+        const parsed = JSON.parse(jsonMatch[0])
+        briefingContent = {
+          mission_headline: parsed.mission_headline || parsed.mission_summary || focusMilestone?.title || "Make progress",
+          mission_detail: parsed.mission_detail || "",
+          nudge: parsed.nudge || "Every day you work on this is a day closer to freedom.",
+        }
       } else {
         throw new Error('No JSON found')
       }
     } catch {
       // Fallback
       briefingContent = {
-        mission_summary: focusMilestone
-          ? `Today's focus: ${focusMilestone.title}`
-          : "Pick a milestone and make progress.",
+        mission_headline: focusMilestone?.title || "Make progress",
+        mission_detail: focusProject ? `Continue working on ${focusProject.name}` : "",
         nudge: "Every day you work on this is a day closer to freedom.",
       }
     }
 
-    // Save the briefing
+    // Save the briefing (store headline|||detail in mission_summary)
+    const missionSummary = briefingContent.mission_detail
+      ? `${briefingContent.mission_headline}|||${briefingContent.mission_detail}`
+      : briefingContent.mission_headline
+
     const { data: savedBriefing, error: saveError } = await client
       .from('morning_briefings')
       .insert({
         user_id: user.id,
         briefing_date: today,
-        mission_summary: briefingContent.mission_summary,
+        mission_summary: missionSummary,
         nudge: briefingContent.nudge,
         focus_project_id: focusProject?.id || null,
         focus_milestone_id: focusMilestone?.id || null,
@@ -237,7 +242,7 @@ Respond in JSON format:
           id: 'temp',
           user_id: user.id,
           briefing_date: today,
-          mission_summary: briefingContent.mission_summary,
+          mission_summary: missionSummary,
           nudge: briefingContent.nudge,
           focus_project_id: focusProject?.id || null,
           focus_milestone_id: focusMilestone?.id || null,

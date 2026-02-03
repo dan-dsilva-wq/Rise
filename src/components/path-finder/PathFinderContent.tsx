@@ -1,6 +1,6 @@
 'use client'
 
-import { Settings, ChevronLeft, Sparkles } from 'lucide-react'
+import { ChevronLeft, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { PathFinderChat } from './PathFinderChat'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
@@ -35,12 +35,6 @@ export function PathFinderContent({ userId, initialConversation, initialConversa
               <p className="text-sm text-slate-400">Find what to build</p>
             </div>
           </div>
-          <Link
-            href="/settings"
-            className="p-2 rounded-full hover:bg-slate-800 transition-colors"
-          >
-            <Settings className="w-5 h-5 text-slate-400" />
-          </Link>
         </div>
       </header>
 

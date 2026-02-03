@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, User, Sparkles, UserCircle, Plus, X, Check, Edit2, Trash2, MessageSquare, Clock, FolderPlus, CheckCircle } from 'lucide-react'
+import { Send, Loader2, User, Sparkles, UserCircle, Plus, X, Check, Edit2, Trash2, MessageSquare, Clock, FolderPlus, CheckCircle, Rocket } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { useProfileFacts } from '@/lib/hooks/useProfileFacts'
@@ -12,11 +12,21 @@ import { addDebugLog } from '@/components/ui/ConnectionStatus'
 import type { ProfileCategory, UserProfileFact } from '@/lib/supabase/types'
 import { formatDistanceToNow } from 'date-fns'
 
+interface ActionResult {
+  type: 'create_project' | 'add_milestone' | 'add_idea' | 'add_note' | 'promote_idea' | 'set_focus' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder'
+  text: string // Human-readable text
+  projectId?: string
+  projectName?: string
+  milestoneId?: string
+  milestoneTitle?: string
+  isIdea?: boolean
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  projectActions?: string[] // Shows what project actions were taken
+  actionResults?: ActionResult[] // Structured action data for clickable cards
 }
 
 interface ProjectAction {
@@ -43,6 +53,9 @@ interface ExistingProject {
   milestones: { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string }[]
   ideas: { id: string; title: string; notes: string | null }[]
 }
+
+type ProjectListItem = Pick<ExistingProject, 'id' | 'name' | 'description' | 'status'>
+type MilestoneItem = { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string }
 
 interface PathFinderChatProps {
   userId: string
@@ -85,6 +98,34 @@ As we talk, I'll remember important things you share so we can build on our conv
 
 Let's start simple: **What does "freedom" mean to you?** Is it about money, time, location, the type of work you do, or something else entirely?`,
   freshStart: `Fresh start! I still have your profile saved, so I know your background. **What would you like to explore today?**`,
+}
+
+// Helper to parse action results embedded in message content
+const ACTION_RESULTS_PATTERN = /\n\n<!-- ACTION_RESULTS:(.*?) -->/
+function parseMessageWithActions(content: string): { content: string; actionResults?: ActionResult[] } {
+  const match = content.match(ACTION_RESULTS_PATTERN)
+  if (match) {
+    try {
+      const actionResults = JSON.parse(match[1]) as ActionResult[]
+      const cleanContent = content.replace(ACTION_RESULTS_PATTERN, '')
+      return { content: cleanContent, actionResults }
+    } catch {
+      // Failed to parse, just return content as-is
+      return { content }
+    }
+  }
+  return { content }
+}
+
+// Helper to transform database messages to Message format with action results
+function transformMessage(m: { id: string; role: 'user' | 'assistant'; content: string }): Message {
+  const { content, actionResults } = parseMessageWithActions(m.content)
+  return {
+    id: m.id,
+    role: m.role,
+    content,
+    actionResults,
+  }
 }
 
 export function PathFinderChat({ userId, initialConversation, initialConversations, initialMessages, initialFacts }: PathFinderChatProps) {
@@ -133,47 +174,85 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Fetch existing projects
-  const fetchProjects = useCallback(async () => {
-    if (!userId) return
+  const fetchProjects = useCallback(async (): Promise<ExistingProject[] | null> => {
+    if (!userId) {
+      setExistingProjects([])
+      return []
+    }
 
-    const { data: projects } = await client
-      .from('projects')
-      .select('id, name, description, status')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false })
+    try {
+      const { data: projects, error: projectsError } = await client
+        .from('projects')
+        .select('id, name, description, status')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
 
-    if (projects) {
-      const projectsWithMilestones: ExistingProject[] = []
-      for (const project of projects) {
-        const { data: allItems } = await client
+      if (projectsError) {
+        addDebugLog('error', 'fetchProjects failed', projectsError.message)
+        return null
+      }
+
+      const projectRows = (projects || []) as ProjectListItem[]
+      const projectsWithMilestones = await Promise.all(projectRows.map(async (project) => {
+        const { data: allItems, error: milestonesError } = await client
           .from('milestones')
           .select('id, title, status, sort_order, notes, focus_level')
           .eq('project_id', project.id)
           .neq('status', 'discarded') // Don't show discarded
           .order('sort_order', { ascending: true })
 
-        type MilestoneItem = { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string }
-        // Separate active milestones from ideas
-        const milestones = ((allItems || []) as MilestoneItem[]).filter(m => m.status !== 'idea')
-        const ideas = ((allItems || []) as MilestoneItem[]).filter(m => m.status === 'idea')
+        if (milestonesError) {
+          addDebugLog('warn', 'fetchProjects milestones failed', `${project.id.slice(0, 8)}: ${milestonesError.message}`)
+        }
 
-        projectsWithMilestones.push({
+        // Separate active milestones from ideas
+        const milestoneRows = (allItems || []) as MilestoneItem[]
+        const milestones = milestoneRows.filter(m => m.status !== 'idea')
+        const ideas = milestoneRows.filter(m => m.status === 'idea')
+
+        return {
           ...project,
           milestones,
           ideas,
-        })
-      }
+        }
+      }))
+
       setExistingProjects(projectsWithMilestones)
+      return projectsWithMilestones
+    } catch (error) {
+      addDebugLog('error', 'fetchProjects exception', String(error))
+      return null
     }
   }, [userId, client])
 
   // Execute project actions from AI
-  const executeProjectActions = async (actions: ProjectAction[]): Promise<string[]> => {
+  const executeProjectActions = async (actions: ProjectAction[]): Promise<ActionResult[]> => {
     if (!userId) {
       addDebugLog('error', 'No userId for actions')
       return []
     }
-    const results: string[] = []
+    const results: ActionResult[] = []
+    const projectLookupCache = new Map<string, { id: string; name: string } | null>()
+
+    const resolveProject = async (projectId: string) => {
+      if (projectLookupCache.has(projectId)) {
+        return projectLookupCache.get(projectId) ?? null
+      }
+
+      const { data, error } = await client
+        .from('projects')
+        .select('id, name')
+        .eq('id', projectId)
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (error) throw error
+
+      const resolved = data ? { id: data.id as string, name: data.name as string } : null
+      projectLookupCache.set(projectId, resolved)
+      return resolved
+    }
+
     addDebugLog('info', 'executeProjectActions', JSON.stringify(actions).slice(0, 200))
 
     for (const action of actions) {
@@ -206,19 +285,34 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
               xp_reward: 50,
               focus_level: index === 0 ? 'active' : index <= 2 ? 'next' : 'backlog',
             }))
-            await client.from('milestones').insert(milestonesData)
+            const { error: milestonesError } = await client.from('milestones').insert(milestonesData)
+            if (milestonesError) throw milestonesError
           }
 
-          results.push(`Created project: ${action.name}`)
+          results.push({
+            type: 'create_project',
+            text: `Created project: ${action.name}`,
+            projectId: projectData.id,
+            projectName: action.name,
+          })
         } else if (action.type === 'add_milestone' && action.projectId && action.newMilestone) {
+          const project = await resolveProject(action.projectId)
+          if (!project) {
+            results.push({ type: 'add_milestone', text: 'Failed: Project not found (it may have been deleted)' })
+            continue
+          }
+
           // Get current milestone count for sort order (exclude ideas)
-          const { data: existing } = await client
+          const { data: existing, error: existingError } = await client
             .from('milestones')
             .select('id, focus_level')
             .eq('project_id', action.projectId)
+            .eq('user_id', userId)
             .neq('status', 'idea')
             .neq('status', 'completed')
             .neq('status', 'discarded')
+
+          if (existingError) throw existingError
 
           // Smart default: if no active, make this active; if < 3 next, make next; else backlog
           type MilestoneWithFocus = { id: string; focus_level: string }
@@ -226,7 +320,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           const nextCount = existing?.filter((m: MilestoneWithFocus) => m.focus_level === 'next').length || 0
           const defaultFocus = !hasActive ? 'active' : nextCount < 3 ? 'next' : 'backlog'
 
-          await client.from('milestones').insert({
+          const { data: milestoneData, error: milestoneError } = await client.from('milestones').insert({
             project_id: action.projectId,
             user_id: userId,
             title: action.newMilestone,
@@ -234,39 +328,65 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             status: 'pending',
             xp_reward: 50,
             focus_level: defaultFocus,
-          })
+          }).select().single()
 
-          const project = existingProjects.find(p => p.id === action.projectId)
+          if (milestoneError) throw milestoneError
+
           const focusLabel = defaultFocus === 'active' ? ' (set as Active)' : defaultFocus === 'next' ? ' (added to Up Next)' : ''
-          results.push(`Added milestone to ${project?.name || 'project'}${focusLabel}`)
+          results.push({
+            type: 'add_milestone',
+            text: `Added milestone: ${action.newMilestone}${focusLabel}`,
+            projectId: action.projectId,
+            projectName: project.name,
+            milestoneId: milestoneData?.id,
+            milestoneTitle: action.newMilestone,
+          })
         } else if (action.type === 'add_idea' && action.projectId && action.newIdea) {
+          const project = await resolveProject(action.projectId)
+          if (!project) {
+            results.push({ type: 'add_idea', text: 'Failed: Project not found (it may have been deleted)' })
+            continue
+          }
+
           // Add as idea (status = 'idea')
-          const { data: existing } = await client
+          const { data: existing, error: existingError } = await client
             .from('milestones')
             .select('id')
             .eq('project_id', action.projectId)
+            .eq('user_id', userId)
 
-          await client.from('milestones').insert({
+          if (existingError) throw existingError
+
+          const { data: ideaData, error: ideaError } = await client.from('milestones').insert({
             project_id: action.projectId,
             user_id: userId,
             title: action.newIdea,
             sort_order: existing?.length || 0,
             status: 'idea',
             xp_reward: 50,
-          })
+          }).select().single()
 
-          const project = existingProjects.find(p => p.id === action.projectId)
-          results.push(`Added idea to ${project?.name || 'project'}`)
+          if (ideaError) throw ideaError
+
+          results.push({
+            type: 'add_idea',
+            text: `Added idea: ${action.newIdea}`,
+            projectId: action.projectId,
+            projectName: project.name,
+            milestoneId: ideaData?.id,
+            milestoneTitle: action.newIdea,
+            isIdea: true,
+          })
         } else if (action.type === 'add_note' && action.milestoneId && action.newNote) {
           // Add note to existing milestone/idea
           const { data: milestone, error: findError } = await client
             .from('milestones')
-            .select('id, title, notes')
+            .select('id, title, notes, project_id, status')
             .eq('id', action.milestoneId)
             .single()
 
           if (findError || !milestone) {
-            results.push(`Failed: Milestone not found`)
+            results.push({ type: 'add_note', text: 'Failed: Milestone not found' })
             continue
           }
 
@@ -281,25 +401,32 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             .eq('id', action.milestoneId)
 
           if (updateError) {
-            results.push(`Failed to add note: ${updateError.message}`)
+            results.push({ type: 'add_note', text: `Failed to add note: ${updateError.message}` })
           } else {
-            results.push(`Added note to: ${milestone.title}`)
+            results.push({
+              type: 'add_note',
+              text: `Added note to: ${milestone.title}`,
+              projectId: milestone.project_id,
+              milestoneId: milestone.id,
+              milestoneTitle: milestone.title,
+              isIdea: milestone.status === 'idea',
+            })
           }
         } else if (action.type === 'promote_idea' && action.milestoneId) {
           // Promote idea to active milestone
           const { data: idea, error: findError } = await client
             .from('milestones')
-            .select('id, title, status')
+            .select('id, title, status, project_id')
             .eq('id', action.milestoneId)
             .single()
 
           if (findError || !idea) {
-            results.push(`Failed: Idea not found`)
+            results.push({ type: 'promote_idea', text: 'Failed: Idea not found' })
             continue
           }
 
           if (idea.status !== 'idea') {
-            results.push(`Already a milestone: ${idea.title}`)
+            results.push({ type: 'promote_idea', text: `Already a milestone: ${idea.title}` })
             continue
           }
 
@@ -309,9 +436,15 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             .eq('id', action.milestoneId)
 
           if (updateError) {
-            results.push(`Failed to promote: ${updateError.message}`)
+            results.push({ type: 'promote_idea', text: `Failed to promote: ${updateError.message}` })
           } else {
-            results.push(`Promoted to milestone: ${idea.title}`)
+            results.push({
+              type: 'promote_idea',
+              text: `Promoted to milestone: ${idea.title}`,
+              projectId: idea.project_id,
+              milestoneId: idea.id,
+              milestoneTitle: idea.title,
+            })
           }
         } else if (action.type === 'set_focus' && action.milestoneId && action.focusLevel) {
           // Set focus level for milestone
@@ -325,7 +458,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           if (findError || !milestone) {
             addDebugLog('error', 'Milestone not found', `id=${action.milestoneId} error=${findError?.message}`)
-            results.push(`Failed: Milestone not found`)
+            results.push({ type: 'set_focus', text: 'Failed: Milestone not found' })
             continue
           }
 
@@ -351,7 +484,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             const isAlreadyNext = milestone.focus_level === 'next'
             if ((existingNext?.length || 0) >= 3 && !isAlreadyNext) {
               addDebugLog('warn', 'Max 3 in Up Next', `project=${milestone.project_id.slice(0, 8)}`)
-              results.push(`Cannot add to Up Next: max 3 items allowed`)
+              results.push({ type: 'set_focus', text: 'Cannot add to Up Next: max 3 items allowed' })
               continue
             }
           }
@@ -363,20 +496,49 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           if (updateError) {
             addDebugLog('error', 'Set focus failed', updateError.message)
-            results.push(`Failed to set focus: ${updateError.message}`)
+            results.push({ type: 'set_focus', text: `Failed to set focus: ${updateError.message}` })
           } else {
             const levelLabel = action.focusLevel === 'active' ? 'Active' : action.focusLevel === 'next' ? 'Up Next' : 'Backlog'
             addDebugLog('success', 'Focus set', `${milestone.title} -> ${levelLabel}`)
-            results.push(`Set "${milestone.title}" to ${levelLabel}`)
+            results.push({
+              type: 'set_focus',
+              text: `Set "${milestone.title}" to ${levelLabel}`,
+              projectId: milestone.project_id,
+              milestoneId: milestone.id,
+              milestoneTitle: milestone.title,
+              isIdea: milestone.status === 'idea',
+            })
           }
         } else if (action.type === 'update_status' && action.projectId && action.newStatus) {
-          await client
+          const project = await resolveProject(action.projectId)
+          if (!project) {
+            results.push({ type: 'update_status', text: 'Failed: Project not found (it may have been deleted)' })
+            continue
+          }
+
+          const { data: updatedProject, error: updateStatusError } = await client
             .from('projects')
             .update({ status: action.newStatus })
             .eq('id', action.projectId)
+            .eq('user_id', userId)
+            .select('id')
+            .maybeSingle()
 
-          const project = existingProjects.find(p => p.id === action.projectId)
-          results.push(`Updated ${project?.name || 'project'} to ${action.newStatus}`)
+          if (updateStatusError) {
+            results.push({ type: 'update_status', text: `Failed to update status: ${updateStatusError.message}` })
+            continue
+          }
+          if (!updatedProject) {
+            results.push({ type: 'update_status', text: 'Failed: Project not found' })
+            continue
+          }
+
+          results.push({
+            type: 'update_status',
+            text: `Updated ${project.name} to ${action.newStatus}`,
+            projectId: action.projectId,
+            projectName: project.name,
+          })
         } else if (action.type === 'edit_milestone' && action.milestoneId && action.newTitle) {
           // Edit milestone title
           addDebugLog('info', 'Edit milestone', `id=${action.milestoneId.slice(0, 8)} title=${action.newTitle}`)
@@ -384,13 +546,13 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           // First check if milestone exists
           const { data: existing, error: findError } = await client
             .from('milestones')
-            .select('id, title')
+            .select('id, title, project_id, status')
             .eq('id', action.milestoneId)
             .single()
 
           if (findError || !existing) {
             addDebugLog('error', 'Milestone not found', `id=${action.milestoneId} error=${findError?.message}`)
-            results.push(`Failed: Milestone not found`)
+            results.push({ type: 'edit_milestone', text: 'Failed: Milestone not found' })
             continue
           }
 
@@ -401,10 +563,17 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           if (updateError) {
             addDebugLog('error', 'Edit failed', updateError.message)
-            results.push(`Failed to edit: ${updateError.message}`)
+            results.push({ type: 'edit_milestone', text: `Failed to edit: ${updateError.message}` })
           } else {
             addDebugLog('success', 'Milestone edited', action.newTitle)
-            results.push(`Updated milestone: ${action.newTitle}`)
+            results.push({
+              type: 'edit_milestone',
+              text: `Updated milestone: ${action.newTitle}`,
+              projectId: existing.project_id,
+              milestoneId: existing.id,
+              milestoneTitle: action.newTitle,
+              isIdea: existing.status === 'idea',
+            })
           }
         } else if (action.type === 'complete_milestone' && action.milestoneId) {
           // Mark milestone as complete
@@ -412,13 +581,13 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           const { data: milestone, error: findError } = await client
             .from('milestones')
-            .select('id, title, xp_reward, status')
+            .select('id, title, xp_reward, status, project_id')
             .eq('id', action.milestoneId)
             .single()
 
           if (findError || !milestone) {
             addDebugLog('error', 'Milestone not found', `id=${action.milestoneId} error=${findError?.message}`)
-            results.push(`Failed: Milestone not found`)
+            results.push({ type: 'complete_milestone', text: 'Failed: Milestone not found' })
             continue
           }
 
@@ -435,7 +604,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           if (updateError) {
             addDebugLog('error', 'Complete failed', updateError.message)
-            results.push(`Failed to complete: ${updateError.message}`)
+            results.push({ type: 'complete_milestone', text: `Failed to complete: ${updateError.message}` })
           } else {
             // Award XP
             if (milestone.xp_reward) {
@@ -445,7 +614,13 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
               })
             }
             addDebugLog('success', 'Milestone completed', `${milestone.title} +${milestone.xp_reward || 50}XP`)
-            results.push(`Completed: ${milestone.title} (+${milestone.xp_reward || 50} XP)`)
+            results.push({
+              type: 'complete_milestone',
+              text: `Completed: ${milestone.title} (+${milestone.xp_reward || 50} XP)`,
+              projectId: milestone.project_id,
+              milestoneId: milestone.id,
+              milestoneTitle: milestone.title,
+            })
           }
         } else if (action.type === 'discard_milestone' && action.milestoneId) {
           // Discard milestone (soft delete - keeps data)
@@ -453,13 +628,13 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           const { data: milestone, error: findError } = await client
             .from('milestones')
-            .select('id, title, status')
+            .select('id, title, status, project_id')
             .eq('id', action.milestoneId)
             .single()
 
           if (findError || !milestone) {
             addDebugLog('error', 'Milestone not found', `id=${action.milestoneId} error=${findError?.message}`)
-            results.push(`Failed: Milestone not found`)
+            results.push({ type: 'discard_milestone', text: 'Failed: Milestone not found' })
             continue
           }
 
@@ -475,19 +650,25 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           if (updateError) {
             addDebugLog('error', 'Discard failed', updateError.message)
-            results.push(`Failed to discard: ${updateError.message}`)
+            results.push({ type: 'discard_milestone', text: `Failed to discard: ${updateError.message}` })
           } else {
             addDebugLog('success', 'Milestone discarded', milestone.title)
-            results.push(`Discarded: ${milestone.title}`)
+            results.push({
+              type: 'discard_milestone',
+              text: `Discarded: ${milestone.title}`,
+              projectId: milestone.project_id,
+              milestoneId: milestone.id,
+              milestoneTitle: milestone.title,
+            })
           }
         } else if (action.type === 'reorder_milestones' && action.projectId && action.milestoneOrder) {
           // Reorder milestones
           addDebugLog('info', 'Reorder milestones', `project=${action.projectId.slice(0, 8)} order=${action.milestoneOrder.length} items`)
 
-          const project = existingProjects.find(p => p.id === action.projectId)
+          const project = await resolveProject(action.projectId)
           if (!project) {
             addDebugLog('error', 'Project not found', action.projectId)
-            results.push(`Failed: Project not found`)
+            results.push({ type: 'reorder', text: 'Failed: Project not found' })
             continue
           }
 
@@ -495,13 +676,18 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           let success = true
           for (let i = 0; i < action.milestoneOrder.length; i++) {
             const milestoneId = action.milestoneOrder[i]
-            const { error } = await client
+            const { data: updatedMilestone, error } = await client
               .from('milestones')
               .update({ sort_order: i, updated_at: new Date().toISOString() })
               .eq('id', milestoneId)
+              .eq('project_id', action.projectId)
+              .eq('user_id', userId)
+              .select('id')
+              .maybeSingle()
 
-            if (error) {
-              addDebugLog('error', 'Reorder failed', `milestone ${milestoneId.slice(0, 8)}: ${error.message}`)
+            if (error || !updatedMilestone) {
+              const errorMsg = error?.message || 'milestone not found in project'
+              addDebugLog('error', 'Reorder failed', `milestone ${milestoneId.slice(0, 8)}: ${errorMsg}`)
               success = false
               break
             }
@@ -509,16 +695,21 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           if (success) {
             addDebugLog('success', 'Milestones reordered', `${action.milestoneOrder.length} milestones`)
-            results.push(`Reordered milestones in ${project.name}`)
+            results.push({
+              type: 'reorder',
+              text: `Reordered milestones in ${project.name}`,
+              projectId: action.projectId,
+              projectName: project.name,
+            })
           } else {
-            results.push(`Failed to reorder milestones`)
+            results.push({ type: 'reorder', text: 'Failed to reorder milestones' })
           }
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
         addDebugLog('error', `Action ${action.type} failed`, errMsg)
         console.error('Failed to execute project action:', err)
-        results.push(`Failed: ${action.type} - ${errMsg}`)
+        results.push({ type: action.type as ActionResult['type'], text: `Failed: ${action.type} - ${errMsg}` })
       }
     }
 
@@ -541,11 +732,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     // This is the key fix for client-side navigation
     if (hasInitialData && initialMessages && initialConversation) {
       addDebugLog('success', 'Using server data', `${initialMessages.length} messages`)
-      setMessages(initialMessages.map(m => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-      })))
+      setMessages(initialMessages.map(transformMessage))
       setInitialized(true)
       fetchProjects()
       // Set the conversation directly (synchronous) so addMessage works immediately
@@ -588,11 +775,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         if (recent && recent.messages.length > 0) {
           addDebugLog('success', 'Loaded conversation', `${recent.messages.length} messages`)
           // Load existing conversation with messages
-          setMessages(recent.messages.map(m => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-          })))
+          setMessages(recent.messages.map(transformMessage))
         } else {
           addDebugLog('info', 'Creating new conversation')
           // Start new conversation (or resume empty one)
@@ -709,6 +892,8 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     try {
       addDebugLog('info', 'Calling AI API')
       const profileSummary = getProfileSummary()
+      const latestProjects = await fetchProjects()
+      const projectsForContext = latestProjects ?? existingProjects
       const response = await fetch('/api/path-finder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -718,7 +903,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             content: m.content,
           })),
           profileContext: profileSummary || undefined,
-          existingProjects: existingProjects.length > 0 ? existingProjects : undefined,
+          existingProjects: projectsForContext.length > 0 ? projectsForContext : undefined,
         }),
       })
 
@@ -731,12 +916,12 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       addDebugLog('success', 'AI response received')
 
       // Execute any project actions from the AI
-      let actionResults: string[] = []
+      let actionResults: ActionResult[] = []
       if (data.projectActions && data.projectActions.length > 0) {
         addDebugLog('info', 'Executing project actions', `${data.projectActions.length} actions`)
         actionResults = await executeProjectActions(data.projectActions)
         if (actionResults.length > 0) {
-          setActionFeedback(actionResults.join(' | '))
+          setActionFeedback(actionResults.map(r => r.text).join(' | '))
           setTimeout(() => setActionFeedback(null), 5000)
         }
       }
@@ -755,15 +940,21 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         content: data.message,
-        projectActions: actionResults.length > 0 ? actionResults : undefined,
+        actionResults: actionResults.length > 0 ? actionResults : undefined,
       }
 
       setMessages(prev => [...prev, assistantMessage])
 
       // Save assistant message to database (if we have a conversation)
+      // Embed action results in content so they persist
       if (canSaveToCloud) {
         try {
-          const saved = await saveMessage('assistant', assistantMessage.content)
+          let contentToSave = assistantMessage.content
+          if (actionResults.length > 0) {
+            // Embed action results as hidden JSON at end of content
+            contentToSave += `\n\n<!-- ACTION_RESULTS:${JSON.stringify(actionResults)} -->`
+          }
+          const saved = await saveMessage('assistant', contentToSave)
           if (!saved) {
             addDebugLog('error', 'AI msg not saved')
             setSaveError('Response not saved to cloud')
@@ -868,11 +1059,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
   const handleLoadConversation = async (conversationId: string) => {
     const convo = await loadConversation(conversationId)
     if (convo) {
-      setMessages(convo.messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-      })))
+      setMessages(convo.messages.map(transformMessage))
     }
     setShowHistory(false)
   }
@@ -1313,20 +1500,61 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                   )}
                 </div>
 
-                {/* Project Action Feedback */}
-                {message.projectActions && message.projectActions.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="bg-gradient-to-br from-teal-500/20 to-purple-500/20 border border-teal-500/30 rounded-xl p-3"
-                  >
-                    <div className="flex items-center gap-2">
-                      <FolderPlus className="w-4 h-4 text-teal-400" />
-                      <span className="text-sm text-teal-400">
-                        {message.projectActions.join(' • ')}
-                      </span>
-                    </div>
-                  </motion.div>
+                {/* Project Action Cards - Clickable */}
+                {message.actionResults && message.actionResults.length > 0 && (
+                  <div className="space-y-2">
+                    {message.actionResults.map((result, idx) => {
+                      // Determine if this result has a clickable link
+                      const hasLink = result.milestoneId && result.projectId
+                      const linkHref = hasLink
+                        ? `/projects/${result.projectId}/milestone/${result.milestoneId}`
+                        : result.projectId
+                          ? `/projects/${result.projectId}`
+                          : null
+
+                      const cardContent = (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className={`
+                            bg-gradient-to-br rounded-xl p-3
+                            ${result.isIdea
+                              ? 'from-amber-500/20 to-orange-500/20 border border-amber-500/30'
+                              : 'from-teal-500/20 to-purple-500/20 border border-teal-500/30'}
+                            ${linkHref ? 'cursor-pointer hover:border-teal-400/50 transition-colors' : ''}
+                          `}
+                        >
+                          <div className="flex items-center gap-2">
+                            {result.type === 'create_project' ? (
+                              <Rocket className="w-4 h-4 text-purple-400" />
+                            ) : result.isIdea ? (
+                              <Sparkles className="w-4 h-4 text-amber-400" />
+                            ) : result.type === 'complete_milestone' ? (
+                              <CheckCircle className="w-4 h-4 text-green-400" />
+                            ) : (
+                              <FolderPlus className="w-4 h-4 text-teal-400" />
+                            )}
+                            <span className={`text-sm font-medium ${
+                              result.isIdea ? 'text-amber-400' : 'text-teal-400'
+                            }`}>
+                              {result.text}
+                            </span>
+                          </div>
+                          {linkHref && (
+                            <p className="text-xs text-slate-500 mt-1 ml-6">Tap to view</p>
+                          )}
+                        </motion.div>
+                      )
+
+                      return linkHref ? (
+                        <Link key={idx} href={linkHref}>
+                          {cardContent}
+                        </Link>
+                      ) : (
+                        <div key={idx}>{cardContent}</div>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
             </motion.div>

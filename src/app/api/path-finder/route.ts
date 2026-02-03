@@ -48,6 +48,38 @@ interface ExistingProject {
   ideas: { id: string; title: string; notes: string | null }[]
 }
 
+function parseTagBlocks(message: string, tag: string): Array<Record<string, string>> {
+  const blocks: Array<Record<string, string>> = []
+  const blockRegex = new RegExp(`\\[${tag}\\]([\\s\\S]*?)\\[\\/${tag}\\]`, 'gi')
+  let blockMatch: RegExpExecArray | null
+
+  while ((blockMatch = blockRegex.exec(message)) !== null) {
+    const fields: Record<string, string> = {}
+    const lines = (blockMatch[1] || '').split('\n')
+    let currentKey: string | null = null
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim()
+      if (!line) continue
+
+      const fieldMatch = line.match(/^([a-zA-Z0-9_]+)\s*:\s*(.*)$/)
+      if (fieldMatch) {
+        currentKey = fieldMatch[1].toLowerCase()
+        fields[currentKey] = fieldMatch[2].trim()
+        continue
+      }
+
+      if (currentKey) {
+        fields[currentKey] = `${fields[currentKey]} ${line}`.trim()
+      }
+    }
+
+    blocks.push(fields)
+  }
+
+  return blocks
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check API key is configured
@@ -297,26 +329,30 @@ Remember: Users should feel like they're making progress AND staying organized.`
       }
     }
 
-    // Parse ADD_MILESTONE
-    const addMilestoneRegex = /\[ADD_MILESTONE\]\s*project_id:\s*([^\n]+)\s*milestone:\s*([^\n]+)\s*\[\/ADD_MILESTONE\]/g
-    let milestoneMatch
-    while ((milestoneMatch = addMilestoneRegex.exec(assistantMessage)) !== null) {
-      projectActions.push({
-        type: 'add_milestone',
-        projectId: milestoneMatch[1].trim(),
-        newMilestone: milestoneMatch[2].trim(),
-      })
+    // Parse ADD_MILESTONE (robust to key order and multiline values)
+    for (const fields of parseTagBlocks(assistantMessage, 'ADD_MILESTONE')) {
+      const projectId = fields.project_id?.trim()
+      const newMilestone = fields.milestone?.trim()
+      if (projectId && newMilestone) {
+        projectActions.push({
+          type: 'add_milestone',
+          projectId,
+          newMilestone,
+        })
+      }
     }
 
-    // Parse ADD_IDEA
-    const addIdeaRegex = /\[ADD_IDEA\]\s*project_id:\s*([^\n]+)\s*idea:\s*([^\n]+)\s*\[\/ADD_IDEA\]/g
-    let ideaMatch
-    while ((ideaMatch = addIdeaRegex.exec(assistantMessage)) !== null) {
-      projectActions.push({
-        type: 'add_idea',
-        projectId: ideaMatch[1].trim(),
-        newIdea: ideaMatch[2].trim(),
-      })
+    // Parse ADD_IDEA (robust to key order and multiline values)
+    for (const fields of parseTagBlocks(assistantMessage, 'ADD_IDEA')) {
+      const projectId = fields.project_id?.trim()
+      const newIdea = fields.idea?.trim()
+      if (projectId && newIdea) {
+        projectActions.push({
+          type: 'add_idea',
+          projectId,
+          newIdea,
+        })
+      }
     }
 
     // Parse ADD_NOTE

@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/useAiContext'
+import type { InsightType } from '@/lib/supabase/types'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -17,7 +19,8 @@ interface ChatMessage {
   content: string
 }
 
-interface ProjectContext {
+interface ProjectContextInput {
+  id: string
   name: string
   description: string | null
   status: string
@@ -36,6 +39,25 @@ interface MilestoneContext {
   status: string
 }
 
+// Helper to parse insight tags from AI response
+function parseInsightTags(message: string): Array<{ type: InsightType; content: string; importance: number }> {
+  const insights: Array<{ type: InsightType; content: string; importance: number }> = []
+  const insightRegex = /\[INSIGHT\]\s*type:\s*(\w+)\s*content:\s*([^\n]+)\s*(?:importance:\s*(\d+)\s*)?\[\/INSIGHT\]/gi
+
+  let match
+  while ((match = insightRegex.exec(message)) !== null) {
+    const type = match[1].toLowerCase() as InsightType
+    const content = match[2].trim()
+    const importance = match[3] ? parseInt(match[3], 10) : 5
+
+    if (['discovery', 'decision', 'blocker', 'preference', 'learning'].includes(type) && content) {
+      insights.push({ type, content, importance })
+    }
+  }
+
+  return insights
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -50,11 +72,20 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Not logged in' }, { status: 401 })
     }
 
-    const { messages, milestone, project } = await request.json() as {
+    const { messages, milestone, project, approach } = await request.json() as {
       messages: ChatMessage[]
       milestone: MilestoneContext
-      project: ProjectContext
+      project: ProjectContextInput
+      approach?: 'do-it' | 'guide'
     }
+
+    // Fetch AI context bank data for this project
+    const aiContext = await fetchAiContextForApi(
+      supabaseClient,
+      user.id,
+      project.id,
+      milestone.id
+    )
 
     // Build context about the project and where this milestone fits
     const otherMilestones = project.milestones
@@ -64,6 +95,11 @@ export async function POST(request: NextRequest) {
     const completedCount = project.milestones.filter(m => m.status === 'completed').length
     const totalCount = project.milestones.length
     const currentIndex = project.milestones.findIndex(m => m.id === milestone.id) + 1
+
+    // Build context bank section if we have data
+    const contextBankSection = aiContext.fullContext
+      ? `\n\n## Context Bank (What We Already Know)\n${aiContext.fullContext}\n\nUSE THIS CONTEXT! Don't ask questions you already know the answer to.`
+      : ''
 
     const projectOverview = `
 ## Project Overview
@@ -75,9 +111,10 @@ Progress: ${completedCount}/${totalCount} milestones complete
 ${project.milestones.map((m, i) =>
   `${i + 1}. ${m.title} [${m.status}]${m.id === milestone.id ? ' <-- CURRENT' : ''}`
 ).join('\n')}
-`
+${contextBankSection}`
 
-    const systemPrompt = `You are a tactical execution coach helping someone complete ONE specific milestone. You're like a friend sitting next to them saying "Okay, let's get this done."
+    // Different system prompts based on approach
+    const doItForMePrompt = `You are an AI assistant that DOES THE WORK for the user. You're their capable coworker who handles tasks completely.
 
 ${projectOverview}
 
@@ -86,15 +123,81 @@ ${projectOverview}
 ${milestone.description ? `Description: ${milestone.description}` : ''}
 This is milestone ${currentIndex} of ${totalCount}.
 
-## Your Role
-You are NOT here to discuss the big picture or explore ideas. That's what Path Finder is for.
-You ARE here to help them DO this one thing, RIGHT NOW.
+## Your Role - DO IT FOR THEM
+The user chose "Do it for me" mode. They want you to:
+- **Write code** - Give them complete, working code they can copy-paste
+- **Write content** - Draft full copy, emails, documentation, etc.
+- **Create plans** - Detailed step-by-step plans with specifics
+- **Solve problems** - Give direct solutions, not questions
+
+## Your Approach
+1. **Ask clarifying questions ONCE** - Get what you need to do the work
+2. **Then DO the work** - Provide complete, ready-to-use output
+3. **Be thorough** - Don't make them ask follow-up questions
+4. **Format for easy use** - Code in code blocks, content ready to copy
+
+## Conversation Style
+- Start by asking what specifically they need done
+- After they answer, DELIVER the full solution
+- Use code blocks for code, clear formatting for content
+- If the task is big, break it into parts but complete each part fully
+
+## Example Flow
+User: "I need to design the landing page"
+You: "Got it! What's the product/service, and what action do you want visitors to take?"
+User: "It's a fitness app, I want them to sign up for the waitlist"
+You: "Here's a complete landing page structure with copy:
+
+**Hero Section**
+Headline: 'Get Fit on Your Schedule'
+Subheadline: 'AI-powered workouts that adapt to your life. Join 10,000+ on the waitlist.'
+CTA Button: 'Join the Waitlist'
+
+**Features Section**
+[... complete detailed copy for all sections ...]
+
+Want me to write the actual HTML/React code for this?"
+
+## Important
+- You ARE here to do the work, not just coach
+- Provide COMPLETE solutions they can use immediately
+- Ask minimal questions, maximize output
+- If you can do it, do it. Don't ask "would you like me to..."
+- USE THE CONTEXT BANK above - don't ask about things we already know (tech stack, audience, etc.)
+
+## Learning New Things
+When you discover something new about the user or project (blockers, preferences, decisions), save it:
+
+[INSIGHT]
+type: <discovery|decision|blocker|preference|learning>
+content: <what was learned>
+importance: <1-10>
+[/INSIGHT]
+
+Examples:
+- User says they're not comfortable with TypeScript → type: blocker, content: User uncomfortable with TypeScript, prefers JavaScript, importance: 7
+- User chooses a specific approach → type: decision, content: Decided to use Tailwind CSS for styling, importance: 6
+
+Remember: They chose "Do it for me" because they want results, not guidance.`
+
+    const guideMePrompt = `You are a tactical execution coach helping someone complete ONE specific milestone. You're like a friend sitting next to them saying "Okay, let's get this done."
+
+${projectOverview}
+
+## Current Milestone (Your ONLY Focus)
+**${milestone.title}**
+${milestone.description ? `Description: ${milestone.description}` : ''}
+This is milestone ${currentIndex} of ${totalCount}.
+
+## Your Role - GUIDE THEM
+The user chose "Guide me" mode. They want to LEARN and DO it themselves with your coaching.
+You are NOT here to do the work for them - you're here to help them do it.
 
 ## Your Approach
 1. **Break it down** - What's the absolute smallest next action?
 2. **Remove blockers** - "What's stopping you?" then help solve it
 3. **Keep momentum** - One tiny step at a time
-4. **Stay focused** - Gently redirect if they drift to other topics
+4. **Teach concepts** - Explain the WHY so they learn
 5. **Celebrate progress** - Acknowledge each step forward
 
 ## Conversation Style
@@ -111,12 +214,6 @@ You ARE here to help them DO this one thing, RIGHT NOW.
 - "Done! What's next?"
 - "You're making progress. Keep going."
 
-## When They Complete the Milestone
-When they say they're done or the milestone is complete:
-1. Celebrate briefly
-2. Ask them to mark it complete in the app
-3. Suggest they take a short break or move to the next milestone
-
 ## Example Flow
 User: "I need to design the landing page"
 You: "Cool. Do you have a rough idea of what sections it needs, or should we figure that out first?"
@@ -125,12 +222,28 @@ You: "Perfect. Let's start with the hero. What's the one thing you want visitors
 [...continue breaking down until they're actually DOING something]
 
 ## Important
-- Don't write code or content FOR them unless they specifically ask
+- Don't write code or content FOR them unless they're completely stuck
 - Your job is to COACH them through doing it themselves
 - Keep responses SHORT - you're a coach, not a lecturer
-- If they seem overwhelmed, zoom in. If they're flowing, stay quiet.
+- Help them learn, not just get the answer
+- USE THE CONTEXT BANK above - reference what we already know to personalize guidance
 
-Remember: The goal is to get this ONE milestone DONE. Nothing else matters right now.`
+## Learning New Things
+When you discover something new about the user (blockers, preferences, how they learn best), save it:
+
+[INSIGHT]
+type: <discovery|decision|blocker|preference|learning>
+content: <what was learned>
+importance: <1-10>
+[/INSIGHT]
+
+Examples:
+- User seems to learn better with visual examples → type: preference, content: Learns better with visual examples and diagrams, importance: 6
+- User is blocked on understanding a concept → type: blocker, content: Struggling to understand async/await patterns, importance: 7
+
+Remember: They chose "Guide me" because they want to learn and grow.`
+
+    const systemPrompt = approach === 'do-it' ? doItForMePrompt : guideMePrompt
 
     const formattedMessages = messages.map(msg => ({
       role: msg.role as 'user' | 'assistant',
@@ -144,10 +257,36 @@ Remember: The goal is to get this ONE milestone DONE. Nothing else matters right
       messages: formattedMessages,
     })
 
-    const assistantMessage = response.content
+    let assistantMessage = response.content
       .filter(block => block.type === 'text')
       .map(block => (block as Anthropic.TextBlock).text)
       .join('\n')
+
+    // Parse and save any insights from the response
+    const extractedInsights = parseInsightTags(assistantMessage)
+    if (extractedInsights.length > 0) {
+      Promise.all(
+        extractedInsights.map(insight =>
+          saveAiInsight(
+            supabaseClient,
+            user.id,
+            insight.type,
+            insight.content,
+            'milestone_mode',
+            {
+              projectId: project.id,
+              milestoneId: milestone.id,
+              importance: insight.importance,
+            }
+          )
+        )
+      ).catch(err => console.error('Error saving milestone mode insights:', err))
+    }
+
+    // Remove insight tags from visible message
+    assistantMessage = assistantMessage
+      .replace(/\[INSIGHT\][\s\S]*?\[\/INSIGHT\]/gi, '')
+      .trim()
 
     return Response.json({
       message: assistantMessage,

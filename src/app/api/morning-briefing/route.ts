@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAiContextForApi } from '@/lib/hooks/useAiContext'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -129,6 +130,13 @@ export async function GET(request: NextRequest) {
       focusMilestone = projectsWithMilestones[0].milestones[0]
     }
 
+    // Fetch AI context bank for personalization
+    const aiContext = await fetchAiContextForApi(
+      supabaseClient,
+      user.id,
+      focusProject?.id
+    )
+
     // Build context for AI
     const projectContext = projectsWithMilestones.map(p => {
       const active = p.milestones.find(m => m.focus_level === 'active')
@@ -143,6 +151,11 @@ export async function GET(request: NextRequest) {
   - Backlog: ${backlog.length} items
   - Total milestones: ${total}`
     }).join('\n\n')
+
+    // Add context bank insights for more personalized briefings
+    const contextBankSection = aiContext.fullContext
+      ? `\n\n## What We Know About This User\n${aiContext.fullContext}`
+      : ''
 
     // Generate briefing with AI
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -174,16 +187,17 @@ export async function GET(request: NextRequest) {
 - Specific to their current projects and milestones
 - Encouraging but not cheesy
 - Actionable - tells them exactly what to focus on
+- Personalized using the context we know about them (their goals, constraints, preferences)
 
 Respond in JSON format:
 {
   "mission_headline": "2-5 word summary of today's focus (e.g. 'Build the landing page')",
   "mission_detail": "One sentence with more context about the task",
-  "nudge": "A motivating thought specific to where they are in their journey (1-2 sentences)"
+  "nudge": "A motivating thought specific to where they are in their journey (1-2 sentences) - reference their goals or situation if known"
 }`,
       messages: [{
         role: 'user',
-        content: `Here's my current project state:\n\n${projectContext}\n\nThe suggested focus for today is: ${focusMilestone ? `"${focusMilestone.title}" from project "${focusProject?.name}"` : 'No specific milestone set'}\n\nGenerate my morning briefing.`
+        content: `Here's my current project state:\n\n${projectContext}${contextBankSection}\n\nThe suggested focus for today is: ${focusMilestone ? `"${focusMilestone.title}" from project "${focusProject?.name}"` : 'No specific milestone set'}\n\nGenerate my morning briefing.`
       }],
     })
 

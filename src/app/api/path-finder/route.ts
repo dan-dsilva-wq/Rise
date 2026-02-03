@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { saveProjectContext, saveAiInsight } from '@/lib/hooks/useAiContext'
+import type { ProjectContextType, InsightType } from '@/lib/supabase/types'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -20,6 +22,21 @@ interface ChatMessage {
 interface SuggestedFact {
   category: 'background' | 'skills' | 'situation' | 'goals' | 'preferences' | 'constraints'
   fact: string
+}
+
+interface ExtractedContext {
+  projectId: string
+  type: ProjectContextType
+  key: string
+  value: string
+  confidence?: number
+}
+
+interface ExtractedInsight {
+  type: InsightType
+  content: string
+  importance?: number
+  projectId?: string
 }
 
 interface ProjectAction {
@@ -167,6 +184,40 @@ category: <background|skills|situation|goals|preferences|constraints>
 fact: <concise fact>
 [/PROFILE_UPDATE]
 
+## Context Bank - Extract Important Details
+When the user reveals decisions, tech choices, constraints, or target audience for a project, save them to the context bank. This helps other AI features (like Milestone Mode) know what they need to do the work without asking repetitive questions.
+
+### Save project-specific context:
+[PROJECT_CONTEXT]
+project_id: <exact UUID>
+type: <tech_stack|target_audience|constraints|decisions|requirements>
+key: <short identifier, e.g., 'framework', 'budget', 'primary_user'>
+value: <the actual value>
+confidence: <0.5-1.0, use 1.0 for user-confirmed, 0.5-0.9 for inferred>
+[/PROJECT_CONTEXT]
+
+Examples:
+- User says "I'll use React Native" → type: tech_stack, key: framework, value: React Native, confidence: 1.0
+- User mentions "targeting fitness enthusiasts" → type: target_audience, key: primary, value: Fitness enthusiasts who want home workouts, confidence: 1.0
+- You infer from context they have no budget → type: constraints, key: budget, value: $0 - bootstrapping, confidence: 0.7
+- User decides "mobile first, web later" → type: decisions, key: platform_priority, value: Mobile-first MVP, web in v2, confidence: 1.0
+
+### Save insights/discoveries:
+[AI_INSIGHT]
+type: <discovery|decision|blocker|preference|learning>
+content: <what was learned>
+importance: <1-10, where 10 is critical>
+project_id: <optional UUID if project-specific>
+[/AI_INSIGHT]
+
+Examples:
+- "User wants recurring revenue, not one-time sales" → type: discovery, importance: 9
+- "Chose mobile because target users are always on phones" → type: decision, importance: 8
+- "User uncomfortable with TypeScript" → type: blocker, importance: 6
+- "Prefers building in public for accountability" → type: preference, importance: 5
+
+Use these liberally! The more context captured, the smarter other AI features become.
+
 ## Project Actions (USE THESE PROACTIVELY!)
 
 **CRITICAL: You MUST include the actual tags in your response to make changes happen. Simply saying "I'll add that" or "Done!" does NOTHING - the system only acts when it sees the actual [TAG] blocks. Always include the full tag block when taking action.**
@@ -312,6 +363,72 @@ Remember: Users should feel like they're making progress AND staying organized.`
           fact,
         })
       }
+    }
+
+    // Parse and save PROJECT_CONTEXT tags
+    const extractedContexts: ExtractedContext[] = []
+    for (const fields of parseTagBlocks(assistantMessage, 'PROJECT_CONTEXT')) {
+      const projectId = extractUuid(fields.project_id || fields.projectid || fields.project)
+      const contextType = fields.type?.toLowerCase() as ProjectContextType
+      const key = fields.key?.trim()
+      const value = fields.value?.trim()
+      const confidence = fields.confidence ? parseFloat(fields.confidence) : 1.0
+
+      if (projectId && contextType && key && value &&
+          ['tech_stack', 'target_audience', 'constraints', 'decisions', 'requirements'].includes(contextType)) {
+        extractedContexts.push({ projectId, type: contextType, key, value, confidence })
+      }
+    }
+
+    // Save project contexts to database (fire and forget for performance)
+    if (extractedContexts.length > 0) {
+      Promise.all(
+        extractedContexts.map(ctx =>
+          saveProjectContext(
+            supabaseClient,
+            user.id,
+            ctx.projectId,
+            ctx.type,
+            ctx.key,
+            ctx.value,
+            ctx.confidence,
+            'path_finder'
+          )
+        )
+      ).catch(err => console.error('Error saving project contexts:', err))
+    }
+
+    // Parse and save AI_INSIGHT tags
+    const extractedInsights: ExtractedInsight[] = []
+    for (const fields of parseTagBlocks(assistantMessage, 'AI_INSIGHT')) {
+      const insightType = fields.type?.toLowerCase() as InsightType
+      const content = fields.content?.trim()
+      const importance = fields.importance ? parseInt(fields.importance, 10) : 5
+      const projectId = extractUuid(fields.project_id || fields.projectid)
+
+      if (content && insightType &&
+          ['discovery', 'decision', 'blocker', 'preference', 'learning'].includes(insightType)) {
+        extractedInsights.push({ type: insightType, content, importance, projectId })
+      }
+    }
+
+    // Save insights to database (fire and forget for performance)
+    if (extractedInsights.length > 0) {
+      Promise.all(
+        extractedInsights.map(insight =>
+          saveAiInsight(
+            supabaseClient,
+            user.id,
+            insight.type,
+            insight.content,
+            'path_finder',
+            {
+              projectId: insight.projectId,
+              importance: insight.importance,
+            }
+          )
+        )
+      ).catch(err => console.error('Error saving insights:', err))
     }
 
     // Parse project actions from the message
@@ -491,6 +608,8 @@ Remember: Users should feel like they're making progress AND staying organized.`
     // Remove all structured tags from the visible message
     assistantMessage = assistantMessage
       .replace(/\[PROFILE_UPDATE\][\s\S]*?\[\/PROFILE_UPDATE\]/g, '')
+      .replace(/\[PROJECT_CONTEXT\][\s\S]*?\[\/PROJECT_CONTEXT\]/g, '')
+      .replace(/\[AI_INSIGHT\][\s\S]*?\[\/AI_INSIGHT\]/g, '')
       .replace(/\[CREATE_PROJECT\][\s\S]*?\[\/CREATE_PROJECT\]/g, '')
       .replace(/\[ADD_MILESTONE\][\s\S]*?\[\/ADD_MILESTONE\]/g, '')
       .replace(/\[ADD_IDEA\][\s\S]*?\[\/ADD_IDEA\]/g, '')

@@ -581,6 +581,7 @@ export interface Database {
           milestone_id: string
           user_id: string
           is_active: boolean
+          approach: 'do-it' | 'guide' | null
           created_at: string
           updated_at: string
         }
@@ -589,6 +590,7 @@ export interface Database {
           milestone_id: string
           user_id: string
           is_active?: boolean
+          approach?: 'do-it' | 'guide' | null
           created_at?: string
           updated_at?: string
         }
@@ -597,6 +599,45 @@ export interface Database {
           milestone_id?: string
           user_id?: string
           is_active?: boolean
+          approach?: 'do-it' | 'guide' | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      milestone_steps: {
+        Row: {
+          id: string
+          milestone_id: string
+          user_id: string
+          text: string
+          step_type: 'action' | 'decision' | 'research'
+          sort_order: number
+          is_completed: boolean
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          milestone_id: string
+          user_id: string
+          text: string
+          step_type?: 'action' | 'decision' | 'research'
+          sort_order?: number
+          is_completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          milestone_id?: string
+          user_id?: string
+          text?: string
+          step_type?: 'action' | 'decision' | 'research'
+          sort_order?: number
+          is_completed?: boolean
+          completed_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -661,6 +702,89 @@ export interface Database {
           focus_milestone_id?: string | null
           generated_at?: string
           created_at?: string
+        }
+      }
+      // AI Context Bank tables
+      project_context: {
+        Row: {
+          id: string
+          project_id: string
+          user_id: string
+          context_type: 'tech_stack' | 'target_audience' | 'constraints' | 'decisions' | 'requirements'
+          key: string
+          value: string
+          confidence: number
+          source: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          user_id: string
+          context_type: 'tech_stack' | 'target_audience' | 'constraints' | 'decisions' | 'requirements'
+          key: string
+          value: string
+          confidence?: number
+          source?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          user_id?: string
+          context_type?: 'tech_stack' | 'target_audience' | 'constraints' | 'decisions' | 'requirements'
+          key?: string
+          value?: string
+          confidence?: number
+          source?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      ai_insights: {
+        Row: {
+          id: string
+          user_id: string
+          project_id: string | null
+          milestone_id: string | null
+          insight_type: 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
+          content: string
+          importance: number
+          source_conversation_id: string | null
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat'
+          created_at: string
+          expires_at: string | null
+          is_active: boolean
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          project_id?: string | null
+          milestone_id?: string | null
+          insight_type: 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
+          content: string
+          importance?: number
+          source_conversation_id?: string | null
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat'
+          created_at?: string
+          expires_at?: string | null
+          is_active?: boolean
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          project_id?: string | null
+          milestone_id?: string | null
+          insight_type?: 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
+          content?: string
+          importance?: number
+          source_conversation_id?: string | null
+          source_ai?: 'path_finder' | 'milestone_mode' | 'project_chat'
+          created_at?: string
+          expires_at?: string | null
+          is_active?: boolean
         }
       }
     }
@@ -755,7 +879,22 @@ export type MilestoneConversation = Database['public']['Tables']['milestone_conv
 export type MilestoneConversationInsert = Database['public']['Tables']['milestone_conversations']['Insert']
 export type MilestoneMessage = Database['public']['Tables']['milestone_messages']['Row']
 export type MilestoneMessageInsert = Database['public']['Tables']['milestone_messages']['Insert']
+export type MilestoneStep = Database['public']['Tables']['milestone_steps']['Row']
+export type MilestoneStepInsert = Database['public']['Tables']['milestone_steps']['Insert']
+export type MilestoneStepUpdate = Database['public']['Tables']['milestone_steps']['Update']
 
 // Morning Briefing types
 export type MorningBriefing = Database['public']['Tables']['morning_briefings']['Row']
 export type MorningBriefingInsert = Database['public']['Tables']['morning_briefings']['Insert']
+
+// AI Context Bank types
+export type ProjectContext = Database['public']['Tables']['project_context']['Row']
+export type ProjectContextInsert = Database['public']['Tables']['project_context']['Insert']
+export type ProjectContextUpdate = Database['public']['Tables']['project_context']['Update']
+export type ProjectContextType = 'tech_stack' | 'target_audience' | 'constraints' | 'decisions' | 'requirements'
+
+export type AiInsight = Database['public']['Tables']['ai_insights']['Row']
+export type AiInsightInsert = Database['public']['Tables']['ai_insights']['Insert']
+export type AiInsightUpdate = Database['public']['Tables']['ai_insights']['Update']
+export type InsightType = 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
+export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat'

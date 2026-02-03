@@ -89,7 +89,8 @@ export function DashboardContent({
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* MORNING BRIEFING - The Star */}
+        {/* MORNING BRIEFING - Only show when user has projects */}
+        {projects.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -109,7 +110,7 @@ export function DashboardContent({
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
                     <Rocket className="w-5 h-5 text-teal-400" />
-                    <span className="text-sm font-medium text-teal-400 uppercase tracking-wide">Today's Mission</span>
+                    <span className="text-sm font-medium text-teal-400 uppercase tracking-wide">Today&apos;s Mission</span>
                   </div>
                   {(() => {
                     const [headline, detail] = briefing.mission_summary.split('|||')
@@ -133,7 +134,7 @@ export function DashboardContent({
                       <Sparkles className="w-4 h-4 text-purple-400" />
                     </div>
                     <p className="text-slate-300 italic leading-relaxed">
-                      "{briefing.nudge}"
+                      &ldquo;{briefing.nudge}&rdquo;
                     </p>
                   </div>
                 </div>
@@ -143,7 +144,7 @@ export function DashboardContent({
                   {focusProject ? (
                     <Link href={`/projects/${focusProject.id}`} className="flex-1">
                       <button className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold text-lg hover:shadow-lg hover:shadow-teal-500/25 transition-all flex items-center justify-center gap-2">
-                        Let's Work
+                        Let&apos;s Work
                         <ChevronRight className="w-5 h-5" />
                       </button>
                     </Link>
@@ -169,7 +170,7 @@ export function DashboardContent({
             ) : (
               /* No briefing - shouldn't happen but fallback */
               <div className="text-center py-4">
-                <p className="text-slate-400">Couldn't load your briefing</p>
+                <p className="text-slate-400">Couldn&apos;t load your briefing</p>
                 <button
                   onClick={fetchBriefing}
                   className="mt-2 text-teal-400 hover:text-teal-300"
@@ -180,7 +181,7 @@ export function DashboardContent({
             )}
           </div>
         </motion.div>
-
+        )}
 
         {/* Projects List - Secondary */}
         {projects.length > 0 && (
@@ -222,21 +223,126 @@ export function DashboardContent({
           </motion.div>
         )}
 
-        {/* No Projects State */}
+        {/* NEW USER ONBOARDING - Full Experience */}
         {projects.length === 0 && !loadingBriefing && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-center py-8"
+            transition={{ delay: 0.1 }}
+            className="space-y-6"
           >
-            <p className="text-slate-500 mb-4">No projects yet. Let's find something to build.</p>
-            <Link href="/path-finder">
-              <button className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-purple-500 to-teal-500 text-white font-semibold hover:shadow-lg hover:shadow-purple-500/25 transition-all">
-                <Compass className="w-5 h-5" />
-                Open Path Finder
-              </button>
-            </Link>
+            {/* Hero Card */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-900/40 via-slate-800 to-teal-900/40 border border-purple-500/20 shadow-2xl">
+              {/* Animated gradient border */}
+              <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-500 via-teal-500 to-emerald-500" />
+
+              <div className="p-8 text-center">
+                {/* Icon */}
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                  className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-purple-500/20 to-teal-500/20 border border-purple-500/30 mb-6"
+                >
+                  <Rocket className="w-10 h-10 text-teal-400" />
+                </motion.div>
+
+                {/* Welcome Text */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  <h2 className="text-3xl font-bold text-white mb-3">
+                    Welcome to Rise
+                  </h2>
+                  <p className="text-lg text-slate-300 mb-2">
+                    Your AI cofounder for building toward freedom.
+                  </p>
+                  <p className="text-slate-400 max-w-sm mx-auto">
+                    Rise helps you discover what to build, break it into steps, and make progress every day.
+                  </p>
+                </motion.div>
+
+                {/* Big CTA Button */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="mt-8"
+                >
+                  <Link href="/path-finder">
+                    <button className="group relative w-full max-w-xs py-5 px-8 rounded-2xl bg-gradient-to-r from-purple-500 via-teal-500 to-emerald-500 text-white font-bold text-xl shadow-lg shadow-purple-500/25 hover:shadow-xl hover:shadow-teal-500/30 transition-all hover:scale-[1.02]">
+                      <span className="flex items-center justify-center gap-3">
+                        Start Here
+                        <ChevronRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                      </span>
+                    </button>
+                  </Link>
+                </motion.div>
+              </div>
+            </div>
+
+            {/* How It Works - 3 Steps */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="space-y-3"
+            >
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wide text-center mb-4">
+                How It Works
+              </h3>
+
+              {/* Step 1 */}
+              <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <span className="text-purple-400 font-bold">1</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-white">Discover Your Path</h4>
+                  <p className="text-sm text-slate-400">Chat with AI to explore what you could build based on your skills and goals.</p>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-teal-500/20 flex items-center justify-center">
+                  <span className="text-teal-400 font-bold">2</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-white">Build With AI</h4>
+                  <p className="text-sm text-slate-400">Your project gets broken into milestones. AI helps you complete each one.</p>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <span className="text-emerald-400 font-bold">3</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-white">Launch & Grow</h4>
+                  <p className="text-sm text-slate-400">Ship your project and start earning. Rise tracks your progress toward freedom.</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Secondary CTA */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
+              className="text-center pt-4"
+            >
+              <Link href="/path-finder">
+                <button className="inline-flex items-center gap-2 text-teal-400 hover:text-teal-300 font-medium">
+                  <Compass className="w-5 h-5" />
+                  Let&apos;s discover what you should build
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </Link>
+            </motion.div>
           </motion.div>
         )}
       </main>

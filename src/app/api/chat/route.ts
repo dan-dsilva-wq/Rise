@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAiContextForApi } from '@/lib/hooks/useAiContext'
 
 // Lazy initialize to avoid build-time errors
 let openai: OpenAI | null = null
@@ -47,6 +48,18 @@ export async function POST(request: NextRequest) {
       return new Response('Messages required', { status: 400 })
     }
 
+    // Fetch AI context bank data for this project
+    const aiContext = await fetchAiContextForApi(
+      supabaseClient,
+      user.id,
+      projectId || undefined
+    )
+
+    // Build context bank section if we have data
+    const contextBankSection = aiContext.fullContext
+      ? `\n\n## What We Already Know (Context Bank)\n${aiContext.fullContext}\n\nUse this context to provide personalized, relevant help. Don't ask about things we already know.`
+      : ''
+
     // Build system prompt with project context
     let systemPrompt = `You are an AI building partner helping a user build their project. You're supportive, practical, and focused on helping them make progress.
 
@@ -57,6 +70,7 @@ Key principles:
 - Encourage progress over perfection
 - Celebrate wins, no matter how small
 - When they're stuck, help them find the next smallest step
+- USE THE CONTEXT BANK below - leverage what we know about the user and project
 
 You can help with:
 - Brainstorming and ideation
@@ -77,6 +91,9 @@ You can help with:
 **Milestones:**
 ${projectContext.milestones.map((m, i) => `${i + 1}. [${m.status}] ${m.title}${m.description ? ` - ${m.description}` : ''}`).join('\n')}`
     }
+
+    // Add context bank to system prompt
+    systemPrompt += contextBankSection
 
     // Format messages for OpenAI API
     const formattedMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [

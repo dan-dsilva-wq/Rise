@@ -145,20 +145,23 @@ function SortableMilestoneItem({
           onClick={() => onNavigate(milestone)}
         >
           <div className="flex items-center gap-2">
-            <span className={`font-medium ${isCompleted ? 'text-slate-400 line-through' : 'text-white group-hover:text-teal-300'} transition-colors`}>
-              {milestone.title}
+            <span className={`font-medium text-sm ${isCompleted ? 'text-slate-400 line-through' : 'text-white group-hover:text-teal-300'} transition-colors line-clamp-1`}>
+              {/* Show short summary - first 50 chars or up to first period/colon */}
+              {milestone.title.length > 50
+                ? milestone.title.slice(0, 50).split(/[.:]/)[0] + '...'
+                : milestone.title.split(/[.:]/)[0] || milestone.title}
             </span>
             {isInProgress && (
-              <span className="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded">
+              <span className="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded flex-shrink-0">
                 In Progress
               </span>
             )}
           </div>
 
-          {/* Description preview if exists */}
-          {milestone.description && (
-            <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
-              {milestone.description}
+          {/* Full title/description in lighter text */}
+          {(milestone.title.length > 50 || milestone.description) && (
+            <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">
+              {milestone.description || milestone.title}
             </p>
           )}
 

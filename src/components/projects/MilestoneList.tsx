@@ -3,24 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, Circle, Clock, Sparkles, ChevronRight, Plus, Trash2, AlertTriangle, GripVertical } from 'lucide-react'
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+  CheckCircle2, Circle, Sparkles, ChevronRight, Plus, Trash2,
+  AlertTriangle, Lightbulb, ArrowUp, ChevronDown, Play, Clock,
+  Target, ListTodo
+} from 'lucide-react'
 import type { Milestone } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/Button'
 
@@ -29,192 +16,13 @@ interface MilestoneListProps {
   projectId: string
   onComplete: (id: string) => Promise<number>
   onUncomplete?: (id: string) => Promise<number>
-  onReorder?: (orderedIds: string[]) => Promise<boolean>
+  onSetFocus?: (id: string, level: 'active' | 'next' | 'backlog') => Promise<boolean>
+  onPromote?: (id: string) => Promise<boolean>
   onAdd?: () => void
+  onAddIdea?: () => void
   onDelete?: (id: string) => void
   showAddButton?: boolean
   isEditable?: boolean
-}
-
-interface SortableMilestoneItemProps {
-  milestone: Milestone
-  projectId: string
-  isCompleted: boolean
-  isInProgress: boolean
-  isCompleting: boolean
-  isUncompleting: boolean
-  showXpGain: boolean
-  xpAmount: number
-  isEditable: boolean
-  onComplete: (milestone: Milestone) => void
-  onDelete?: (id: string) => void
-  onNavigate: (milestone: Milestone) => void
-}
-
-function SortableMilestoneItem({
-  milestone,
-  projectId,
-  isCompleted,
-  isInProgress,
-  isCompleting,
-  isUncompleting,
-  showXpGain,
-  xpAmount,
-  isEditable,
-  onComplete,
-  onDelete,
-  onNavigate,
-}: SortableMilestoneItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: milestone.id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 50 : 'auto',
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`
-        rounded-lg border transition-all cursor-pointer group
-        ${isDragging ? 'shadow-lg' : ''}
-        ${isCompleted
-          ? 'bg-teal-500/5 border-teal-500/20 hover:bg-teal-500/10'
-          : isInProgress
-            ? 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10'
-            : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-800/50 hover:border-slate-600/50'
-        }
-      `}
-    >
-      <div className="p-3 flex items-start gap-2">
-        {/* Drag Handle - only when editable */}
-        {isEditable && (
-          <button
-            {...attributes}
-            {...listeners}
-            className="flex-shrink-0 mt-0.5 p-1 -ml-1 text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing touch-none"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GripVertical className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Status Icon - clicking marks complete/uncomplete */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onComplete(milestone)
-          }}
-          disabled={isCompleting || isUncompleting}
-          className={`
-            flex-shrink-0 mt-0.5 transition-colors
-            ${isCompleted
-              ? 'text-teal-500 hover:text-teal-300'
-              : 'text-slate-500 hover:text-teal-400'
-            }
-          `}
-          title={isCompleted ? 'Click to mark incomplete' : 'Mark as complete'}
-        >
-          {isCompleting || isUncompleting ? (
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            >
-              <Circle className="w-5 h-5" />
-            </motion.div>
-          ) : isCompleted ? (
-            <CheckCircle2 className="w-5 h-5" />
-          ) : (
-            <Circle className="w-5 h-5" />
-          )}
-        </button>
-
-        {/* Content - clicking navigates */}
-        <div
-          className="flex-1 min-w-0"
-          onClick={() => onNavigate(milestone)}
-        >
-          <div className="flex items-center gap-2">
-            <span className={`font-medium text-sm ${isCompleted ? 'text-slate-400 line-through' : 'text-white group-hover:text-teal-300'} transition-colors line-clamp-1`}>
-              {/* Show short summary - first 50 chars or up to first period/colon */}
-              {milestone.title.length > 50
-                ? milestone.title.slice(0, 50).split(/[.:]/)[0] + '...'
-                : milestone.title.split(/[.:]/)[0] || milestone.title}
-            </span>
-            {isInProgress && (
-              <span className="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded flex-shrink-0">
-                In Progress
-              </span>
-            )}
-          </div>
-
-          {/* Full title/description in lighter text */}
-          {(milestone.title.length > 50 || milestone.description) && (
-            <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">
-              {milestone.description || milestone.title}
-            </p>
-          )}
-
-          {/* XP Badge */}
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-slate-500 flex items-center gap-1">
-              <Sparkles className="w-3 h-3" />
-              {milestone.xp_reward} XP
-            </span>
-            {milestone.due_date && (
-              <span className="text-xs text-slate-500 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {new Date(milestone.due_date).toLocaleDateString()}
-              </span>
-            )}
-
-            {/* XP Gain Animation */}
-            <AnimatePresence>
-              {showXpGain && (
-                <motion.span
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="text-xs text-teal-400 font-medium"
-                >
-                  {xpAmount > 0 ? '+' : ''}{xpAmount} XP!
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-
-        {/* Actions & Arrow */}
-        <div className="flex items-center gap-1">
-          {isEditable && onDelete && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete(milestone.id)
-              }}
-              className="p-1 text-slate-500 hover:text-red-400 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-          {/* Arrow indicator - shows it's clickable */}
-          <div onClick={() => onNavigate(milestone)}>
-            <ChevronRight className={`w-5 h-5 transition-all ${isCompleted ? 'text-slate-600' : 'text-slate-500 group-hover:text-teal-400 group-hover:translate-x-0.5'}`} />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 export function MilestoneList({
@@ -222,8 +30,10 @@ export function MilestoneList({
   projectId,
   onComplete,
   onUncomplete,
-  onReorder,
+  onSetFocus,
+  onPromote,
   onAdd,
+  onAddIdea,
   onDelete,
   showAddButton = false,
   isEditable = false,
@@ -233,42 +43,20 @@ export function MilestoneList({
   const [recentXp, setRecentXp] = useState<{ id: string; amount: number } | null>(null)
   const [uncompleteConfirm, setUncompleteConfirm] = useState<Milestone | null>(null)
   const [uncompletingId, setUncompletingId] = useState<string | null>(null)
+  const [showBacklog, setShowBacklog] = useState(false)
+  const [showIdeas, setShowIdeas] = useState(false)
+  const [showCompleted, setShowCompleted] = useState(false)
 
-  // Filter out discarded milestones
-  const activeMilestones = milestones.filter(m => m.status !== 'discarded')
-  const completedCount = activeMilestones.filter(m => m.status === 'completed').length
-  const totalCount = activeMilestones.length
-
-  // DnD sensors with touch support
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // 8px movement before drag starts
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  )
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
-
-    if (over && active.id !== over.id && onReorder) {
-      const oldIndex = activeMilestones.findIndex(m => m.id === active.id)
-      const newIndex = activeMilestones.findIndex(m => m.id === over.id)
-
-      const newOrder = arrayMove(activeMilestones, oldIndex, newIndex)
-      const orderedIds = newOrder.map(m => m.id)
-
-      await onReorder(orderedIds)
-    }
-  }
+  // Categorize milestones
+  const activeMilestone = milestones.find(m => m.focus_level === 'active' && m.status !== 'completed' && m.status !== 'discarded' && m.status !== 'idea')
+  const upNext = milestones.filter(m => m.focus_level === 'next' && m.status !== 'completed' && m.status !== 'discarded' && m.status !== 'idea')
+  const backlog = milestones.filter(m => (m.focus_level === 'backlog' || !m.focus_level) && m.status !== 'completed' && m.status !== 'discarded' && m.status !== 'idea')
+  const ideas = milestones.filter(m => m.status === 'idea')
+  const completed = milestones.filter(m => m.status === 'completed')
 
   const handleComplete = async (milestone: Milestone) => {
     if (completingId || uncompletingId) return
 
-    // If already completed, show confirmation to uncomplete
     if (milestone.status === 'completed') {
       if (onUncomplete) {
         setUncompleteConfirm(milestone)
@@ -277,7 +65,6 @@ export function MilestoneList({
     }
 
     setCompletingId(milestone.id)
-
     const xp = await onComplete(milestone.id)
 
     if (xp > 0) {
@@ -305,83 +92,377 @@ export function MilestoneList({
   }
 
   const handleMilestoneClick = (milestone: Milestone) => {
-    // Navigate to Milestone Mode for AI assistance
     router.push(`/projects/${projectId}/milestone/${milestone.id}`)
   }
 
-  return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold text-white">Milestones</h3>
-          <span className="text-sm text-slate-400">
-            {completedCount}/{totalCount}
-          </span>
+  const handleSetActive = async (milestone: Milestone) => {
+    if (onSetFocus) {
+      await onSetFocus(milestone.id, 'active')
+    }
+  }
+
+  const handleMoveToNext = async (milestone: Milestone) => {
+    if (onSetFocus && upNext.length < 3) {
+      await onSetFocus(milestone.id, 'next')
+    }
+  }
+
+  const handleMoveToBacklog = async (milestone: Milestone) => {
+    if (onSetFocus) {
+      await onSetFocus(milestone.id, 'backlog')
+    }
+  }
+
+  // Compact milestone row
+  const MilestoneRow = ({ milestone, showSetActive = false, showMoveToNext = false, showMoveToBacklog = false }: {
+    milestone: Milestone
+    showSetActive?: boolean
+    showMoveToNext?: boolean
+    showMoveToBacklog?: boolean
+  }) => {
+    const isCompleting = completingId === milestone.id
+    const isUncompleting = uncompletingId === milestone.id
+    const isCompleted = milestone.status === 'completed'
+    const showXpGain = recentXp?.id === milestone.id
+
+    return (
+      <div
+        className={`
+          rounded-lg border transition-all cursor-pointer group
+          ${isCompleted
+            ? 'bg-teal-500/5 border-teal-500/20'
+            : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-800/50 hover:border-slate-600/50'
+          }
+        `}
+      >
+        <div className="p-3 flex items-center gap-2">
+          {/* Checkbox */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleComplete(milestone)
+            }}
+            disabled={isCompleting || isUncompleting}
+            className={`flex-shrink-0 transition-colors ${isCompleted ? 'text-teal-500' : 'text-slate-500 hover:text-teal-400'}`}
+          >
+            {isCompleting || isUncompleting ? (
+              <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                <Circle className="w-5 h-5" />
+              </motion.div>
+            ) : isCompleted ? (
+              <CheckCircle2 className="w-5 h-5" />
+            ) : (
+              <Circle className="w-5 h-5" />
+            )}
+          </button>
+
+          {/* Title - click to open */}
+          <div className="flex-1 min-w-0" onClick={() => handleMilestoneClick(milestone)}>
+            <span className={`text-sm ${isCompleted ? 'text-slate-400 line-through' : 'text-white group-hover:text-teal-300'} transition-colors line-clamp-1`}>
+              {milestone.title.length > 60 ? milestone.title.slice(0, 60) + '...' : milestone.title}
+            </span>
+          </div>
+
+          {/* XP animation */}
+          <AnimatePresence>
+            {showXpGain && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.5 }}
+                className="text-xs text-teal-400 font-medium"
+              >
+                {recentXp!.amount > 0 ? '+' : ''}{recentXp!.amount} XP
+              </motion.span>
+            )}
+          </AnimatePresence>
+
+          {/* Actions - always visible for mobile */}
+          <div className="flex items-center gap-1">
+            {showSetActive && onSetFocus && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleSetActive(milestone) }}
+                className="p-1 text-slate-500 hover:text-teal-400 transition-colors"
+                title="Set as active"
+              >
+                <Play className="w-4 h-4" />
+              </button>
+            )}
+            {showMoveToNext && onSetFocus && upNext.length < 3 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleMoveToNext(milestone) }}
+                className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
+                title="Move to Up Next"
+              >
+                <ArrowUp className="w-4 h-4" />
+              </button>
+            )}
+            {showMoveToBacklog && onSetFocus && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleMoveToBacklog(milestone) }}
+                className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                title="Move to Backlog"
+              >
+                <ChevronDown className="w-4 h-4" />
+              </button>
+            )}
+            {isEditable && onDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(milestone.id) }}
+                className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <ChevronRight
+            onClick={() => handleMilestoneClick(milestone)}
+            className="w-4 h-4 text-slate-600 group-hover:text-slate-400 flex-shrink-0"
+          />
         </div>
-        {showAddButton && onAdd && (
-          <Button variant="ghost" size="sm" onClick={onAdd}>
-            <Plus className="w-4 h-4 mr-1" />
-            Add
-          </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* ACTIVE - The ONE thing */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Target className="w-4 h-4 text-teal-400" />
+          <h3 className="text-sm font-medium text-teal-400">Active</h3>
+        </div>
+
+        {activeMilestone ? (
+          <div
+            onClick={() => handleMilestoneClick(activeMilestone)}
+            className="rounded-xl border-2 border-teal-500/30 bg-gradient-to-br from-teal-500/10 to-slate-800/50 p-4 cursor-pointer hover:border-teal-500/50 transition-all group"
+          >
+            <div className="flex items-start gap-3">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleComplete(activeMilestone)
+                }}
+                disabled={completingId === activeMilestone.id}
+                className="flex-shrink-0 mt-0.5 text-teal-400 hover:text-teal-300 transition-colors"
+              >
+                {completingId === activeMilestone.id ? (
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                    <Circle className="w-6 h-6" />
+                  </motion.div>
+                ) : (
+                  <Circle className="w-6 h-6" />
+                )}
+              </button>
+              <div className="flex-1">
+                <p className="text-white font-medium group-hover:text-teal-300 transition-colors">
+                  {activeMilestone.title}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  {activeMilestone.xp_reward} XP on completion
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-teal-500/50 group-hover:text-teal-400 group-hover:translate-x-0.5 transition-all" />
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-700 p-4 text-center">
+            <p className="text-sm text-slate-500">No active milestone</p>
+            {backlog.length > 0 && (
+              <p className="text-xs text-slate-600 mt-1">Pick one from backlog to start</p>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Hint text */}
-      {activeMilestones.length > 0 && (
-        <p className="text-xs text-slate-500">
-          Tap a milestone to work on it with AI
-          {isEditable && ' • Drag to reorder'}
-        </p>
-      )}
+      {/* UP NEXT - 2-3 max */}
+      {(upNext.length > 0 || (isEditable && backlog.length > 0)) && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className="w-4 h-4 text-amber-400" />
+            <h3 className="text-sm font-medium text-amber-400">Up Next</h3>
+            <span className="text-xs text-slate-500">({upNext.length}/3)</span>
+          </div>
 
-      {/* Milestone Items with DnD */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={activeMilestones.map(m => m.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="space-y-2">
-            {activeMilestones.map((milestone) => {
-              const isCompleted = milestone.status === 'completed'
-              const isInProgress = milestone.status === 'in_progress'
-              const isCompleting = completingId === milestone.id
-              const showXpGain = recentXp?.id === milestone.id
-
-              return (
-                <SortableMilestoneItem
+          {upNext.length > 0 ? (
+            <div className="space-y-2">
+              {upNext.map(milestone => (
+                <MilestoneRow
                   key={milestone.id}
                   milestone={milestone}
-                  projectId={projectId}
-                  isCompleted={isCompleted}
-                  isInProgress={isInProgress}
-                  isCompleting={isCompleting}
-                  isUncompleting={uncompletingId === milestone.id}
-                  showXpGain={showXpGain}
-                  xpAmount={recentXp?.amount || 0}
-                  isEditable={isEditable}
-                  onComplete={handleComplete}
-                  onDelete={onDelete}
-                  onNavigate={handleMilestoneClick}
+                  showSetActive
+                  showMoveToBacklog
                 />
-              )
-            })}
-          </div>
-        </SortableContext>
-      </DndContext>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-600 pl-6">Queue up what's next from backlog</p>
+          )}
+        </div>
+      )}
 
-      {/* Empty State */}
-      {activeMilestones.length === 0 && (
+      {/* BACKLOG - Collapsed */}
+      {backlog.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowBacklog(!showBacklog)}
+            className="flex items-center gap-2 w-full text-left group"
+          >
+            <ListTodo className="w-4 h-4 text-slate-500" />
+            <span className="text-sm font-medium text-slate-400 group-hover:text-slate-300 transition-colors">
+              Backlog ({backlog.length})
+            </span>
+            <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform ${showBacklog ? 'rotate-180' : ''}`} />
+          </button>
+
+          <AnimatePresence>
+            {showBacklog && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-2 mt-2 pl-6">
+                  {backlog.map(milestone => (
+                    <MilestoneRow
+                      key={milestone.id}
+                      milestone={milestone}
+                      showSetActive
+                      showMoveToNext={upNext.length < 3}
+                    />
+                  ))}
+                  {showAddButton && onAdd && (
+                    <Button variant="ghost" size="sm" onClick={onAdd} className="text-slate-500">
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add milestone
+                    </Button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* IDEAS - Collapsed */}
+      {ideas.length > 0 && (
+        <div className="pt-2 border-t border-slate-800">
+          <button
+            onClick={() => setShowIdeas(!showIdeas)}
+            className="flex items-center gap-2 w-full text-left group"
+          >
+            <Lightbulb className="w-4 h-4 text-yellow-400" />
+            <span className="text-sm font-medium text-yellow-400/70 group-hover:text-yellow-400 transition-colors">
+              Ideas ({ideas.length})
+            </span>
+            <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform ${showIdeas ? 'rotate-180' : ''}`} />
+          </button>
+
+          <AnimatePresence>
+            {showIdeas && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-2 mt-2 pl-6">
+                  {ideas.map(idea => (
+                    <div
+                      key={idea.id}
+                      className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-2 flex items-center gap-2 group"
+                    >
+                      <Lightbulb className="w-4 h-4 text-yellow-400/50 flex-shrink-0" />
+                      <span className="text-sm text-slate-400 flex-1">{idea.title}</span>
+                      {onPromote && (
+                        <button
+                          onClick={() => onPromote(idea.id)}
+                          className="p-1 text-yellow-400/50 hover:text-teal-400 active:text-teal-400 transition-colors"
+                          title="Promote to milestone"
+                        >
+                          <ArrowUp className="w-4 h-4" />
+                        </button>
+                      )}
+                      {isEditable && onDelete && (
+                        <button
+                          onClick={() => onDelete(idea.id)}
+                          className="p-1 text-slate-600 hover:text-red-400 active:text-red-400 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* COMPLETED - Collapsed */}
+      {completed.length > 0 && (
+        <div className="pt-2 border-t border-slate-800">
+          <button
+            onClick={() => setShowCompleted(!showCompleted)}
+            className="flex items-center gap-2 w-full text-left group"
+          >
+            <CheckCircle2 className="w-4 h-4 text-slate-600" />
+            <span className="text-sm font-medium text-slate-500 group-hover:text-slate-400 transition-colors">
+              Completed ({completed.length})
+            </span>
+            <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform ${showCompleted ? 'rotate-180' : ''}`} />
+          </button>
+
+          <AnimatePresence>
+            {showCompleted && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-2 mt-2 pl-6">
+                  {completed.map(milestone => (
+                    <MilestoneRow key={milestone.id} milestone={milestone} />
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {milestones.filter(m => m.status !== 'discarded').length === 0 && (
         <div className="text-center py-8 text-slate-400">
           <p className="text-sm">No milestones yet</p>
           {showAddButton && onAdd && (
             <Button variant="ghost" size="sm" onClick={onAdd} className="mt-2">
               <Plus className="w-4 h-4 mr-1" />
               Add first milestone
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Add buttons when not empty */}
+      {milestones.length > 0 && isEditable && !showBacklog && (
+        <div className="flex gap-2 pt-2">
+          {onAdd && (
+            <Button variant="ghost" size="sm" onClick={onAdd} className="text-slate-500">
+              <Plus className="w-4 h-4 mr-1" />
+              Milestone
+            </Button>
+          )}
+          {onAddIdea && (
+            <Button variant="ghost" size="sm" onClick={onAddIdea} className="text-yellow-500/70">
+              <Lightbulb className="w-4 h-4 mr-1" />
+              Idea
             </Button>
           )}
         </div>
@@ -412,13 +493,10 @@ export function MilestoneList({
               </div>
 
               <p className="text-slate-400 text-sm mb-2">
-                Are you sure you want to mark this milestone as incomplete?
-              </p>
-              <p className="text-slate-500 text-sm mb-5">
-                <span className="text-amber-400 font-medium">-{uncompleteConfirm.xp_reward} XP</span> will be deducted from your total.
+                This will deduct <span className="text-amber-400 font-medium">{uncompleteConfirm.xp_reward} XP</span> from your total.
               </p>
 
-              <div className="flex gap-3">
+              <div className="flex gap-3 mt-4">
                 <Button
                   variant="ghost"
                   className="flex-1"
@@ -431,7 +509,7 @@ export function MilestoneList({
                   className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30"
                   onClick={handleConfirmUncomplete}
                 >
-                  Yes, mark incomplete
+                  Yes, undo
                 </Button>
               </div>
             </motion.div>

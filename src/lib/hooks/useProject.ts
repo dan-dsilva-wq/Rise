@@ -361,6 +361,100 @@ export function useProject(
     return true
   }
 
+  const promoteIdea = async (ideaId: string): Promise<boolean> => {
+    const idea = milestones.find(m => m.id === ideaId)
+    if (!idea || idea.status !== 'idea') return false
+
+    const { error } = await client
+      .from('milestones')
+      .update({ status: 'pending' })
+      .eq('id', ideaId)
+
+    if (error) {
+      console.error('Error promoting idea:', error)
+      return false
+    }
+
+    // Refresh to get updated state
+    await fetchProject()
+    return true
+  }
+
+  const addIdea = async (title: string): Promise<boolean> => {
+    if (!projectId || !userId) return false
+
+    const sortOrder = milestones.length
+
+    const { error } = await client
+      .from('milestones')
+      .insert({
+        project_id: projectId,
+        user_id: userId,
+        title,
+        sort_order: sortOrder,
+        status: 'idea',
+        xp_reward: 50,
+      })
+
+    if (error) {
+      console.error('Error adding idea:', error)
+      return false
+    }
+
+    // Refresh to get updated state
+    await fetchProject()
+    return true
+  }
+
+  const setFocusLevel = async (milestoneId: string, focusLevel: 'active' | 'next' | 'backlog'): Promise<boolean> => {
+    if (!projectId) return false
+
+    // If setting to 'active', first clear any existing active milestone
+    if (focusLevel === 'active') {
+      await client
+        .from('milestones')
+        .update({ focus_level: 'backlog' })
+        .eq('project_id', projectId)
+        .eq('focus_level', 'active')
+    }
+
+    // If setting to 'next', check we don't exceed 3
+    if (focusLevel === 'next') {
+      const nextCount = milestones.filter(m => m.focus_level === 'next').length
+      const isAlreadyNext = milestones.find(m => m.id === milestoneId)?.focus_level === 'next'
+      if (nextCount >= 3 && !isAlreadyNext) {
+        console.error('Max 3 items in Up Next')
+        return false
+      }
+    }
+
+    const { error } = await client
+      .from('milestones')
+      .update({ focus_level: focusLevel })
+      .eq('id', milestoneId)
+
+    if (error) {
+      console.error('Error setting focus level:', error)
+      return false
+    }
+
+    // Optimistic update
+    setMilestones(prev =>
+      prev.map(m => {
+        if (m.id === milestoneId) {
+          return { ...m, focus_level: focusLevel }
+        }
+        // If we set something to active, demote the old active
+        if (focusLevel === 'active' && m.focus_level === 'active') {
+          return { ...m, focus_level: 'backlog' }
+        }
+        return m
+      })
+    )
+
+    return true
+  }
+
   return {
     project,
     milestones,
@@ -373,6 +467,9 @@ export function useProject(
     uncompleteMilestone,
     deleteMilestone,
     reorderMilestones,
+    promoteIdea,
+    addIdea,
+    setFocusLevel,
     refresh: fetchProject,
   }
 }

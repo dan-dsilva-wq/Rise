@@ -20,15 +20,18 @@ interface Message {
 }
 
 interface ProjectAction {
-  type: 'create' | 'add_milestone' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder_milestones'
+  type: 'create' | 'add_milestone' | 'add_idea' | 'add_note' | 'promote_idea' | 'set_focus' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder_milestones'
   projectId?: string
   milestoneId?: string
   name?: string
   description?: string
   milestones?: string[]
   newMilestone?: string
+  newIdea?: string
+  newNote?: string
   newTitle?: string
   newStatus?: 'discovery' | 'planning' | 'building' | 'launched' | 'paused'
+  focusLevel?: 'active' | 'next' | 'backlog'
   milestoneOrder?: string[] // Array of milestone IDs in new order
 }
 
@@ -37,7 +40,8 @@ interface ExistingProject {
   name: string
   description: string | null
   status: string
-  milestones: { id: string; title: string; status: string; sort_order: number }[]
+  milestones: { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string }[]
+  ideas: { id: string; title: string; notes: string | null }[]
 }
 
 interface PathFinderChatProps {
@@ -140,16 +144,22 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     if (projects) {
       const projectsWithMilestones: ExistingProject[] = []
       for (const project of projects) {
-        const { data: milestones } = await client
+        const { data: allItems } = await client
           .from('milestones')
-          .select('id, title, status, sort_order')
+          .select('id, title, status, sort_order, notes, focus_level')
           .eq('project_id', project.id)
-          .neq('status', 'discarded') // Don't show discarded milestones
+          .neq('status', 'discarded') // Don't show discarded
           .order('sort_order', { ascending: true })
+
+        type MilestoneItem = { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string }
+        // Separate active milestones from ideas
+        const milestones = ((allItems || []) as MilestoneItem[]).filter(m => m.status !== 'idea')
+        const ideas = ((allItems || []) as MilestoneItem[]).filter(m => m.status === 'idea')
 
         projectsWithMilestones.push({
           ...project,
-          milestones: milestones || [],
+          milestones,
+          ideas,
         })
       }
       setExistingProjects(projectsWithMilestones)
@@ -198,11 +208,12 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           results.push(`Created project: ${action.name}`)
         } else if (action.type === 'add_milestone' && action.projectId && action.newMilestone) {
-          // Get current milestone count for sort order
+          // Get current milestone count for sort order (exclude ideas)
           const { data: existing } = await client
             .from('milestones')
             .select('id')
             .eq('project_id', action.projectId)
+            .neq('status', 'idea')
 
           await client.from('milestones').insert({
             project_id: action.projectId,
@@ -215,6 +226,136 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           const project = existingProjects.find(p => p.id === action.projectId)
           results.push(`Added milestone to ${project?.name || 'project'}`)
+        } else if (action.type === 'add_idea' && action.projectId && action.newIdea) {
+          // Add as idea (status = 'idea')
+          const { data: existing } = await client
+            .from('milestones')
+            .select('id')
+            .eq('project_id', action.projectId)
+
+          await client.from('milestones').insert({
+            project_id: action.projectId,
+            user_id: userId,
+            title: action.newIdea,
+            sort_order: existing?.length || 0,
+            status: 'idea',
+            xp_reward: 50,
+          })
+
+          const project = existingProjects.find(p => p.id === action.projectId)
+          results.push(`Added idea to ${project?.name || 'project'}`)
+        } else if (action.type === 'add_note' && action.milestoneId && action.newNote) {
+          // Add note to existing milestone/idea
+          const { data: milestone, error: findError } = await client
+            .from('milestones')
+            .select('id, title, notes')
+            .eq('id', action.milestoneId)
+            .single()
+
+          if (findError || !milestone) {
+            results.push(`Failed: Milestone not found`)
+            continue
+          }
+
+          // Append to existing notes or create new
+          const updatedNotes = milestone.notes
+            ? `${milestone.notes}\n• ${action.newNote}`
+            : `• ${action.newNote}`
+
+          const { error: updateError } = await client
+            .from('milestones')
+            .update({ notes: updatedNotes, updated_at: new Date().toISOString() })
+            .eq('id', action.milestoneId)
+
+          if (updateError) {
+            results.push(`Failed to add note: ${updateError.message}`)
+          } else {
+            results.push(`Added note to: ${milestone.title}`)
+          }
+        } else if (action.type === 'promote_idea' && action.milestoneId) {
+          // Promote idea to active milestone
+          const { data: idea, error: findError } = await client
+            .from('milestones')
+            .select('id, title, status')
+            .eq('id', action.milestoneId)
+            .single()
+
+          if (findError || !idea) {
+            results.push(`Failed: Idea not found`)
+            continue
+          }
+
+          if (idea.status !== 'idea') {
+            results.push(`Already a milestone: ${idea.title}`)
+            continue
+          }
+
+          const { error: updateError } = await client
+            .from('milestones')
+            .update({ status: 'pending', updated_at: new Date().toISOString() })
+            .eq('id', action.milestoneId)
+
+          if (updateError) {
+            results.push(`Failed to promote: ${updateError.message}`)
+          } else {
+            results.push(`Promoted to milestone: ${idea.title}`)
+          }
+        } else if (action.type === 'set_focus' && action.milestoneId && action.focusLevel) {
+          // Set focus level for milestone
+          addDebugLog('info', 'Set focus', `id=${action.milestoneId.slice(0, 8)} level=${action.focusLevel}`)
+
+          const { data: milestone, error: findError } = await client
+            .from('milestones')
+            .select('id, title, project_id, focus_level, status')
+            .eq('id', action.milestoneId)
+            .single()
+
+          if (findError || !milestone) {
+            addDebugLog('error', 'Milestone not found', `id=${action.milestoneId} error=${findError?.message}`)
+            results.push(`Failed: Milestone not found`)
+            continue
+          }
+
+          // If setting to 'active', first clear any existing active milestone in this project
+          if (action.focusLevel === 'active') {
+            await client
+              .from('milestones')
+              .update({ focus_level: 'backlog' })
+              .eq('project_id', milestone.project_id)
+              .eq('focus_level', 'active')
+          }
+
+          // If setting to 'next', check we don't exceed 3
+          if (action.focusLevel === 'next') {
+            const { data: existingNext } = await client
+              .from('milestones')
+              .select('id')
+              .eq('project_id', milestone.project_id)
+              .eq('focus_level', 'next')
+              .neq('status', 'completed')
+              .neq('status', 'discarded')
+
+            const isAlreadyNext = milestone.focus_level === 'next'
+            if ((existingNext?.length || 0) >= 3 && !isAlreadyNext) {
+              addDebugLog('warn', 'Max 3 in Up Next', `project=${milestone.project_id.slice(0, 8)}`)
+              results.push(`Cannot add to Up Next: max 3 items allowed`)
+              continue
+            }
+          }
+
+          const { error: updateError } = await client
+            .from('milestones')
+            .update({ focus_level: action.focusLevel, updated_at: new Date().toISOString() })
+            .eq('id', action.milestoneId)
+
+          if (updateError) {
+            addDebugLog('error', 'Set focus failed', updateError.message)
+            results.push(`Failed to set focus: ${updateError.message}`)
+          } else {
+            const levelLabel = action.focusLevel === 'active' ? 'Active' : action.focusLevel === 'next' ? 'Up Next' : 'Backlog'
+            addDebugLog('success', 'Focus set', `${milestone.title} -> ${levelLabel}`)
+            results.push(`Set "${milestone.title}" to ${levelLabel}`)
+          }
         } else if (action.type === 'update_status' && action.projectId && action.newStatus) {
           await client
             .from('projects')

@@ -374,8 +374,10 @@ export interface Database {
           user_id: string
           title: string
           description: string | null
+          notes: string | null
           sort_order: number
-          status: 'pending' | 'in_progress' | 'completed' | 'discarded'
+          status: 'pending' | 'in_progress' | 'completed' | 'discarded' | 'idea'
+          focus_level: 'active' | 'next' | 'backlog'
           due_date: string | null
           xp_reward: number
           completed_at: string | null
@@ -388,8 +390,10 @@ export interface Database {
           user_id: string
           title: string
           description?: string | null
+          notes?: string | null
           sort_order?: number
-          status?: 'pending' | 'in_progress' | 'completed' | 'discarded'
+          status?: 'pending' | 'in_progress' | 'completed' | 'discarded' | 'idea'
+          focus_level?: 'active' | 'next' | 'backlog'
           due_date?: string | null
           xp_reward?: number
           completed_at?: string | null
@@ -402,8 +406,10 @@ export interface Database {
           user_id?: string
           title?: string
           description?: string | null
+          notes?: string | null
           sort_order?: number
-          status?: 'pending' | 'in_progress' | 'completed' | 'discarded'
+          status?: 'pending' | 'in_progress' | 'completed' | 'discarded' | 'idea'
+          focus_level?: 'active' | 'next' | 'backlog'
           due_date?: string | null
           xp_reward?: number
           completed_at?: string | null

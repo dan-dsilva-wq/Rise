@@ -47,6 +47,9 @@ export function ProjectDetailContent({
     uncompleteMilestone,
     deleteMilestone,
     reorderMilestones,
+    promoteIdea,
+    addIdea,
+    setFocusLevel,
   } = useProject(initialProject?.id, user?.id, initialProject, initialMilestones)
 
   const [showMenu, setShowMenu] = useState(false)
@@ -55,6 +58,8 @@ export function ProjectDetailContent({
   const [editDescription, setEditDescription] = useState(initialProject?.description || '')
   const [showAddMilestone, setShowAddMilestone] = useState(false)
   const [newMilestoneTitle, setNewMilestoneTitle] = useState('')
+  const [showAddIdea, setShowAddIdea] = useState(false)
+  const [newIdeaTitle, setNewIdeaTitle] = useState('')
   const [errorToast, setErrorToast] = useState<string | null>(null)
   // Use data from hook - it's initialized with server data
   const currentProject = project
@@ -129,6 +134,15 @@ export function ProjectDetailContent({
 
     setNewMilestoneTitle('')
     setShowAddMilestone(false)
+  }
+
+  const handleAddIdea = async () => {
+    if (!newIdeaTitle.trim()) return
+
+    await addIdea(newIdeaTitle.trim())
+
+    setNewIdeaTitle('')
+    setShowAddIdea(false)
   }
 
   return (
@@ -288,8 +302,10 @@ export function ProjectDetailContent({
             projectId={currentProject.id}
             onComplete={handleCompleteMilestone}
             onUncomplete={handleUncompleteMilestone}
-            onReorder={reorderMilestones}
+            onSetFocus={setFocusLevel}
+            onPromote={promoteIdea}
             onAdd={() => setShowAddMilestone(true)}
+            onAddIdea={() => setShowAddIdea(true)}
             onDelete={deleteMilestone}
             showAddButton
             isEditable
@@ -318,6 +334,35 @@ export function ProjectDetailContent({
                   </Button>
                   <Button size="sm" onClick={handleAddMilestone}>
                     Add Milestone
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Add Idea Form */}
+          <AnimatePresence>
+            {showAddIdea && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-4 pt-4 border-t border-yellow-700/30"
+              >
+                <input
+                  type="text"
+                  value={newIdeaTitle}
+                  onChange={(e) => setNewIdeaTitle(e.target.value)}
+                  placeholder="Idea for later..."
+                  className="w-full bg-yellow-500/5 border border-yellow-500/30 rounded-lg px-3 py-2 text-white mb-3 placeholder-yellow-400/50"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setShowAddIdea(false)}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleAddIdea} className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border-yellow-500/30">
+                    Add Idea
                   </Button>
                 </div>
               </motion.div>

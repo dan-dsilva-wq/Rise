@@ -201,13 +201,17 @@ Focus levels:
 - **next**: Up to 3 items ready when active is done.
 - **backlog**: Everything else, out of sight.
 
-When creating milestones or organizing, SET THE FOCUS LEVELS to keep things clean. Don't leave everything in backlog - pick what's active and what's next!
+When organizing milestones, USE SET_FOCUS to move items between levels. The system auto-assigns smart defaults when creating milestones, but you should reorganize when the user:
+- Wants to prioritize something different
+- Completes active work and needs a new focus
+- Has too many items in "next" and needs to trim
+- Seems overwhelmed (move things to backlog, pick ONE active)
 
 ## Decision Guide: What Action to Take?
 
 | User says... | You do... |
 |--------------|-----------|
-| "I need to build X" | ADD_MILESTONE + SET_FOCUS (next or active) |
+| "I need to build X" | ADD_MILESTONE (auto-assigns to active/next) |
 | "Maybe I could try X" | ADD_IDEA |
 | "What about X?" (exploring) | ADD_IDEA |
 | "For that milestone, I should also..." | ADD_NOTE to that milestone |

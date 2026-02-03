@@ -193,7 +193,8 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           if (projectError) throw projectError
 
-          // Create milestones
+          // Create milestones with smart focus defaults
+          // First milestone = active, next 2 = next, rest = backlog
           if (action.milestones && action.milestones.length > 0) {
             const milestonesData = action.milestones.map((title, index) => ({
               project_id: projectData.id,
@@ -202,6 +203,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
               sort_order: index,
               status: 'pending',
               xp_reward: 50,
+              focus_level: index === 0 ? 'active' : index <= 2 ? 'next' : 'backlog',
             }))
             await client.from('milestones').insert(milestonesData)
           }
@@ -211,9 +213,17 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           // Get current milestone count for sort order (exclude ideas)
           const { data: existing } = await client
             .from('milestones')
-            .select('id')
+            .select('id, focus_level')
             .eq('project_id', action.projectId)
             .neq('status', 'idea')
+            .neq('status', 'completed')
+            .neq('status', 'discarded')
+
+          // Smart default: if no active, make this active; if < 3 next, make next; else backlog
+          type MilestoneWithFocus = { id: string; focus_level: string }
+          const hasActive = existing?.some((m: MilestoneWithFocus) => m.focus_level === 'active')
+          const nextCount = existing?.filter((m: MilestoneWithFocus) => m.focus_level === 'next').length || 0
+          const defaultFocus = !hasActive ? 'active' : nextCount < 3 ? 'next' : 'backlog'
 
           await client.from('milestones').insert({
             project_id: action.projectId,
@@ -222,10 +232,12 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             sort_order: existing?.length || 0,
             status: 'pending',
             xp_reward: 50,
+            focus_level: defaultFocus,
           })
 
           const project = existingProjects.find(p => p.id === action.projectId)
-          results.push(`Added milestone to ${project?.name || 'project'}`)
+          const focusLabel = defaultFocus === 'active' ? ' (set as Active)' : defaultFocus === 'next' ? ' (added to Up Next)' : ''
+          results.push(`Added milestone to ${project?.name || 'project'}${focusLabel}`)
         } else if (action.type === 'add_idea' && action.projectId && action.newIdea) {
           // Add as idea (status = 'idea')
           const { data: existing } = await client

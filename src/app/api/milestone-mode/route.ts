@@ -58,6 +58,45 @@ function parseInsightTags(message: string): Array<{ type: InsightType; content: 
   return insights
 }
 
+// Generate dynamic expert persona based on ALL available context
+function generateExpertise(
+  milestoneTitle: string,
+  milestoneDescription: string | null,
+  projectName: string,
+  projectDescription: string | null,
+  contextBank: string
+): string {
+  // Combine all context for analysis
+  const allContext = `
+Project: ${projectName}
+Project Description: ${projectDescription || 'Not specified'}
+Current Milestone: ${milestoneTitle}
+Milestone Description: ${milestoneDescription || 'Not specified'}
+Known Context: ${contextBank || 'None yet'}
+`.trim()
+
+  // Dynamic prompt that generates the expert identity
+  return `Based on this context, YOU determine what kind of expert you should be:
+
+${allContext}
+
+INSTRUCTIONS FOR DETERMINING YOUR EXPERT IDENTITY:
+1. Analyze the milestone title and description to understand what TYPE of work this is
+2. Analyze the project to understand the DOMAIN/INDUSTRY
+3. Become the EXACT specialist needed for this specific task
+
+For example:
+- "Design the landing page" for a fitness app → You're a UI/UX Designer who specializes in fitness/health apps
+- "Set up Supabase database" for a SaaS → You're a Backend Engineer expert in PostgreSQL and SaaS architecture
+- "Write launch email sequence" for an e-commerce store → You're an Email Marketing Specialist in e-commerce
+- "Interview potential customers" for any project → You're a User Research Expert
+- "Create pricing strategy" for a B2B tool → You're a B2B Pricing Strategist
+
+BE SPECIFIC to this exact milestone and project. Don't be a generalist - be the precise expert they need RIGHT NOW.
+
+In your first response, briefly introduce your expertise (1 sentence) so the user knows they're talking to the right specialist, then dive into helping them.`
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -113,8 +152,20 @@ ${project.milestones.map((m, i) =>
 ).join('\n')}
 ${contextBankSection}`
 
+    // Generate dynamic expertise instructions
+    const expertiseInstructions = generateExpertise(
+      milestone.title,
+      milestone.description,
+      project.name,
+      project.description,
+      aiContext.fullContext || ''
+    )
+
     // Different system prompts based on approach
-    const doItForMePrompt = `You are an AI assistant that DOES THE WORK for the user. You're their capable coworker who handles tasks completely.
+    const doItForMePrompt = `You are a SPECIALIST who DOES THE WORK for the user. You're not a generalist - you're the exact expert they need for this specific task.
+
+## Determine Your Expert Identity
+${expertiseInstructions}
 
 ${projectOverview}
 
@@ -180,7 +231,10 @@ Examples:
 
 Remember: They chose "Do it for me" because they want results, not guidance.`
 
-    const guideMePrompt = `You are a tactical execution coach helping someone complete ONE specific milestone. You're like a friend sitting next to them saying "Okay, let's get this done."
+    const guideMePrompt = `You are a SPECIALIST acting as a tactical coach, helping someone complete ONE specific milestone. You're not a generalist - you're the exact expert they need, guiding them like a mentor saying "Here's how the pros do it."
+
+## Determine Your Expert Identity
+${expertiseInstructions}
 
 ${projectOverview}
 
@@ -252,7 +306,7 @@ Remember: They chose "Guide me" because they want to learn and grow.`
 
     const response = await getAnthropic().messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 800,
+      max_tokens: 2000, // Increased for expert-level detailed responses
       system: systemPrompt,
       messages: formattedMessages,
     })

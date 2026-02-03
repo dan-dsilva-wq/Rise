@@ -164,6 +164,7 @@ export function MilestoneList({
               handleComplete(milestone)
             }}
             disabled={isCompleting || isUncompleting}
+            aria-label={isCompleted ? `Mark "${milestone.title}" as incomplete` : `Mark "${milestone.title}" as complete`}
             className={`flex-shrink-0 transition-colors ${isCompleted ? 'text-teal-500' : 'text-slate-500 hover:text-teal-400'}`}
           >
             {isCompleting || isUncompleting ? (
@@ -205,6 +206,7 @@ export function MilestoneList({
                 onClick={(e) => { e.stopPropagation(); handleSetActive(milestone) }}
                 className="p-1 text-slate-500 hover:text-teal-400 transition-colors"
                 title="Set as active"
+                aria-label={`Set "${milestone.title}" as active milestone`}
               >
                 <Play className="w-4 h-4" />
               </button>
@@ -214,6 +216,7 @@ export function MilestoneList({
                 onClick={(e) => { e.stopPropagation(); handleMoveToNext(milestone) }}
                 className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
                 title="Move to Up Next"
+                aria-label={`Move "${milestone.title}" to Up Next`}
               >
                 <ArrowUp className="w-4 h-4" />
               </button>
@@ -223,6 +226,7 @@ export function MilestoneList({
                 onClick={(e) => { e.stopPropagation(); handleMoveToBacklog(milestone) }}
                 className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
                 title="Move to Backlog"
+                aria-label={`Move "${milestone.title}" to Backlog`}
               >
                 <ChevronDown className="w-4 h-4" />
               </button>
@@ -231,6 +235,7 @@ export function MilestoneList({
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(milestone.id) }}
                 className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                aria-label={`Delete "${milestone.title}"`}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -267,6 +272,7 @@ export function MilestoneList({
                   handleComplete(activeMilestone)
                 }}
                 disabled={completingId === activeMilestone.id}
+                aria-label={`Mark "${activeMilestone.title}" as complete`}
                 className="flex-shrink-0 mt-0.5 text-teal-400 hover:text-teal-300 transition-colors"
               >
                 {completingId === activeMilestone.id ? (
@@ -330,6 +336,8 @@ export function MilestoneList({
         <div>
           <button
             onClick={() => setShowBacklog(!showBacklog)}
+            aria-expanded={showBacklog}
+            aria-controls="backlog-section"
             className="flex items-center gap-2 w-full text-left group"
           >
             <ListTodo className="w-4 h-4 text-slate-500" />
@@ -342,6 +350,7 @@ export function MilestoneList({
           <AnimatePresence>
             {showBacklog && (
               <motion.div
+                id="backlog-section"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
@@ -374,6 +383,8 @@ export function MilestoneList({
         <div className="pt-2 border-t border-slate-800">
           <button
             onClick={() => setShowIdeas(!showIdeas)}
+            aria-expanded={showIdeas}
+            aria-controls="ideas-section"
             className="flex items-center gap-2 w-full text-left group"
           >
             <Lightbulb className="w-4 h-4 text-yellow-400" />
@@ -386,6 +397,7 @@ export function MilestoneList({
           <AnimatePresence>
             {showIdeas && (
               <motion.div
+                id="ideas-section"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
@@ -404,6 +416,7 @@ export function MilestoneList({
                           onClick={() => onPromote(idea.id)}
                           className="p-1 text-yellow-400/50 hover:text-teal-400 active:text-teal-400 transition-colors"
                           title="Promote to milestone"
+                          aria-label={`Promote "${idea.title}" to milestone`}
                         >
                           <ArrowUp className="w-4 h-4" />
                         </button>
@@ -412,6 +425,7 @@ export function MilestoneList({
                         <button
                           onClick={() => onDelete(idea.id)}
                           className="p-1 text-slate-600 hover:text-red-400 active:text-red-400 transition-colors"
+                          aria-label={`Delete idea "${idea.title}"`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -430,6 +444,8 @@ export function MilestoneList({
         <div className="pt-2 border-t border-slate-800">
           <button
             onClick={() => setShowCompleted(!showCompleted)}
+            aria-expanded={showCompleted}
+            aria-controls="completed-section"
             className="flex items-center gap-2 w-full text-left group"
           >
             <CheckCircle2 className="w-4 h-4 text-slate-600" />
@@ -442,6 +458,7 @@ export function MilestoneList({
           <AnimatePresence>
             {showCompleted && (
               <motion.div
+                id="completed-section"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}

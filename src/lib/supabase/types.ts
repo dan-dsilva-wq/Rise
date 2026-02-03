@@ -627,6 +627,42 @@ export interface Database {
           created_at?: string
         }
       }
+      // Morning Briefings
+      morning_briefings: {
+        Row: {
+          id: string
+          user_id: string
+          briefing_date: string
+          mission_summary: string
+          nudge: string
+          focus_project_id: string | null
+          focus_milestone_id: string | null
+          generated_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          briefing_date: string
+          mission_summary: string
+          nudge: string
+          focus_project_id?: string | null
+          focus_milestone_id?: string | null
+          generated_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          briefing_date?: string
+          mission_summary?: string
+          nudge?: string
+          focus_project_id?: string | null
+          focus_milestone_id?: string | null
+          generated_at?: string
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -719,3 +755,7 @@ export type MilestoneConversation = Database['public']['Tables']['milestone_conv
 export type MilestoneConversationInsert = Database['public']['Tables']['milestone_conversations']['Insert']
 export type MilestoneMessage = Database['public']['Tables']['milestone_messages']['Row']
 export type MilestoneMessageInsert = Database['public']['Tables']['milestone_messages']['Insert']
+
+// Morning Briefing types
+export type MorningBriefing = Database['public']['Tables']['morning_briefings']['Row']
+export type MorningBriefingInsert = Database['public']['Tables']['morning_briefings']['Insert']

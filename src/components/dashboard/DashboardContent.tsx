@@ -1,12 +1,12 @@
 'use client'
 
-import { motion } from 'framer-motion'
-import { Settings, Sparkles, Compass, Rocket, Hammer } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Settings, Sparkles, Compass, Rocket, RefreshCw, ChevronRight, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
-import { DailyPrompt } from '@/components/morning/DailyPrompt'
 import { useUser } from '@/lib/hooks/useUser'
-import type { Profile, DailyLog, Project } from '@/lib/supabase/types'
+import type { Profile, DailyLog, Project, MorningBriefing } from '@/lib/supabase/types'
 
 interface DashboardContentProps {
   profile: Profile | null
@@ -17,21 +17,62 @@ interface DashboardContentProps {
 
 export function DashboardContent({
   profile: initialProfile,
-  dailyPrompt,
   projects = [],
 }: DashboardContentProps) {
   const { profile } = useUser()
+  const [briefing, setBriefing] = useState<MorningBriefing | null>(null)
+  const [loadingBriefing, setLoadingBriefing] = useState(true)
+  const [regenerating, setRegenerating] = useState(false)
 
   const currentProfile = profile || initialProfile
+
+  // Fetch morning briefing
+  useEffect(() => {
+    fetchBriefing()
+  }, [])
+
+  const fetchBriefing = async () => {
+    try {
+      const response = await fetch('/api/morning-briefing')
+      if (response.ok) {
+        const data = await response.json()
+        setBriefing(data.briefing)
+      }
+    } catch (error) {
+      console.error('Failed to fetch briefing:', error)
+    } finally {
+      setLoadingBriefing(false)
+    }
+  }
+
+  const regenerateBriefing = async () => {
+    setRegenerating(true)
+    try {
+      const response = await fetch('/api/morning-briefing', { method: 'POST' })
+      if (response.ok) {
+        const data = await response.json()
+        setBriefing(data.briefing)
+      }
+    } catch (error) {
+      console.error('Failed to regenerate briefing:', error)
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   // Determine time of day for greeting
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const displayName = currentProfile?.display_name || 'there'
 
+  // Find the focus project for the "Let's Work" button
+  const focusProject = briefing?.focus_project_id
+    ? projects.find(p => p.id === briefing.focus_project_id)
+    : projects[0]
+
   return (
     <div className="min-h-screen bg-slate-900 pb-24">
-      {/* Header */}
+      {/* Header - Minimal */}
       <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-lg border-b border-slate-800">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
           <div>
@@ -56,125 +97,168 @@ export function DashboardContent({
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* PROJECTS - The Main Focus */}
-        {projects.length > 0 ? (
-          <section className="space-y-4">
-            {projects.map((project, index) => (
-              <motion.div
-                key={project.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Link href={`/projects/${project.id}`}>
-                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 hover:border-teal-500/50 transition-all duration-300 group shadow-lg hover:shadow-teal-500/10">
-                    {/* Status bar */}
-                    <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${
-                      project.status === 'discovery' ? 'from-purple-500 to-purple-400' :
-                      project.status === 'planning' ? 'from-blue-500 to-blue-400' :
-                      project.status === 'building' ? 'from-amber-500 to-amber-400' :
-                      'from-teal-500 to-emerald-400'
-                    }`} />
+        {/* MORNING BRIEFING - The Star */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 border border-slate-700/50 shadow-xl"
+        >
+          {/* Subtle gradient accent */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-teal-500 to-emerald-500" />
 
-                    <div className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1">
-                          <h2 className="font-bold text-2xl text-white group-hover:text-teal-400 transition-colors">
-                            {project.name}
-                          </h2>
-                          {project.description && (
-                            <p className="text-slate-400 mt-1 line-clamp-2">{project.description}</p>
-                          )}
-                        </div>
-                        <div className="ml-4 p-2 rounded-full bg-slate-700/50 group-hover:bg-teal-500/20 transition-colors">
-                          {project.status === 'building' ? (
-                            <Hammer className="w-5 h-5 text-amber-400" />
-                          ) : project.status === 'discovery' ? (
-                            <Compass className="w-5 h-5 text-purple-400" />
-                          ) : (
-                            <Rocket className="w-5 h-5 text-teal-400" />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Progress */}
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-2">
-                          <span className="text-slate-400">Progress</span>
-                          <span className="text-white font-bold">{project.progress_percent}%</span>
-                        </div>
-                        <div className="h-3 bg-slate-700/50 rounded-full overflow-hidden">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${project.progress_percent}%` }}
-                            transition={{ duration: 0.8, ease: "easeOut" }}
-                            className="h-full bg-gradient-to-r from-teal-500 to-emerald-400 rounded-full"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <span className={`text-sm font-medium ${
-                          project.status === 'discovery' ? 'text-purple-400' :
-                          project.status === 'planning' ? 'text-blue-400' :
-                          project.status === 'building' ? 'text-amber-400' :
-                          'text-teal-400'
-                        }`}>
-                          {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                        </span>
-                        <span className="text-sm text-slate-500 group-hover:text-teal-400 transition-colors">
-                          Tap to continue →
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
-
-            {/* Add another project link */}
-            <Link href="/path-finder">
-              <div className="flex items-center justify-center gap-2 py-4 text-slate-500 hover:text-teal-400 transition-colors">
-                <Compass className="w-4 h-4" />
-                <span className="text-sm">Start another project</span>
+          <div className="p-6">
+            {loadingBriefing ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-teal-400 animate-spin" />
               </div>
-            </Link>
-          </section>
-        ) : (
-          /* No projects - Big Path Finder CTA */
+            ) : briefing ? (
+              <>
+                {/* Mission Summary */}
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Rocket className="w-5 h-5 text-teal-400" />
+                    <span className="text-sm font-medium text-teal-400 uppercase tracking-wide">Today's Mission</span>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white leading-tight">
+                    {briefing.mission_summary}
+                  </h2>
+                </div>
+
+                {/* AI Nudge */}
+                <div className="mb-6 p-4 rounded-2xl bg-slate-700/30 border border-slate-600/30">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-full bg-purple-500/20 flex-shrink-0">
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                    </div>
+                    <p className="text-slate-300 italic leading-relaxed">
+                      "{briefing.nudge}"
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  {focusProject ? (
+                    <Link href={`/projects/${focusProject.id}`} className="flex-1">
+                      <button className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold text-lg hover:shadow-lg hover:shadow-teal-500/25 transition-all flex items-center justify-center gap-2">
+                        Let's Work
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </Link>
+                  ) : (
+                    <Link href="/path-finder" className="flex-1">
+                      <button className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-purple-500 to-teal-500 text-white font-bold text-lg hover:shadow-lg hover:shadow-purple-500/25 transition-all flex items-center justify-center gap-2">
+                        Find Your Path
+                        <Compass className="w-5 h-5" />
+                      </button>
+                    </Link>
+                  )}
+
+                  <button
+                    onClick={regenerateBriefing}
+                    disabled={regenerating}
+                    className="p-4 rounded-2xl bg-slate-700/50 hover:bg-slate-700 transition-colors disabled:opacity-50"
+                    title="Regenerate briefing"
+                  >
+                    <RefreshCw className={`w-5 h-5 text-slate-400 ${regenerating ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* No briefing - shouldn't happen but fallback */
+              <div className="text-center py-4">
+                <p className="text-slate-400">Couldn't load your briefing</p>
+                <button
+                  onClick={fetchBriefing}
+                  className="mt-2 text-teal-400 hover:text-teal-300"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Quick Stats - Streak & Level */}
+        {currentProfile && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="flex gap-4"
           >
+            <div className="flex-1 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
+              <p className="text-sm text-slate-500 mb-1">Streak</p>
+              <p className="text-2xl font-bold text-white">{currentProfile.current_streak} days</p>
+            </div>
+            <div className="flex-1 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
+              <p className="text-sm text-slate-500 mb-1">Level</p>
+              <p className="text-2xl font-bold text-white">{currentProfile.current_level}</p>
+            </div>
+            <div className="flex-1 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
+              <p className="text-sm text-slate-500 mb-1">XP</p>
+              <p className="text-2xl font-bold text-teal-400">{currentProfile.total_xp}</p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Projects List - Secondary */}
+        {projects.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wide">Your Projects</h3>
+              <Link href="/projects" className="text-sm text-teal-400 hover:text-teal-300">
+                View all
+              </Link>
+            </div>
+
+            <div className="space-y-2">
+              {projects.slice(0, 3).map((project) => (
+                <Link key={project.id} href={`/projects/${project.id}`}>
+                  <div className="p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30 hover:border-teal-500/30 transition-colors flex items-center justify-between group">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-white truncate group-hover:text-teal-400 transition-colors">
+                        {project.name}
+                      </h4>
+                      <p className="text-sm text-slate-500">{project.status} • {project.progress_percent}%</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-teal-400 transition-colors" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            {/* Path Finder link */}
             <Link href="/path-finder">
-              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-900/40 via-slate-800 to-teal-900/40 border border-purple-500/30 hover:border-teal-500/50 transition-all duration-300 group shadow-xl p-8 text-center">
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-teal-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-                <div className="relative">
-                  <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500/20 to-teal-500/20 flex items-center justify-center">
-                    <Compass className="w-10 h-10 text-purple-400 group-hover:text-teal-400 transition-colors" />
-                  </div>
-
-                  <h2 className="text-2xl font-bold text-white mb-3">Find Your Path</h2>
-                  <p className="text-slate-400 mb-6 max-w-xs mx-auto">
-                    Discover what to build. Have a conversation with AI to find your next project.
-                  </p>
-
-                  <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-purple-500 to-teal-500 text-white font-semibold group-hover:shadow-lg group-hover:shadow-teal-500/25 transition-all">
-                    <Sparkles className="w-5 h-5" />
-                    Start Path Finder
-                  </div>
-                </div>
+              <div className="mt-3 p-4 rounded-2xl border border-dashed border-slate-700 hover:border-purple-500/50 transition-colors flex items-center justify-center gap-2 text-slate-500 hover:text-purple-400">
+                <Compass className="w-4 h-4" />
+                <span className="text-sm">Start new project</span>
               </div>
             </Link>
           </motion.div>
         )}
 
-        {/* Daily Prompt */}
-        <DailyPrompt
-          prompt={dailyPrompt.prompt_text}
-          author={dailyPrompt.author}
-        />
+        {/* No Projects State */}
+        {projects.length === 0 && !loadingBriefing && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-center py-8"
+          >
+            <p className="text-slate-500 mb-4">No projects yet. Let's find something to build.</p>
+            <Link href="/path-finder">
+              <button className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-purple-500 to-teal-500 text-white font-semibold hover:shadow-lg hover:shadow-purple-500/25 transition-all">
+                <Compass className="w-5 h-5" />
+                Open Path Finder
+              </button>
+            </Link>
+          </motion.div>
+        )}
       </main>
 
       {/* Bottom Navigation */}

@@ -23,7 +23,7 @@ interface SuggestedFact {
 }
 
 interface ProjectAction {
-  type: 'create' | 'add_milestone' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone'
+  type: 'create' | 'add_milestone' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder_milestones'
   projectId?: string
   milestoneId?: string
   name?: string
@@ -33,6 +33,7 @@ interface ProjectAction {
   newTitle?: string
   newDescription?: string
   newStatus?: 'discovery' | 'planning' | 'building' | 'launched' | 'paused'
+  milestoneOrder?: string[] // Array of milestone IDs in new order
 }
 
 interface ExistingProject {
@@ -40,7 +41,7 @@ interface ExistingProject {
   name: string
   description: string | null
   status: string
-  milestones: { id: string; title: string; status: string }[]
+  milestones: { id: string; title: string; status: string; sort_order: number }[]
 }
 
 export async function POST(request: NextRequest) {
@@ -70,8 +71,8 @@ export async function POST(request: NextRequest) {
 
     const projectsSection = existingProjects && existingProjects.length > 0
       ? `\n\n## User's Current Projects\n${existingProjects.map(p =>
-          `- **${p.name}** [project_id: ${p.id}] (${p.status}): ${p.description || 'No description'}\n  Milestones:\n${p.milestones.length > 0 ? p.milestones.map(m => `    - ${m.title} [milestone_id: ${m.id}] (${m.status})`).join('\n') : '    None yet'}`
-        ).join('\n')}\n\nYou can add, edit, complete, or discard milestones. Use the exact IDs shown in brackets.`
+          `- **${p.name}** [project_id: ${p.id}] (${p.status}): ${p.description || 'No description'}\n  Milestones (in order):\n${p.milestones.length > 0 ? p.milestones.map((m, i) => `    ${i + 1}. ${m.title} [milestone_id: ${m.id}] (${m.status})`).join('\n') : '    None yet'}`
+        ).join('\n')}\n\nYou can add, edit, complete, discard, or reorder milestones. Use the exact IDs shown in brackets.`
       : '\n\n## User\'s Current Projects\nNo projects yet. Once you understand what they want to build, create one for them!'
 
     const systemPrompt = `You are an expert life coach and business advisor helping someone discover what they should build to achieve freedom. Your goal is to have a deep, thoughtful conversation AND help them make tangible progress by creating/updating projects.
@@ -134,6 +135,14 @@ milestone_id: <exact UUID from the [milestone_id: xxx] shown in milestones list>
 [DISCARD_MILESTONE]
 milestone_id: <exact UUID from the [milestone_id: xxx] shown in milestones list>
 [/DISCARD_MILESTONE]
+
+### Reorder milestones (change the order of milestones):
+[REORDER_MILESTONES]
+project_id: <exact UUID from the [project_id: xxx] shown in projects list>
+order: <comma-separated milestone IDs in new order, e.g. id1,id2,id3>
+[/REORDER_MILESTONES]
+
+Use reorder when milestones should logically be done in a different sequence, or when the user asks to reorganize their plan.
 
 ## Projects Are Living Documents
 Projects should evolve as you learn more. Don't wait for the "perfect" idea - create/update projects as you go:
@@ -294,6 +303,21 @@ Remember: Users should feel like they're making progress, not just chatting.`
       })
     }
 
+    // Parse REORDER_MILESTONES
+    const reorderMilestonesRegex = /\[REORDER_MILESTONES\]\s*project_id:\s*([^\n]+)\s*order:\s*([^\n]+)\s*\[\/REORDER_MILESTONES\]/g
+    let reorderMatch
+    while ((reorderMatch = reorderMilestonesRegex.exec(assistantMessage)) !== null) {
+      const orderStr = reorderMatch[2].trim()
+      const milestoneOrder = orderStr.split(',').map(id => id.trim()).filter(id => id.length > 0)
+      if (milestoneOrder.length > 0) {
+        projectActions.push({
+          type: 'reorder_milestones',
+          projectId: reorderMatch[1].trim(),
+          milestoneOrder,
+        })
+      }
+    }
+
     // Also support old PROJECT_SUGGESTION format for backwards compatibility
     const oldProjectRegex = /\[PROJECT_SUGGESTION\]\s*name:\s*([^\n]+)\s*description:\s*([^\n]+)\s*(milestone1:\s*[^\n]+\s*)?(milestone2:\s*[^\n]+\s*)?(milestone3:\s*[^\n]+\s*)?(milestone4:\s*[^\n]+\s*)?(milestone5:\s*[^\n]+\s*)?\[\/PROJECT_SUGGESTION\]/g
     let oldMatch
@@ -326,6 +350,7 @@ Remember: Users should feel like they're making progress, not just chatting.`
       .replace(/\[EDIT_MILESTONE\][\s\S]*?\[\/EDIT_MILESTONE\]/g, '')
       .replace(/\[COMPLETE_MILESTONE\][\s\S]*?\[\/COMPLETE_MILESTONE\]/g, '')
       .replace(/\[DISCARD_MILESTONE\][\s\S]*?\[\/DISCARD_MILESTONE\]/g, '')
+      .replace(/\[REORDER_MILESTONES\][\s\S]*?\[\/REORDER_MILESTONES\]/g, '')
       .replace(/\[PROJECT_SUGGESTION\][\s\S]*?\[\/PROJECT_SUGGESTION\]/g, '')
       .trim()
 

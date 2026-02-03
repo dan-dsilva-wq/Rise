@@ -20,7 +20,7 @@ interface Message {
 }
 
 interface ProjectAction {
-  type: 'create' | 'add_milestone' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone'
+  type: 'create' | 'add_milestone' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder_milestones'
   projectId?: string
   milestoneId?: string
   name?: string
@@ -29,6 +29,7 @@ interface ProjectAction {
   newMilestone?: string
   newTitle?: string
   newStatus?: 'discovery' | 'planning' | 'building' | 'launched' | 'paused'
+  milestoneOrder?: string[] // Array of milestone IDs in new order
 }
 
 interface ExistingProject {
@@ -36,7 +37,7 @@ interface ExistingProject {
   name: string
   description: string | null
   status: string
-  milestones: { id: string; title: string; status: string }[]
+  milestones: { id: string; title: string; status: string; sort_order: number }[]
 }
 
 interface PathFinderChatProps {
@@ -141,7 +142,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       for (const project of projects) {
         const { data: milestones } = await client
           .from('milestones')
-          .select('id, title, status')
+          .select('id, title, status, sort_order')
           .eq('project_id', project.id)
           .neq('status', 'discarded') // Don't show discarded milestones
           .order('sort_order', { ascending: true })
@@ -324,6 +325,39 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           } else {
             addDebugLog('success', 'Milestone discarded', milestone.title)
             results.push(`Discarded: ${milestone.title}`)
+          }
+        } else if (action.type === 'reorder_milestones' && action.projectId && action.milestoneOrder) {
+          // Reorder milestones
+          addDebugLog('info', 'Reorder milestones', `project=${action.projectId.slice(0, 8)} order=${action.milestoneOrder.length} items`)
+
+          const project = existingProjects.find(p => p.id === action.projectId)
+          if (!project) {
+            addDebugLog('error', 'Project not found', action.projectId)
+            results.push(`Failed: Project not found`)
+            continue
+          }
+
+          // Update each milestone's sort_order
+          let success = true
+          for (let i = 0; i < action.milestoneOrder.length; i++) {
+            const milestoneId = action.milestoneOrder[i]
+            const { error } = await client
+              .from('milestones')
+              .update({ sort_order: i, updated_at: new Date().toISOString() })
+              .eq('id', milestoneId)
+
+            if (error) {
+              addDebugLog('error', 'Reorder failed', `milestone ${milestoneId.slice(0, 8)}: ${error.message}`)
+              success = false
+              break
+            }
+          }
+
+          if (success) {
+            addDebugLog('success', 'Milestones reordered', `${action.milestoneOrder.length} milestones`)
+            results.push(`Reordered milestones in ${project.name}`)
+          } else {
+            results.push(`Failed to reorder milestones`)
           }
         }
       } catch (err) {

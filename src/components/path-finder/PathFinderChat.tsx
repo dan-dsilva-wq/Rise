@@ -107,6 +107,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     loadMostRecent,
     createConversation,
     addMessage: saveMessage,
+    updateTitle,
     archiveConversation,
     startNew,
     setCurrentDirect,
@@ -795,6 +796,27 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         }
       } else {
         addDebugLog('info', 'No profile facts in response')
+      }
+
+      // Auto-title the conversation if untitled (after first exchange)
+      if (currentConversation && !currentConversation.title && messages.length <= 2) {
+        // Generate title from user's first message
+        const userFirstMsg = messages.find(m => m.role === 'user')?.content || input
+        if (userFirstMsg) {
+          // Take first ~40 chars, truncate at word boundary
+          let title = userFirstMsg.slice(0, 50)
+          if (userFirstMsg.length > 50) {
+            const lastSpace = title.lastIndexOf(' ')
+            if (lastSpace > 20) title = title.slice(0, lastSpace)
+            title += '...'
+          }
+          // Clean up - remove newlines
+          title = title.replace(/\n/g, ' ').trim()
+          if (title) {
+            addDebugLog('info', 'Auto-titling conversation', title)
+            updateTitle(title)
+          }
+        }
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)

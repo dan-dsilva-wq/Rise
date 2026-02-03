@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Compass, Plus, ChevronRight, Target, Sparkles } from 'lucide-react'
+import { Compass, Plus, ChevronRight, Target, Sparkles, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
@@ -219,10 +219,14 @@ export function ProjectsContent({
               <button
                 onClick={handleCreateProject}
                 disabled={isCreating}
-                className="flex-1 px-3 py-3 text-sm text-slate-400 hover:text-slate-200 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 px-3 py-3 text-sm text-slate-400 hover:text-slate-200 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Plus className="w-4 h-4" />
-                Blank Project
+                {isCreating ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+                {isCreating ? 'Creating...' : 'Blank Project'}
               </button>
             </div>
           </div>

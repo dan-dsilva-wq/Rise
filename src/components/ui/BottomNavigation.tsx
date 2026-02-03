@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Compass, FolderKanban, TrendingUp, Moon, LucideIcon } from 'lucide-react'
+import { Compass, FolderKanban, Settings, LucideIcon } from 'lucide-react'
 
 interface NavItem {
   href: string
@@ -15,8 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Today', icon: null, isLogo: true },
   { href: '/path-finder', label: 'Path Finder', icon: Compass },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
-  { href: '/progress', label: 'Progress', icon: TrendingUp },
-  { href: '/evening', label: 'Evening', icon: Moon },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
 export function BottomNavigation() {

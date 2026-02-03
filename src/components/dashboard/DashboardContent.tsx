@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Settings, Sparkles, Compass, Rocket, RefreshCw, ChevronRight, Loader2 } from 'lucide-react'
+import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { useUser } from '@/lib/hooks/useUser'
@@ -74,25 +74,17 @@ export function DashboardContent({
     <div className="min-h-screen bg-slate-900 pb-24">
       {/* Header - Minimal */}
       <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-lg border-b border-slate-800">
-        <div className="max-w-lg mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-100">
-              {greeting}, {displayName}
-            </h1>
-            <p className="text-sm text-slate-400">
-              {new Date().toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-              })}
-            </p>
-          </div>
-          <Link
-            href="/settings"
-            className="p-2 rounded-full hover:bg-slate-800 transition-colors"
-          >
-            <Settings className="w-5 h-5 text-slate-400" />
-          </Link>
+        <div className="max-w-lg mx-auto px-4 py-4">
+          <h1 className="text-xl font-bold text-slate-100">
+            {greeting}, {displayName}
+          </h1>
+          <p className="text-sm text-slate-400">
+            {new Date().toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </p>
         </div>
       </header>
 
@@ -179,28 +171,6 @@ export function DashboardContent({
           </div>
         </motion.div>
 
-        {/* Quick Stats - Streak & Level */}
-        {currentProfile && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="flex gap-4"
-          >
-            <div className="flex-1 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
-              <p className="text-sm text-slate-500 mb-1">Streak</p>
-              <p className="text-2xl font-bold text-white">{currentProfile.current_streak} days</p>
-            </div>
-            <div className="flex-1 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
-              <p className="text-sm text-slate-500 mb-1">Level</p>
-              <p className="text-2xl font-bold text-white">{currentProfile.current_level}</p>
-            </div>
-            <div className="flex-1 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
-              <p className="text-sm text-slate-500 mb-1">XP</p>
-              <p className="text-2xl font-bold text-teal-400">{currentProfile.total_xp}</p>
-            </div>
-          </motion.div>
-        )}
 
         {/* Projects List - Secondary */}
         {projects.length > 0 && (

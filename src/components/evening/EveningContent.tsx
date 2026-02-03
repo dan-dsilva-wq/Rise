@@ -191,7 +191,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
             {/* Gratitude */}
             <Card>
               <h3 className="text-lg font-semibold text-slate-200 mb-2">
-                One thing you're grateful for
+                One thing you&apos;re grateful for
               </h3>
               <p className="text-sm text-slate-400 mb-4">
                 Even small things count. +30 XP

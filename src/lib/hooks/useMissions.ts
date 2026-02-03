@@ -43,7 +43,11 @@ export function useMissions(userId: string | undefined) {
   }, [userId, today, client])
 
   useEffect(() => {
-    fetchMissions()
+    const timeout = setTimeout(() => {
+      void fetchMissions()
+    }, 0)
+
+    return () => clearTimeout(timeout)
   }, [fetchMissions])
 
   // Generate missions for today based on active projects

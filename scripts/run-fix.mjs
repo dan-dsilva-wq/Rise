@@ -6,12 +6,26 @@ dns.setDefaultResultOrder('ipv4first')
 
 const { Client } = pg
 
+const {
+  SUPABASE_DB_HOST,
+  SUPABASE_DB_PORT,
+  SUPABASE_DB_NAME,
+  SUPABASE_DB_USER,
+  SUPABASE_DB_PASSWORD,
+} = process.env
+
+if (!SUPABASE_DB_HOST || !SUPABASE_DB_USER || !SUPABASE_DB_PASSWORD) {
+  throw new Error(
+    'Missing required DB env vars. Set SUPABASE_DB_HOST, SUPABASE_DB_USER, and SUPABASE_DB_PASSWORD.'
+  )
+}
+
 const client = new Client({
-  host: 'aws-0-eu-west-1.pooler.supabase.com',
-  port: 6543,
-  database: 'postgres',
-  user: 'postgres.catxkqtkcytwtevlazcl',
-  password: '6&%esZS/j-/7ZfD',
+  host: SUPABASE_DB_HOST,
+  port: Number(SUPABASE_DB_PORT || 6543),
+  database: SUPABASE_DB_NAME || 'postgres',
+  user: SUPABASE_DB_USER,
+  password: SUPABASE_DB_PASSWORD,
   ssl: { rejectUnauthorized: false }
 })
 

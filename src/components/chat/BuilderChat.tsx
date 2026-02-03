@@ -146,7 +146,7 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
             </div>
             <h3 className="text-lg font-semibold text-white mb-2">AI Builder Ready</h3>
             <p className="text-sm text-slate-400 mb-6 max-w-sm mx-auto">
-              I'm here to help you build <strong className="text-white">{project.name}</strong>.
+              I&apos;m here to help you build <strong className="text-white">{project.name}</strong>.
               Ask me anything about your project.
             </p>
 

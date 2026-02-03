@@ -15,6 +15,13 @@ interface ConversationWithMessages extends PathFinderConversation {
   messages: PathFinderMessage[]
 }
 
+// Helper to get client - only call after mount (client-side)
+function getClient() {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return supabase as any
+}
+
 export function usePathFinderConversation(userId: string | undefined) {
   const [conversations, setConversations] = useState<PathFinderConversation[]>([])
   const [currentConversation, setCurrentConversation] = useState<ConversationWithMessages | null>(null)
@@ -22,10 +29,6 @@ export function usePathFinderConversation(userId: string | undefined) {
 
   // Use ref to track current conversation for immediate access (fixes race condition)
   const currentConvoRef = useRef<ConversationWithMessages | null>(null)
-
-  const supabaseClient = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = supabaseClient as any
 
   // Fetch all conversations for the user
   const fetchConversations = useCallback(async () => {
@@ -47,6 +50,7 @@ export function usePathFinderConversation(userId: string | undefined) {
 
     // Always fetch fresh in background
     try {
+      const supabase = getClient()
       const { data, error } = await supabase
         .from('path_finder_conversations')
         .select('*')
@@ -68,13 +72,14 @@ export function usePathFinderConversation(userId: string | undefined) {
     } finally {
       setLoading(false)
     }
-  }, [userId, supabase])
+  }, [userId])
 
   // Load a specific conversation with its messages
   const loadConversation = useCallback(async (conversationId: string) => {
     if (!userId) return null
 
     try {
+      const supabase = getClient()
       // Get the conversation and messages in parallel
       const convoPromise = supabase
         .from('path_finder_conversations')
@@ -108,13 +113,14 @@ export function usePathFinderConversation(userId: string | undefined) {
       console.error('Failed to load conversation:', err)
       return null
     }
-  }, [userId, supabase])
+  }, [userId])
 
   // Load the most recent conversation or return null
   const loadMostRecent = useCallback(async (): Promise<ConversationWithMessages | null> => {
     if (!userId) return null
 
     try {
+      const supabase = getClient()
       const { data, error } = await supabase
         .from('path_finder_conversations')
         .select('*')
@@ -134,7 +140,7 @@ export function usePathFinderConversation(userId: string | undefined) {
       console.error('Failed to load most recent:', err)
       return null
     }
-  }, [userId, supabase, loadConversation])
+  }, [userId, loadConversation])
 
   // Create a new conversation
   const createConversation = useCallback(async (title?: string): Promise<ConversationWithMessages | null> => {
@@ -146,6 +152,7 @@ export function usePathFinderConversation(userId: string | undefined) {
     }
 
     try {
+      const supabase = getClient()
       const newConvo: PathFinderConversationInsert = {
         user_id: userId,
         title: title || null,
@@ -182,7 +189,7 @@ export function usePathFinderConversation(userId: string | undefined) {
       addDebugLog('error', 'createConversation exception', String(err))
       return null
     }
-  }, [userId, supabase])
+  }, [userId])
 
   // Add a message to the current conversation (uses ref for immediate access)
   const addMessage = useCallback(async (
@@ -197,6 +204,7 @@ export function usePathFinderConversation(userId: string | undefined) {
     }
 
     try {
+      const supabase = getClient()
       const newMessage: PathFinderMessageInsert = {
         conversation_id: convo.id,
         user_id: userId,
@@ -239,7 +247,7 @@ export function usePathFinderConversation(userId: string | undefined) {
       addDebugLog('error', 'addMessage exception', String(err))
       return null
     }
-  }, [userId, supabase])
+  }, [userId])
 
   // Update conversation title
   const updateTitle = useCallback(async (title: string) => {
@@ -247,6 +255,7 @@ export function usePathFinderConversation(userId: string | undefined) {
     if (!userId || !convo) return
 
     try {
+      const supabase = getClient()
       await supabase
         .from('path_finder_conversations')
         .update({ title })
@@ -261,7 +270,7 @@ export function usePathFinderConversation(userId: string | undefined) {
     } catch (err) {
       console.error('Failed to update title:', err)
     }
-  }, [userId, supabase])
+  }, [userId])
 
   // Archive a conversation (soft delete with optimistic update)
   const archiveConversation = useCallback(async (conversationId: string) => {
@@ -279,6 +288,7 @@ export function usePathFinderConversation(userId: string | undefined) {
       setCurrentConversation(null)
     }
 
+    const supabase = getClient()
     const { error } = await supabase
       .from('path_finder_conversations')
       .update({ is_active: false })
@@ -297,7 +307,7 @@ export function usePathFinderConversation(userId: string | undefined) {
       // Also invalidate cache to prevent stale data
       setCache(getCacheKey(userId, 'conversations'), conversations.filter(c => c.id !== conversationId))
     }
-  }, [userId, supabase, conversations])
+  }, [userId, conversations])
 
   // Start fresh (create new conversation)
   const startNew = useCallback(async () => {
@@ -322,7 +332,7 @@ export function usePathFinderConversation(userId: string | undefined) {
   }, [])
 
   useEffect(() => {
-    addDebugLog('info', 'Convo hook init', `userId=${!!userId}`)
+    addDebugLog('info', 'Convo hook init')
     fetchConversations()
   }, [fetchConversations])
 

@@ -1,15 +1,20 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Project, Milestone, ProjectInsert, ProjectUpdate, MilestoneInsert, MilestoneUpdate } from '@/lib/supabase/types'
+
+// Helper to get client - only call after mount (client-side)
+function getClient() {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return supabase as any
+}
 
 export function useProjects(userId: string | undefined, initialProjects?: Project[]) {
   const [projects, setProjects] = useState<Project[]>(initialProjects || [])
   const [loading, setLoading] = useState(!initialProjects)
-  const supabase = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = supabase as any
+  const mountedRef = useRef(false)
 
   const fetchProjects = useCallback(async () => {
     if (!userId) {
@@ -22,6 +27,7 @@ export function useProjects(userId: string | undefined, initialProjects?: Projec
       setLoading(true)
     }
 
+    const client = getClient()
     const { data, error } = await client
       .from('projects')
       .select('*')
@@ -30,14 +36,27 @@ export function useProjects(userId: string | undefined, initialProjects?: Projec
 
     if (error) {
       console.error('Error fetching projects:', error)
+      // Don't overwrite valid initial data on error
+      setLoading(false)
+      return
     }
 
-    setProjects((data as Project[]) || [])
+    // Only update if we got data, or if we didn't have initial data
+    if (data && data.length > 0) {
+      setProjects(data as Project[])
+    } else if (!initialProjects || initialProjects.length === 0) {
+      // No data and no initial data - set empty
+      setProjects([])
+    }
+    // If we had initial data and fetch returned empty, keep the initial data
+    // (the server-side data is authoritative)
+
     setLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]) // Intentionally omit client - it's stable
+  }, [userId])
 
   useEffect(() => {
+    mountedRef.current = true
     // Always fetch fresh data, but don't block render if we have initial data
     fetchProjects()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -46,6 +65,7 @@ export function useProjects(userId: string | undefined, initialProjects?: Projec
   const createProject = async (project: Omit<ProjectInsert, 'user_id'>): Promise<Project | null> => {
     if (!userId) return null
 
+    const client = getClient()
     const { data, error } = await client
       .from('projects')
       .insert({ ...project, user_id: userId })
@@ -62,6 +82,7 @@ export function useProjects(userId: string | undefined, initialProjects?: Projec
   }
 
   const updateProject = async (projectId: string, updates: ProjectUpdate): Promise<Project | null> => {
+    const client = getClient()
     const { data, error } = await client
       .from('projects')
       .update(updates)
@@ -81,6 +102,7 @@ export function useProjects(userId: string | undefined, initialProjects?: Projec
   }
 
   const deleteProject = async (projectId: string): Promise<boolean> => {
+    const client = getClient()
     const { error } = await client
       .from('projects')
       .delete()
@@ -114,9 +136,7 @@ export function useProject(
   const [project, setProject] = useState<Project | null>(initialProject || null)
   const [milestones, setMilestones] = useState<Milestone[]>(initialMilestones || [])
   const [loading, setLoading] = useState(!initialProject)
-  const supabase = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = supabase as any
+  const mountedRef = useRef(false)
 
   const fetchProject = useCallback(async () => {
     if (!projectId || !userId) {
@@ -128,6 +148,8 @@ export function useProject(
     if (!initialProject) {
       setLoading(true)
     }
+
+    const client = getClient()
 
     // Fetch project
     const { data: projectData, error: projectError } = await client
@@ -159,9 +181,10 @@ export function useProject(
     setMilestones((milestoneData as Milestone[]) || [])
     setLoading(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, userId]) // Intentionally omit client - it's stable
+  }, [projectId, userId])
 
   useEffect(() => {
+    mountedRef.current = true
     // Always fetch fresh data in background
     fetchProject()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,6 +193,7 @@ export function useProject(
   const updateProject = async (updates: ProjectUpdate): Promise<Project | null> => {
     if (!projectId) return null
 
+    const client = getClient()
     const { data, error } = await client
       .from('projects')
       .update(updates)
@@ -189,6 +213,7 @@ export function useProject(
   const addMilestone = async (milestone: Omit<MilestoneInsert, 'project_id' | 'user_id'>): Promise<Milestone | null> => {
     if (!projectId || !userId) return null
 
+    const client = getClient()
     const sortOrder = milestones.length
 
     const { data, error } = await client
@@ -212,6 +237,7 @@ export function useProject(
   }
 
   const updateMilestone = async (milestoneId: string, updates: MilestoneUpdate): Promise<Milestone | null> => {
+    const client = getClient()
     const { data, error } = await client
       .from('milestones')
       .update(updates)
@@ -240,6 +266,7 @@ export function useProject(
     const milestone = milestones.find(m => m.id === milestoneId)
     if (!milestone || milestone.status === 'completed') return 0
 
+    const client = getClient()
     const { error } = await client
       .from('milestones')
       .update({
@@ -256,6 +283,20 @@ export function useProject(
     // Award XP
     await client.rpc('increment_xp', { user_id: userId, xp_amount: milestone.xp_reward })
 
+    // Auto-promote: If completed milestone was active, promote first "next" to "active"
+    if (milestone.focus_level === 'active') {
+      const nextUp = milestones
+        .filter(m => m.focus_level === 'next' && m.status !== 'completed' && m.status !== 'discarded')
+        .sort((a, b) => a.sort_order - b.sort_order)
+
+      if (nextUp.length > 0) {
+        await client
+          .from('milestones')
+          .update({ focus_level: 'active' })
+          .eq('id', nextUp[0].id)
+      }
+    }
+
     // Refresh data
     await fetchProject()
 
@@ -268,6 +309,7 @@ export function useProject(
     const milestone = milestones.find(m => m.id === milestoneId)
     if (!milestone || milestone.status !== 'completed') return 0
 
+    const client = getClient()
     const { error } = await client
       .from('milestones')
       .update({
@@ -291,6 +333,7 @@ export function useProject(
   }
 
   const deleteMilestone = async (milestoneId: string): Promise<boolean> => {
+    const client = getClient()
     const { error } = await client
       .from('milestones')
       .delete()
@@ -321,6 +364,7 @@ export function useProject(
       return [...reordered, ...remainingMilestones]
     })
 
+    const client = getClient()
     // Then persist to database
     const updates = orderedIds.map((id, index) => ({
       id,
@@ -347,6 +391,7 @@ export function useProject(
   const deleteProject = async (): Promise<boolean> => {
     if (!projectId) return false
 
+    const client = getClient()
     const { error } = await client
       .from('projects')
       .delete()
@@ -365,6 +410,7 @@ export function useProject(
     const idea = milestones.find(m => m.id === ideaId)
     if (!idea || idea.status !== 'idea') return false
 
+    const client = getClient()
     const { error } = await client
       .from('milestones')
       .update({ status: 'pending' })
@@ -383,6 +429,7 @@ export function useProject(
   const addIdea = async (title: string): Promise<boolean> => {
     if (!projectId || !userId) return false
 
+    const client = getClient()
     const sortOrder = milestones.length
 
     const { error } = await client
@@ -408,6 +455,8 @@ export function useProject(
 
   const setFocusLevel = async (milestoneId: string, focusLevel: 'active' | 'next' | 'backlog'): Promise<boolean> => {
     if (!projectId) return false
+
+    const client = getClient()
 
     // If setting to 'active', first clear any existing active milestone
     if (focusLevel === 'active') {

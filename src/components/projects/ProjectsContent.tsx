@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Compass, Plus, ChevronRight, Target, Sparkles } from 'lucide-react'
 import Link from 'next/link'
@@ -22,24 +22,40 @@ interface ProjectWithMilestone extends Project {
   activeMilestone?: Milestone | null
 }
 
+// Helper to get client - only call after mount (client-side)
+function getClient() {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return supabase as any
+}
+
 export function ProjectsContent({
   profile: initialProfile,
   initialProjects,
 }: ProjectsContentProps) {
   const router = useRouter()
   const { user, profile } = useUser()
+  // Use initialProjects as fallback when user is still loading
   const { projects, loading, createProject } = useProjects(user?.id, initialProjects)
   const [isCreating, setIsCreating] = useState(false)
-  const [projectsWithMilestones, setProjectsWithMilestones] = useState<ProjectWithMilestone[]>([])
-  const supabase = createClient()
+  // Initialize with initialProjects to avoid blank state
+  const [projectsWithMilestones, setProjectsWithMilestones] = useState<ProjectWithMilestone[]>(
+    () => initialProjects.map(p => ({ ...p, activeMilestone: null }))
+  )
+
+  // Use either hook projects or initialProjects (whichever has data)
+  const displayProjects = projects.length > 0 ? projects : initialProjects
+
+  // Track project IDs to detect real changes (not just reference changes)
+  const projectIds = useMemo(() => displayProjects.map(p => p.id).sort().join(','), [displayProjects])
 
   // Fetch active milestone for each project
   useEffect(() => {
     const fetchMilestones = async () => {
+      const client = getClient()
       const enhanced: ProjectWithMilestone[] = []
-      for (const project of projects) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data } = await (supabase as any)
+      for (const project of displayProjects) {
+        const { data } = await client
           .from('milestones')
           .select('*')
           .eq('project_id', project.id)
@@ -57,12 +73,13 @@ export function ProjectsContent({
       setProjectsWithMilestones(enhanced)
     }
 
-    if (projects.length > 0) {
+    if (displayProjects.length > 0) {
       fetchMilestones()
     } else {
       setProjectsWithMilestones([])
     }
-  }, [projects, supabase])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectIds]) // Only re-run when project IDs actually change
 
   const currentProfile = profile || initialProfile
   const activeProjects = projectsWithMilestones.filter(p => ['discovery', 'planning', 'building'].includes(p.status))
@@ -217,7 +234,7 @@ export function ProjectsContent({
             <div className="text-4xl mb-4">🚀</div>
             <h3 className="text-lg font-semibold text-white mb-2">No projects yet</h3>
             <p className="text-sm text-slate-400 mb-6">
-              Let's find something to build.
+              Let&apos;s find something to build.
             </p>
             <div className="flex flex-col gap-3 max-w-xs mx-auto">
               <Link href="/path-finder">

@@ -44,7 +44,7 @@ export function WakeButton({ onPress, isPressed = false, className = '' }: WakeB
         <div className="w-40 h-40 rounded-full bg-gradient-to-br from-teal-500/20 to-emerald-500/20 border-2 border-teal-500/50 flex items-center justify-center">
           <Sun className="w-16 h-16 text-teal-400" />
         </div>
-        <p className="mt-4 text-teal-400 font-medium">You're up!</p>
+        <p className="mt-4 text-teal-400 font-medium">You&apos;re up!</p>
       </motion.div>
     )
   }
@@ -92,7 +92,7 @@ export function WakeButton({ onPress, isPressed = false, className = '' }: WakeB
           ) : (
             <div className="text-center text-white">
               <Sun className="w-16 h-16 mx-auto mb-2" />
-              <span className="text-2xl font-bold tracking-wide">I'M UP</span>
+              <span className="text-2xl font-bold tracking-wide">I&apos;M UP</span>
             </div>
           )}
         </motion.div>

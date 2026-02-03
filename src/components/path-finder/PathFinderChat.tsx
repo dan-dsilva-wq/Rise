@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, User, Sparkles, UserCircle, Plus, X, Check, Edit2, Trash2, MessageSquare, Clock, FolderPlus, CheckCircle, Rocket } from 'lucide-react'
+import { Send, Loader2, User, Sparkles, UserCircle, Plus, X, Check, Edit2, Trash2, MessageSquare, Clock, FolderPlus, CheckCircle, Rocket, Copy, Download, ChevronDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { useProfileFacts } from '@/lib/hooks/useProfileFacts'
@@ -13,7 +13,7 @@ import type { ProfileCategory, UserProfileFact } from '@/lib/supabase/types'
 import { formatDistanceToNow } from 'date-fns'
 
 interface ActionResult {
-  type: 'create_project' | 'add_milestone' | 'add_idea' | 'add_note' | 'promote_idea' | 'set_focus' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder'
+  type: 'create_project' | 'add_milestone' | 'add_idea' | 'add_note' | 'promote_idea' | 'set_focus' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder' | 'update_steps'
   text: string // Human-readable text
   projectId?: string
   projectName?: string
@@ -29,20 +29,28 @@ interface Message {
   actionResults?: ActionResult[] // Structured action data for clickable cards
 }
 
+interface MilestoneWithSteps {
+  title: string
+  steps: string[]
+}
+
 interface ProjectAction {
-  type: 'create' | 'add_milestone' | 'add_idea' | 'add_note' | 'promote_idea' | 'set_focus' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder_milestones'
+  type: 'create' | 'add_milestone' | 'add_idea' | 'add_note' | 'promote_idea' | 'set_focus' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder_milestones' | 'update_steps'
   projectId?: string
   milestoneId?: string
   name?: string
   description?: string
   milestones?: string[]
+  milestonesWithSteps?: MilestoneWithSteps[] // Milestones with their steps for create
   newMilestone?: string
+  newMilestoneSteps?: string[] // Steps for add_milestone
   newIdea?: string
   newNote?: string
   newTitle?: string
   newStatus?: 'discovery' | 'planning' | 'building' | 'launched' | 'paused'
   focusLevel?: 'active' | 'next' | 'backlog'
   milestoneOrder?: string[] // Array of milestone IDs in new order
+  newSteps?: string[] // Steps for update_steps
 }
 
 interface ExistingProject {
@@ -286,8 +294,33 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
               xp_reward: 50,
               focus_level: index === 0 ? 'active' : index <= 2 ? 'next' : 'backlog',
             }))
-            const { error: milestonesError } = await client.from('milestones').insert(milestonesData)
+            const { data: createdMilestones, error: milestonesError } = await client
+              .from('milestones')
+              .insert(milestonesData)
+              .select('id, title')
             if (milestonesError) throw milestonesError
+
+            // Save steps for each milestone if provided
+            if (action.milestonesWithSteps && createdMilestones) {
+              for (const createdMilestone of createdMilestones) {
+                const milestoneWithSteps = action.milestonesWithSteps.find(
+                  m => m.title === createdMilestone.title
+                )
+                if (milestoneWithSteps && milestoneWithSteps.steps.length > 0) {
+                  const stepsData = milestoneWithSteps.steps.map((text, stepIndex) => ({
+                    milestone_id: createdMilestone.id,
+                    user_id: userId,
+                    text,
+                    step_type: 'action',
+                    sort_order: stepIndex,
+                  }))
+                  const { error: stepsError } = await client.from('milestone_steps').insert(stepsData)
+                  if (stepsError) {
+                    console.warn('Failed to save steps for milestone:', createdMilestone.title, stepsError)
+                  }
+                }
+              }
+            }
           }
 
           results.push({
@@ -337,6 +370,21 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           }).select().single()
 
           if (milestoneError) throw milestoneError
+
+          // Save steps if provided
+          if (action.newMilestoneSteps && action.newMilestoneSteps.length > 0 && milestoneData?.id) {
+            const stepsData = action.newMilestoneSteps.map((text, stepIndex) => ({
+              milestone_id: milestoneData.id,
+              user_id: userId,
+              text,
+              step_type: 'action',
+              sort_order: stepIndex,
+            }))
+            const { error: stepsError } = await client.from('milestone_steps').insert(stepsData)
+            if (stepsError) {
+              console.warn('Failed to save steps for milestone:', action.newMilestone, stepsError)
+            }
+          }
 
           const focusLabel = defaultFocus === 'active' ? ' (set as Active)' : defaultFocus === 'next' ? ' (added to Up Next)' : ''
           results.push({
@@ -724,6 +772,57 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             })
           } else {
             results.push({ type: 'reorder', text: 'Failed to reorder milestones' })
+          }
+        } else if (action.type === 'update_steps' && action.milestoneId && action.newSteps && action.newSteps.length > 0) {
+          // Update steps for existing milestone
+          addDebugLog('info', 'Update steps', `id=${action.milestoneId.slice(0, 8)} steps=${action.newSteps.length}`)
+
+          const { data: milestone, error: findError } = await client
+            .from('milestones')
+            .select('id, title, project_id')
+            .eq('id', action.milestoneId)
+            .single()
+
+          if (findError || !milestone) {
+            addDebugLog('error', 'Milestone not found', `id=${action.milestoneId} error=${findError?.message}`)
+            results.push({ type: 'edit_milestone', text: 'Failed: Milestone not found' })
+            continue
+          }
+
+          // Delete existing steps for this milestone
+          const { error: deleteError } = await client
+            .from('milestone_steps')
+            .delete()
+            .eq('milestone_id', action.milestoneId)
+            .eq('user_id', userId)
+
+          if (deleteError) {
+            addDebugLog('warn', 'Failed to delete old steps', deleteError.message)
+          }
+
+          // Insert new steps
+          const stepsData = action.newSteps.map((text, stepIndex) => ({
+            milestone_id: action.milestoneId!,
+            user_id: userId,
+            text,
+            step_type: 'action',
+            sort_order: stepIndex,
+          }))
+
+          const { error: insertError } = await client.from('milestone_steps').insert(stepsData)
+
+          if (insertError) {
+            addDebugLog('error', 'Failed to insert steps', insertError.message)
+            results.push({ type: 'edit_milestone', text: `Failed to update steps: ${insertError.message}` })
+          } else {
+            addDebugLog('success', 'Steps updated', `${action.newSteps.length} steps for ${milestone.title}`)
+            results.push({
+              type: 'edit_milestone',
+              text: `Updated steps for: ${milestone.title}`,
+              projectId: milestone.project_id,
+              milestoneId: milestone.id,
+              milestoneTitle: milestone.title,
+            })
           }
         }
       } catch (err) {
@@ -1130,8 +1229,55 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
   // Debug panel state - toggle with triple tap on loading spinner
   const [showDebug, setShowDebug] = useState(false)
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
+  const [showGestureHint, setShowGestureHint] = useState(true)
   const debugTapCount = useRef(0)
   const debugTapTimer = useRef<NodeJS.Timeout | null>(null)
+
+  // Hide gesture hint after first interaction
+  useEffect(() => {
+    if (showProfile || showHistory) {
+      setShowGestureHint(false)
+    }
+  }, [showProfile, showHistory])
+
+  // Copy message to clipboard
+  const handleCopyMessage = async (messageId: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopiedMessageId(messageId)
+      setTimeout(() => setCopiedMessageId(null), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  // Export conversation as markdown
+  const handleExportConversation = () => {
+    if (messages.length === 0) return
+
+    const title = currentConversation?.title || 'Path Finder Conversation'
+    const date = new Date().toLocaleDateString()
+
+    let markdown = `# ${title}\n`
+    markdown += `*Exported on ${date}*\n\n---\n\n`
+
+    messages.forEach(msg => {
+      const role = msg.role === 'user' ? 'You' : 'Path Finder'
+      markdown += `## ${role}\n\n${msg.content}\n\n---\n\n`
+    })
+
+    // Create and download file
+    const blob = new Blob([markdown], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${title.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${date}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   const handleDebugTap = () => {
     debugTapCount.current++
@@ -1227,6 +1373,21 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           New Chat
         </button>
       </div>
+
+      {/* Gesture Hint */}
+      <AnimatePresence>
+        {showGestureHint && !showProfile && !showHistory && messages.length <= 2 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="flex items-center justify-center gap-2 py-2 text-xs text-slate-500 bg-slate-800/30 border-b border-slate-800"
+          >
+            <ChevronDown className="w-3 h-3 animate-bounce" />
+            <span>Tap Profile or History to expand</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Profile Panel (Collapsible) */}
       <AnimatePresence>
@@ -1385,7 +1546,18 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             <div className="p-4 bg-slate-900/30 max-h-[300px] overflow-y-auto">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-slate-300">Conversation History</h3>
-                <p className="text-xs text-slate-500">Tap to load, X to delete</p>
+                <div className="flex items-center gap-2">
+                  {messages.length > 0 && (
+                    <button
+                      onClick={handleExportConversation}
+                      className="text-xs text-slate-500 hover:text-teal-400 flex items-center gap-1"
+                    >
+                      <Download className="w-3 h-3" />
+                      Export
+                    </button>
+                  )}
+                  <p className="text-xs text-slate-500">Tap to load</p>
+                </div>
               </div>
 
               {conversations.length === 0 ? (
@@ -1503,22 +1675,39 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
               {/* Message Content */}
               <div className="flex-1 max-w-[85%] space-y-3">
-                <div
-                  className={`
-                    rounded-2xl px-4 py-3
-                    ${message.role === 'user'
-                      ? 'bg-teal-500/10 border border-teal-500/20'
-                      : 'bg-slate-800/50 border border-slate-700/50'
-                    }
-                  `}
-                >
-                  {message.role === 'assistant' ? (
-                    <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>{message.content}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <p className="text-white whitespace-pre-wrap">{message.content}</p>
-                  )}
+                <div className="group relative">
+                  <div
+                    className={`
+                      rounded-2xl px-4 py-3
+                      ${message.role === 'user'
+                        ? 'bg-teal-500/10 border border-teal-500/20'
+                        : 'bg-slate-800/50 border border-slate-700/50'
+                      }
+                    `}
+                  >
+                    {message.role === 'assistant' ? (
+                      <div className="prose prose-invert prose-sm max-w-none">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="text-white whitespace-pre-wrap">{message.content}</p>
+                    )}
+                  </div>
+                  {/* Copy button - always visible on mobile, hover on desktop */}
+                  <button
+                    onClick={() => handleCopyMessage(message.id, message.content)}
+                    className={`absolute -bottom-2 right-2 p-1.5 rounded-lg text-xs transition-all
+                      ${copiedMessageId === message.id
+                        ? 'bg-green-500/20 text-green-400 opacity-100'
+                        : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white md:opacity-0 md:group-hover:opacity-100'
+                      }`}
+                  >
+                    {copiedMessageId === message.id ? (
+                      <Check className="w-3 h-3" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </button>
                 </div>
 
                 {/* Project Action Cards - Clickable */}

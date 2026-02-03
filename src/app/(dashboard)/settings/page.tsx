@@ -120,10 +120,10 @@ export default function SettingsPage() {
             Support
           </h3>
           <p className="text-slate-300 text-sm mb-3">
-            Rise is designed to support your recovery, but it's not a replacement for professional help.
+            Rise is designed to support your recovery, but it&apos;s not a replacement for professional help.
           </p>
           <p className="text-slate-400 text-sm">
-            If you're struggling, please reach out to a mental health professional or call a crisis helpline.
+            If you&apos;re struggling, please reach out to a mental health professional or call a crisis helpline.
           </p>
         </Card>
 

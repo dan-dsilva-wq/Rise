@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Wifi, WifiOff, AlertTriangle, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Wifi, WifiOff, X, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 interface DebugLog {
@@ -40,6 +40,19 @@ export function ConnectionStatus() {
   const [showDebug, setShowDebug] = useState(false)
   const [logs, setLogs] = useState<DebugLog[]>([])
   const [lastCheck, setLastCheck] = useState<string>('')
+  const [mounted, setMounted] = useState(false)
+
+  // Track if check is in progress to prevent multiple concurrent checks
+  const checkingRef = useRef(false)
+  // Store client in ref to avoid SSR issues - only create after mount
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+
+  // Mark as mounted on client and initialize Supabase
+  useEffect(() => {
+    setMounted(true)
+    // Only create client after mount (client-side only)
+    supabaseRef.current = createClient()
+  }, [])
 
   // Listen for debug logs
   useEffect(() => {
@@ -51,14 +64,33 @@ export function ConnectionStatus() {
   }, [])
 
   const checkConnection = async () => {
+    // Prevent concurrent checks
+    if (checkingRef.current) return
+
+    // Wait for client to be initialized
+    const supabase = supabaseRef.current
+    if (!supabase) {
+      addDebugLog('warn', 'Supabase client not ready yet')
+      setIsChecking(false)
+      return
+    }
+
+    checkingRef.current = true
     setIsChecking(true)
     const startTime = Date.now()
 
     try {
-      const supabase = createClient()
-
       // Try to get session - this tests auth connection
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      // Add timeout to prevent hanging
+      const sessionPromise = supabase.auth.getSession()
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Auth check timeout')), 10000)
+      )
+
+      const { data: { session }, error: sessionError } = await Promise.race([
+        sessionPromise,
+        timeoutPromise
+      ]) as Awaited<typeof sessionPromise>
 
       if (sessionError) {
         throw new Error(`Auth error: ${sessionError.message}`)
@@ -70,11 +102,13 @@ export function ConnectionStatus() {
         setIsConnected(true)
         setError(null)
         setLastCheck(new Date().toLocaleTimeString())
+        checkingRef.current = false
         return
       }
 
       // Test database connection with a simple query
-      const { error: dbError } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: dbError } = await (supabase as any)
         .from('profiles')
         .select('id')
         .eq('id', session.user.id)
@@ -98,18 +132,28 @@ export function ConnectionStatus() {
       setLastCheck(new Date().toLocaleTimeString())
     } finally {
       setIsChecking(false)
+      checkingRef.current = false
     }
   }
 
-  // Check connection on mount and every 30 seconds
+  // Check connection after mount (when client is ready) and every 30 seconds
   useEffect(() => {
-    checkConnection()
-    const interval = setInterval(checkConnection, 30000)
-    return () => clearInterval(interval)
-  }, [])
+    if (!mounted) return
 
-  // Don't show anything while first check is in progress
-  if (isConnected === null && isChecking) {
+    // Small delay to ensure client is initialized
+    const timeout = setTimeout(() => {
+      checkConnection()
+    }, 100)
+
+    const interval = setInterval(checkConnection, 30000)
+    return () => {
+      clearTimeout(timeout)
+      clearInterval(interval)
+    }
+  }, [mounted])
+
+  // Don't render on server to prevent hydration mismatch
+  if (!mounted) {
     return null
   }
 
@@ -120,21 +164,21 @@ export function ConnectionStatus() {
         <button
           onClick={() => setShowDebug(!showDebug)}
           className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-all ${
-            isConnected === false
+            isConnected === null
+              ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+              : isConnected === false
               ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-              : isConnected === true
-              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-              : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+              : 'bg-green-500/20 text-green-400 border border-green-500/30'
           }`}
         >
-          {isConnected === false ? (
+          {isConnected === null ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : isConnected === false ? (
             <WifiOff className="w-3 h-3" />
-          ) : isConnected === true ? (
-            <Wifi className="w-3 h-3" />
           ) : (
-            <AlertTriangle className="w-3 h-3" />
+            <Wifi className="w-3 h-3" />
           )}
-          {isChecking ? '...' : isConnected ? 'OK' : 'ERR'}
+          {isConnected === null ? 'Checking' : isChecking ? '...' : isConnected ? 'OK' : 'ERR'}
           {showDebug ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         </button>
       </div>
@@ -153,7 +197,7 @@ export function ConnectionStatus() {
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-red-400">No Cloud Connection</h3>
                 <p className="text-sm text-red-300/80 mt-1">
-                  Cannot connect to cloud service. Your data won't be saved.
+                  Cannot connect to cloud service. Your data won&apos;t be saved.
                 </p>
                 {error && (
                   <p className="text-xs text-red-400/60 mt-2 font-mono break-all">

@@ -39,14 +39,21 @@ interface ExtractedInsight {
   projectId?: string
 }
 
+interface MilestoneWithSteps {
+  title: string
+  steps: string[]
+}
+
 interface ProjectAction {
-  type: 'create' | 'add_milestone' | 'add_idea' | 'add_note' | 'promote_idea' | 'set_focus' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder_milestones'
+  type: 'create' | 'add_milestone' | 'add_idea' | 'add_note' | 'promote_idea' | 'set_focus' | 'update_status' | 'edit_milestone' | 'complete_milestone' | 'discard_milestone' | 'reorder_milestones' | 'update_steps'
   projectId?: string
   milestoneId?: string
   name?: string
   description?: string
   milestones?: string[]
+  milestonesWithSteps?: MilestoneWithSteps[] // Milestones with their steps
   newMilestone?: string
+  newMilestoneSteps?: string[] // Steps for the new milestone
   newIdea?: string
   newNote?: string
   newTitle?: string
@@ -54,6 +61,7 @@ interface ProjectAction {
   newStatus?: 'discovery' | 'planning' | 'building' | 'launched' | 'paused'
   focusLevel?: 'active' | 'next' | 'backlog'
   milestoneOrder?: string[] // Array of milestone IDs in new order
+  newSteps?: string[] // For updating steps on existing milestone
 }
 
 interface ExistingProject {
@@ -226,18 +234,41 @@ Use these liberally! The more context captured, the smarter other AI features be
 [CREATE_PROJECT]
 name: <2-5 word project name>
 description: <1-2 sentences>
-milestone1: <first milestone>
-milestone2: <second milestone>
-milestone3: <third milestone>
-milestone4: <optional>
-milestone5: <optional>
+milestone1: <first milestone title>
+milestone1_steps: <step1 | step2 | step3 | ...> (as many steps as needed, separated by |)
+milestone2: <second milestone title>
+milestone2_steps: <step1 | step2 | ...>
+milestone3: <third milestone title>
+milestone3_steps: <step1 | step2 | ...>
+milestone4: <optional title>
+milestone4_steps: <optional steps>
+milestone5: <optional title>
+milestone5_steps: <optional steps>
 [/CREATE_PROJECT]
 
 ### Add a MILESTONE (committed next step):
 [ADD_MILESTONE]
 project_id: <exact UUID>
-milestone: <clear, actionable step>
+milestone: <clear, actionable title>
+steps: <step1 | step2 | step3 | ...> (as many steps as the milestone needs, separated by |)
 [/ADD_MILESTONE]
+
+## Writing Good Steps
+Steps should be the ACTUAL work broken down. Use your judgment on how many:
+- Simple milestone ("Set up git repo") → 2-3 steps
+- Medium milestone ("Design the landing page") → 5-7 steps
+- Complex milestone ("Build the authentication system") → 8-12 steps
+
+Each step should be specific and actionable:
+GOOD: "Research 3 competitor apps and note their key features"
+GOOD: "Sketch wireframe of main screen on paper"
+GOOD: "Set up new React Native project with Expo"
+GOOD: "Create Supabase project and add tables: users, profiles"
+GOOD: "Write the signUp function that calls Supabase auth"
+
+BAD: "Plan the feature" (too vague)
+BAD: "Think about design" (not actionable)
+BAD: "Do the coding" (not specific)
 
 ### Add an IDEA (brainstorming, future possibility):
 [ADD_IDEA]
@@ -267,6 +298,12 @@ status: <discovery|planning|building|launched|paused>
 milestone_id: <exact UUID>
 title: <new title>
 [/EDIT_MILESTONE]
+
+### Update steps for an existing milestone:
+[UPDATE_STEPS]
+milestone_id: <exact UUID>
+steps: <step1 | step2 | step3 | step4> (replaces all existing steps)
+[/UPDATE_STEPS]
 
 ### Mark milestone as complete:
 [COMPLETE_MILESTONE]
@@ -434,38 +471,54 @@ Remember: Users should feel like they're making progress AND staying organized.`
     // Parse project actions from the message
     const projectActions: ProjectAction[] = []
 
-    // Parse CREATE_PROJECT
-    const createProjectRegex = /\[CREATE_PROJECT\]\s*name:\s*([^\n]+)\s*description:\s*([^\n]+)\s*(milestone1:\s*[^\n]+\s*)?(milestone2:\s*[^\n]+\s*)?(milestone3:\s*[^\n]+\s*)?(milestone4:\s*[^\n]+\s*)?(milestone5:\s*[^\n]+\s*)?\[\/CREATE_PROJECT\]/g
-    let createMatch
-    while ((createMatch = createProjectRegex.exec(assistantMessage)) !== null) {
-      const milestones: string[] = []
-      for (let i = 3; i <= 7; i++) {
-        if (createMatch[i]) {
-          const milestoneText = createMatch[i].replace(/milestone\d:\s*/, '').trim()
-          if (milestoneText) {
-            milestones.push(milestoneText)
+    // Parse CREATE_PROJECT with steps
+    for (const fields of parseTagBlocks(assistantMessage, 'CREATE_PROJECT')) {
+      const name = fields.name?.trim()
+      const description = fields.description?.trim()
+
+      if (name && description) {
+        const milestonesWithSteps: MilestoneWithSteps[] = []
+        const milestones: string[] = []
+
+        // Extract milestones 1-5 with their steps
+        for (let i = 1; i <= 5; i++) {
+          const milestoneTitle = fields[`milestone${i}`]?.trim()
+          const milestoneStepsRaw = fields[`milestone${i}_steps`]?.trim()
+
+          if (milestoneTitle) {
+            milestones.push(milestoneTitle)
+            const steps = milestoneStepsRaw
+              ? milestoneStepsRaw.split('|').map(s => s.trim()).filter(s => s.length > 0)
+              : []
+            milestonesWithSteps.push({ title: milestoneTitle, steps })
           }
         }
-      }
-      if (createMatch[1] && createMatch[2]) {
+
         projectActions.push({
           type: 'create',
-          name: createMatch[1].trim(),
-          description: createMatch[2].trim(),
+          name,
+          description,
           milestones,
+          milestonesWithSteps,
         })
       }
     }
 
-    // Parse ADD_MILESTONE (robust to key order and multiline values)
+    // Parse ADD_MILESTONE with steps (robust to key order and multiline values)
     for (const fields of parseTagBlocks(assistantMessage, 'ADD_MILESTONE')) {
       const projectId = extractUuid(fields.project_id || fields.projectid || fields.project_id_uuid || fields.project)
       const newMilestone = fields.milestone?.trim()
+      const stepsRaw = fields.steps?.trim()
+      const newMilestoneSteps = stepsRaw
+        ? stepsRaw.split('|').map(s => s.trim()).filter(s => s.length > 0)
+        : []
+
       if (projectId && newMilestone) {
         projectActions.push({
           type: 'add_milestone',
           projectId,
           newMilestone,
+          newMilestoneSteps,
         })
       } else {
         console.warn('[path-finder] Failed to parse ADD_MILESTONE block', fields)
@@ -582,6 +635,23 @@ Remember: Users should feel like they're making progress AND staying organized.`
       }
     }
 
+    // Parse UPDATE_STEPS
+    for (const fields of parseTagBlocks(assistantMessage, 'UPDATE_STEPS')) {
+      const milestoneId = extractUuid(fields.milestone_id || fields.milestoneid)
+      const stepsRaw = fields.steps?.trim()
+      const newSteps = stepsRaw
+        ? stepsRaw.split('|').map(s => s.trim()).filter(s => s.length > 0)
+        : []
+
+      if (milestoneId && newSteps.length > 0) {
+        projectActions.push({
+          type: 'update_steps',
+          milestoneId,
+          newSteps,
+        })
+      }
+    }
+
     // Also support old PROJECT_SUGGESTION format for backwards compatibility
     const oldProjectRegex = /\[PROJECT_SUGGESTION\]\s*name:\s*([^\n]+)\s*description:\s*([^\n]+)\s*(milestone1:\s*[^\n]+\s*)?(milestone2:\s*[^\n]+\s*)?(milestone3:\s*[^\n]+\s*)?(milestone4:\s*[^\n]+\s*)?(milestone5:\s*[^\n]+\s*)?\[\/PROJECT_SUGGESTION\]/g
     let oldMatch
@@ -618,6 +688,7 @@ Remember: Users should feel like they're making progress AND staying organized.`
       .replace(/\[SET_FOCUS\][\s\S]*?\[\/SET_FOCUS\]/g, '')
       .replace(/\[UPDATE_PROJECT\][\s\S]*?\[\/UPDATE_PROJECT\]/g, '')
       .replace(/\[EDIT_MILESTONE\][\s\S]*?\[\/EDIT_MILESTONE\]/g, '')
+      .replace(/\[UPDATE_STEPS\][\s\S]*?\[\/UPDATE_STEPS\]/g, '')
       .replace(/\[COMPLETE_MILESTONE\][\s\S]*?\[\/COMPLETE_MILESTONE\]/g, '')
       .replace(/\[DISCARD_MILESTONE\][\s\S]*?\[\/DISCARD_MILESTONE\]/g, '')
       .replace(/\[REORDER_MILESTONES\][\s\S]*?\[\/REORDER_MILESTONES\]/g, '')

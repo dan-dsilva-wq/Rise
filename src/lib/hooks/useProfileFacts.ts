@@ -5,20 +5,21 @@ import { createClient } from '@/lib/supabase/client'
 import { getFromCache, setCache, getCacheKey } from '@/lib/cache'
 import type { UserProfileFact, UserProfileFactInsert, ProfileCategory } from '@/lib/supabase/types'
 
+// Helper to get client - only call after mount (client-side)
+function getClient() {
+  const supabase = createClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return supabase as any
+}
+
 export function useProfileFacts(userId: string | undefined) {
   const [facts, setFacts] = useState<UserProfileFact[]>([])
   const [loading, setLoading] = useState(true)
   const initializedRef = useRef(false)
-  const supabase = createClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = supabase as any
 
   // Fetch all active facts for the user
   const fetchFacts = useCallback(async () => {
-    console.log('[DEBUG] fetchFacts called', { userId })
-
     if (!userId) {
-      console.log('[DEBUG] fetchFacts: No userId, skipping')
       setLoading(false)
       return
     }
@@ -27,14 +28,13 @@ export function useProfileFacts(userId: string | undefined) {
     const cacheKey = getCacheKey(userId, 'facts')
     const cached = getFromCache<UserProfileFact[]>(cacheKey)
     if (cached && !initializedRef.current) {
-      console.log('[DEBUG] fetchFacts: Using cached facts:', cached.length)
       setFacts(cached)
       setLoading(false)
       initializedRef.current = true
     }
 
     // Always fetch fresh in background
-    console.log('[DEBUG] fetchFacts: Fetching from database...')
+    const client = getClient()
     const { data, error } = await client
       .from('user_profile_facts')
       .select('*')
@@ -44,8 +44,7 @@ export function useProfileFacts(userId: string | undefined) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('[DEBUG] fetchFacts error:', error)
-      console.error('[DEBUG] fetchFacts error details:', JSON.stringify(error, null, 2))
+      console.error('fetchFacts error:', error)
     }
 
     const freshFacts = (data as UserProfileFact[]) || []
@@ -54,11 +53,15 @@ export function useProfileFacts(userId: string | undefined) {
     setCache(cacheKey, freshFacts)
     setLoading(false)
     initializedRef.current = true
-  }, [userId, client])
+  }, [userId])
 
   useEffect(() => {
     console.log('[DEBUG] useProfileFacts useEffect triggered, calling fetchFacts')
-    fetchFacts()
+    const timeout = setTimeout(() => {
+      void fetchFacts()
+    }, 0)
+
+    return () => clearTimeout(timeout)
   }, [fetchFacts])
 
   // Add a new fact (with optimistic update)
@@ -90,6 +93,7 @@ export function useProfileFacts(userId: string | undefined) {
     }
 
     console.log('[DEBUG] addFact: Inserting to database...')
+    const client = getClient()
     const { data, error } = await client
       .from('user_profile_facts')
       .insert(newFact)
@@ -121,6 +125,7 @@ export function useProfileFacts(userId: string | undefined) {
   const updateFact = async (factId: string, fact: string): Promise<void> => {
     if (!userId) throw new Error('No user')
 
+    const client = getClient()
     const { error } = await client
       .from('user_profile_facts')
       .update({ fact, updated_at: new Date().toISOString() })
@@ -146,6 +151,7 @@ export function useProfileFacts(userId: string | undefined) {
       return updated
     })
 
+    const client = getClient()
     const { error } = await client
       .from('user_profile_facts')
       .update({ is_active: false })

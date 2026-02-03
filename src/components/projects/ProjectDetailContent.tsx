@@ -300,6 +300,8 @@ export function ProjectDetailContent({
           <MilestoneList
             milestones={currentMilestones}
             projectId={currentProject.id}
+            project={currentProject}
+            userId={user?.id}
             onComplete={handleCompleteMilestone}
             onUncomplete={handleUncompleteMilestone}
             onSetFocus={setFocusLevel}
@@ -309,6 +311,7 @@ export function ProjectDetailContent({
             onDelete={deleteMilestone}
             showAddButton
             isEditable
+            useBottomSheet
           />
 
           {/* Add Milestone Form */}

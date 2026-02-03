@@ -19,7 +19,7 @@ export function DailyPrompt({ prompt, author, className = '' }: DailyPromptProps
       <Quote className="absolute top-4 left-4 w-6 h-6 text-teal-500/30" />
 
       <blockquote className="text-lg text-slate-200 italic leading-relaxed pl-6">
-        "{prompt}"
+        &ldquo;{prompt}&rdquo;
       </blockquote>
 
       {author && (

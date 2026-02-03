@@ -37,7 +37,11 @@ export function usePathFinder(userId: string | undefined) {
   }, [userId, client])
 
   useEffect(() => {
-    fetchProgress()
+    const timeout = setTimeout(() => {
+      void fetchProgress()
+    }, 0)
+
+    return () => clearTimeout(timeout)
   }, [fetchProgress])
 
   // Navigate to a new node

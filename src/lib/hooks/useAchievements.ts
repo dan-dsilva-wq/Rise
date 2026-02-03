@@ -54,7 +54,11 @@ export function useAchievements(userId: string | undefined) {
   }, [userId, supabase])
 
   useEffect(() => {
-    fetchAchievements()
+    const timeout = setTimeout(() => {
+      void fetchAchievements()
+    }, 0)
+
+    return () => clearTimeout(timeout)
   }, [fetchAchievements])
 
   // Check if an achievement should be unlocked

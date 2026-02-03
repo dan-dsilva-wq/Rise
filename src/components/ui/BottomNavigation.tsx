@@ -11,6 +11,19 @@ interface NavItem {
   isLogo?: boolean
 }
 
+// Home icon component
+function HomeIcon({ isActive }: { isActive: boolean }) {
+  return (
+    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+      isActive ? 'bg-teal-500/20' : 'bg-slate-700'
+    }`}>
+      <span className={`text-xs font-bold ${
+        isActive ? 'text-teal-400' : 'text-slate-300'
+      }`}>R</span>
+    </div>
+  )
+}
+
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Today', icon: null, isLogo: true },
   { href: '/path-finder', label: 'Path Finder', icon: Compass },
@@ -25,27 +38,22 @@ export function BottomNavigation() {
     <nav className="bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
       <div className="max-w-lg mx-auto px-2 py-3 flex items-center justify-around">
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href ||
-            (item.href !== '/' && pathname.startsWith(item.href))
+          const isActive = item.href === '/'
+            ? pathname === '/'
+            : pathname.startsWith(item.href)
 
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-1 px-2 transition-colors ${
+              className={`flex flex-col items-center gap-1 px-3 py-1 transition-colors ${
                 isActive
                   ? 'text-teal-400'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               {item.isLogo ? (
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  isActive ? 'bg-teal-500/20' : 'bg-slate-700'
-                }`}>
-                  <span className={`text-xs font-bold ${
-                    isActive ? 'text-teal-400' : 'text-slate-300'
-                  }`}>R</span>
-                </div>
+                <HomeIcon isActive={isActive} />
               ) : item.icon ? (
                 <item.icon className="w-6 h-6" />
               ) : null}

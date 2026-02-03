@@ -8,12 +8,15 @@ import {
   AlertTriangle, Lightbulb, ArrowUp, ChevronDown, Play, Clock,
   Target, ListTodo
 } from 'lucide-react'
-import type { Milestone } from '@/lib/supabase/types'
+import type { Milestone, Project } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/Button'
+import { MilestoneBottomSheet } from '@/components/milestone-mode/MilestoneBottomSheet'
 
 interface MilestoneListProps {
   milestones: Milestone[]
   projectId: string
+  project?: Project | null
+  userId?: string
   onComplete: (id: string) => Promise<number>
   onUncomplete?: (id: string) => Promise<number>
   onSetFocus?: (id: string, level: 'active' | 'next' | 'backlog') => Promise<boolean>
@@ -23,11 +26,14 @@ interface MilestoneListProps {
   onDelete?: (id: string) => void
   showAddButton?: boolean
   isEditable?: boolean
+  useBottomSheet?: boolean  // New: use bottom sheet instead of navigation
 }
 
 export function MilestoneList({
   milestones,
   projectId,
+  project,
+  userId,
   onComplete,
   onUncomplete,
   onSetFocus,
@@ -37,6 +43,7 @@ export function MilestoneList({
   onDelete,
   showAddButton = false,
   isEditable = false,
+  useBottomSheet = false,
 }: MilestoneListProps) {
   const router = useRouter()
   const [completingId, setCompletingId] = useState<string | null>(null)
@@ -46,6 +53,7 @@ export function MilestoneList({
   const [showBacklog, setShowBacklog] = useState(false)
   const [showIdeas, setShowIdeas] = useState(false)
   const [showCompleted, setShowCompleted] = useState(false)
+  const [selectedMilestone, setSelectedMilestone] = useState<Milestone | null>(null)
 
   // Categorize milestones
   const activeMilestone = milestones.find(m => m.focus_level === 'active' && m.status !== 'completed' && m.status !== 'discarded' && m.status !== 'idea')
@@ -92,7 +100,20 @@ export function MilestoneList({
   }
 
   const handleMilestoneClick = (milestone: Milestone) => {
-    router.push(`/projects/${projectId}/milestone/${milestone.id}`)
+    if (useBottomSheet && project) {
+      setSelectedMilestone(milestone)
+    } else {
+      router.push(`/projects/${projectId}/milestone/${milestone.id}`)
+    }
+  }
+
+  const handleBottomSheetComplete = async (id: string) => {
+    const xp = await onComplete(id)
+    if (xp > 0) {
+      setRecentXp({ id, amount: xp })
+      setTimeout(() => setRecentXp(null), 2000)
+    }
+    return xp
   }
 
   const handleSetActive = async (milestone: Milestone) => {
@@ -299,7 +320,7 @@ export function MilestoneList({
               ))}
             </div>
           ) : (
-            <p className="text-xs text-slate-600 pl-6">Queue up what's next from backlog</p>
+            <p className="text-xs text-slate-600 pl-6">Queue up what&apos;s next from backlog</p>
           )}
         </div>
       )}
@@ -516,6 +537,22 @@ export function MilestoneList({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Milestone Bottom Sheet */}
+      {useBottomSheet && (
+        <AnimatePresence>
+          {selectedMilestone && (
+            <MilestoneBottomSheet
+              milestone={selectedMilestone}
+              project={project || null}
+              allMilestones={milestones}
+              userId={userId}
+              onClose={() => setSelectedMilestone(null)}
+              onComplete={handleBottomSheetComplete}
+            />
+          )}
+        </AnimatePresence>
+      )}
     </div>
   )
 }

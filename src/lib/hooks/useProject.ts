@@ -306,6 +306,22 @@ export function useProject(
   }
 
   const reorderMilestones = async (orderedIds: string[]): Promise<boolean> => {
+    // Optimistically update local state immediately
+    setMilestones(prev => {
+      const reordered = orderedIds.map((id, index) => {
+        const milestone = prev.find(m => m.id === id)
+        if (milestone) {
+          return { ...milestone, sort_order: index }
+        }
+        return null
+      }).filter((m): m is Milestone => m !== null)
+
+      // Add any milestones not in orderedIds (like discarded ones) at the end
+      const remainingMilestones = prev.filter(m => !orderedIds.includes(m.id))
+      return [...reordered, ...remainingMilestones]
+    })
+
+    // Then persist to database
     const updates = orderedIds.map((id, index) => ({
       id,
       sort_order: index,
@@ -319,17 +335,11 @@ export function useProject(
 
       if (error) {
         console.error('Error reordering milestones:', error)
+        // Refresh to get correct state on error
+        await fetchProject()
         return false
       }
     }
-
-    setMilestones(prev =>
-      [...prev].sort((a, b) => {
-        const aIndex = orderedIds.indexOf(a.id)
-        const bIndex = orderedIds.indexOf(b.id)
-        return aIndex - bIndex
-      })
-    )
 
     return true
   }

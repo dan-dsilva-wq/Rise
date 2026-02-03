@@ -46,6 +46,7 @@ export function ProjectDetailContent({
     completeMilestone,
     uncompleteMilestone,
     deleteMilestone,
+    reorderMilestones,
   } = useProject(initialProject?.id, user?.id, initialProject, initialMilestones)
 
   const [showMenu, setShowMenu] = useState(false)
@@ -287,6 +288,7 @@ export function ProjectDetailContent({
             projectId={currentProject.id}
             onComplete={handleCompleteMilestone}
             onUncomplete={handleUncompleteMilestone}
+            onReorder={reorderMilestones}
             onAdd={() => setShowAddMilestone(true)}
             onDelete={deleteMilestone}
             showAddButton

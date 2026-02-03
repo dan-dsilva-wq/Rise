@@ -59,10 +59,15 @@ function parseTagBlocks(message: string, tag: string): Array<Record<string, stri
     let currentKey: string | null = null
 
     for (const rawLine of lines) {
-      const line = rawLine.trim()
+      const line = rawLine
+        .trim()
+        .replace(/^[-*]\s+/, '') // markdown bullet
+        .replace(/^\d+\.\s+/, '') // numbered list item
+        .replace(/^\*\*(.+?)\*\*$/, '$1') // bold-only line
+        .replace(/^`(.+)`$/, '$1') // code-only line
       if (!line) continue
 
-      const fieldMatch = line.match(/^([a-zA-Z0-9_]+)\s*:\s*(.*)$/)
+      const fieldMatch = line.match(/^`?([a-zA-Z0-9_]+)`?\s*[:=]\s*(.*)$/)
       if (fieldMatch) {
         currentKey = fieldMatch[1].toLowerCase()
         fields[currentKey] = fieldMatch[2].trim()
@@ -78,6 +83,12 @@ function parseTagBlocks(message: string, tag: string): Array<Record<string, stri
   }
 
   return blocks
+}
+
+function extractUuid(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const uuidMatch = value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+  return uuidMatch?.[0]
 }
 
 export async function POST(request: NextRequest) {
@@ -331,7 +342,7 @@ Remember: Users should feel like they're making progress AND staying organized.`
 
     // Parse ADD_MILESTONE (robust to key order and multiline values)
     for (const fields of parseTagBlocks(assistantMessage, 'ADD_MILESTONE')) {
-      const projectId = fields.project_id?.trim()
+      const projectId = extractUuid(fields.project_id || fields.projectid || fields.project_id_uuid || fields.project)
       const newMilestone = fields.milestone?.trim()
       if (projectId && newMilestone) {
         projectActions.push({
@@ -339,12 +350,14 @@ Remember: Users should feel like they're making progress AND staying organized.`
           projectId,
           newMilestone,
         })
+      } else {
+        console.warn('[path-finder] Failed to parse ADD_MILESTONE block', fields)
       }
     }
 
     // Parse ADD_IDEA (robust to key order and multiline values)
     for (const fields of parseTagBlocks(assistantMessage, 'ADD_IDEA')) {
-      const projectId = fields.project_id?.trim()
+      const projectId = extractUuid(fields.project_id || fields.projectid || fields.project_id_uuid || fields.project)
       const newIdea = fields.idea?.trim()
       if (projectId && newIdea) {
         projectActions.push({
@@ -352,6 +365,8 @@ Remember: Users should feel like they're making progress AND staying organized.`
           projectId,
           newIdea,
         })
+      } else {
+        console.warn('[path-finder] Failed to parse ADD_IDEA block', fields)
       }
     }
 

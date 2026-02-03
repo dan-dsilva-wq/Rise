@@ -233,6 +233,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     }
     const results: ActionResult[] = []
     const projectLookupCache = new Map<string, { id: string; name: string } | null>()
+    const normalizeUuid = (value?: string) => value?.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0]
 
     const resolveProject = async (projectId: string) => {
       if (projectLookupCache.has(projectId)) {
@@ -296,7 +297,12 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             projectName: action.name,
           })
         } else if (action.type === 'add_milestone' && action.projectId && action.newMilestone) {
-          const project = await resolveProject(action.projectId)
+          const normalizedProjectId = normalizeUuid(action.projectId)
+          if (!normalizedProjectId) {
+            results.push({ type: 'add_milestone', text: 'Failed: Invalid project id format' })
+            continue
+          }
+          const project = await resolveProject(normalizedProjectId)
           if (!project) {
             results.push({ type: 'add_milestone', text: 'Failed: Project not found (it may have been deleted)' })
             continue
@@ -306,7 +312,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           const { data: existing, error: existingError } = await client
             .from('milestones')
             .select('id, focus_level')
-            .eq('project_id', action.projectId)
+            .eq('project_id', normalizedProjectId)
             .eq('user_id', userId)
             .neq('status', 'idea')
             .neq('status', 'completed')
@@ -321,7 +327,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           const defaultFocus = !hasActive ? 'active' : nextCount < 3 ? 'next' : 'backlog'
 
           const { data: milestoneData, error: milestoneError } = await client.from('milestones').insert({
-            project_id: action.projectId,
+            project_id: normalizedProjectId,
             user_id: userId,
             title: action.newMilestone,
             sort_order: existing?.length || 0,
@@ -336,13 +342,18 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           results.push({
             type: 'add_milestone',
             text: `Added milestone: ${action.newMilestone}${focusLabel}`,
-            projectId: action.projectId,
+            projectId: normalizedProjectId,
             projectName: project.name,
             milestoneId: milestoneData?.id,
             milestoneTitle: action.newMilestone,
           })
         } else if (action.type === 'add_idea' && action.projectId && action.newIdea) {
-          const project = await resolveProject(action.projectId)
+          const normalizedProjectId = normalizeUuid(action.projectId)
+          if (!normalizedProjectId) {
+            results.push({ type: 'add_idea', text: 'Failed: Invalid project id format' })
+            continue
+          }
+          const project = await resolveProject(normalizedProjectId)
           if (!project) {
             results.push({ type: 'add_idea', text: 'Failed: Project not found (it may have been deleted)' })
             continue
@@ -352,13 +363,13 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           const { data: existing, error: existingError } = await client
             .from('milestones')
             .select('id')
-            .eq('project_id', action.projectId)
+            .eq('project_id', normalizedProjectId)
             .eq('user_id', userId)
 
           if (existingError) throw existingError
 
           const { data: ideaData, error: ideaError } = await client.from('milestones').insert({
-            project_id: action.projectId,
+            project_id: normalizedProjectId,
             user_id: userId,
             title: action.newIdea,
             sort_order: existing?.length || 0,
@@ -371,7 +382,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           results.push({
             type: 'add_idea',
             text: `Added idea: ${action.newIdea}`,
-            projectId: action.projectId,
+            projectId: normalizedProjectId,
             projectName: project.name,
             milestoneId: ideaData?.id,
             milestoneTitle: action.newIdea,
@@ -510,7 +521,12 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             })
           }
         } else if (action.type === 'update_status' && action.projectId && action.newStatus) {
-          const project = await resolveProject(action.projectId)
+          const normalizedProjectId = normalizeUuid(action.projectId)
+          if (!normalizedProjectId) {
+            results.push({ type: 'update_status', text: 'Failed: Invalid project id format' })
+            continue
+          }
+          const project = await resolveProject(normalizedProjectId)
           if (!project) {
             results.push({ type: 'update_status', text: 'Failed: Project not found (it may have been deleted)' })
             continue
@@ -519,7 +535,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           const { data: updatedProject, error: updateStatusError } = await client
             .from('projects')
             .update({ status: action.newStatus })
-            .eq('id', action.projectId)
+            .eq('id', normalizedProjectId)
             .eq('user_id', userId)
             .select('id')
             .maybeSingle()
@@ -536,7 +552,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           results.push({
             type: 'update_status',
             text: `Updated ${project.name} to ${action.newStatus}`,
-            projectId: action.projectId,
+            projectId: normalizedProjectId,
             projectName: project.name,
           })
         } else if (action.type === 'edit_milestone' && action.milestoneId && action.newTitle) {
@@ -663,9 +679,14 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           }
         } else if (action.type === 'reorder_milestones' && action.projectId && action.milestoneOrder) {
           // Reorder milestones
-          addDebugLog('info', 'Reorder milestones', `project=${action.projectId.slice(0, 8)} order=${action.milestoneOrder.length} items`)
+          const normalizedProjectId = normalizeUuid(action.projectId)
+          if (!normalizedProjectId) {
+            results.push({ type: 'reorder', text: 'Failed: Invalid project id format' })
+            continue
+          }
+          addDebugLog('info', 'Reorder milestones', `project=${normalizedProjectId.slice(0, 8)} order=${action.milestoneOrder.length} items`)
 
-          const project = await resolveProject(action.projectId)
+          const project = await resolveProject(normalizedProjectId)
           if (!project) {
             addDebugLog('error', 'Project not found', action.projectId)
             results.push({ type: 'reorder', text: 'Failed: Project not found' })
@@ -680,7 +701,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
               .from('milestones')
               .update({ sort_order: i, updated_at: new Date().toISOString() })
               .eq('id', milestoneId)
-              .eq('project_id', action.projectId)
+              .eq('project_id', normalizedProjectId)
               .eq('user_id', userId)
               .select('id')
               .maybeSingle()
@@ -698,7 +719,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             results.push({
               type: 'reorder',
               text: `Reordered milestones in ${project.name}`,
-              projectId: action.projectId,
+              projectId: normalizedProjectId,
               projectName: project.name,
             })
           } else {

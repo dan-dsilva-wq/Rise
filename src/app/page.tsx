@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DashboardContent } from '@/components/dashboard/DashboardContent'
-import type { DailyPrompt, DailyMission } from '@/lib/supabase/types'
+import type { DailyPrompt, Project } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,40 +13,33 @@ export default async function HomePage() {
     redirect('/login')
   }
 
-  // Get user profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  // Fetch data in parallel for faster loading
+  const [profileResult, promptsResult, projectsResult] = await Promise.all([
+    // Get user profile
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single(),
 
-  // Get today's log
-  const today = new Date().toISOString().split('T')[0]
-  const { data: todayLog } = await supabase
-    .from('daily_logs')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('log_date', today)
-    .single()
+    // Get daily prompts
+    supabase
+      .from('daily_prompts')
+      .select('*')
+      .eq('is_active', true),
 
-  // Get today's primary mission
-  const { data: missionsData } = await supabase
-    .from('daily_missions')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('mission_date', today)
-    .in('status', ['pending', 'in_progress'])
-    .order('priority', { ascending: true })
-    .limit(1)
+    // Get user's active projects
+    supabase
+      .from('projects')
+      .select('*')
+      .eq('user_id', user.id)
+      .in('status', ['discovery', 'planning', 'building'])
+      .order('updated_at', { ascending: false }),
+  ])
 
-  const missions = (missionsData || []) as DailyMission[]
-  const primaryMission = missions[0] || null
-
-  // Get a daily prompt
-  const { data: prompts } = await supabase
-    .from('daily_prompts')
-    .select('*')
-    .eq('is_active', true) as { data: DailyPrompt[] | null }
+  const profile = profileResult.data
+  const prompts = promptsResult.data as DailyPrompt[] | null
+  const projects = (projectsResult.data || []) as Project[]
 
   let dailyPrompt = { prompt_text: 'Today is a new opportunity.', author: null as string | null }
   if (prompts && prompts.length > 0) {
@@ -61,9 +54,9 @@ export default async function HomePage() {
   return (
     <DashboardContent
       profile={profile}
-      todayLog={todayLog}
+      todayLog={null}
       dailyPrompt={dailyPrompt}
-      initialMission={primaryMission}
+      projects={projects}
     />
   )
 }

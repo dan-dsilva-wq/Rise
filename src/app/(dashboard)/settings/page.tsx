@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { ArrowLeft, LogOut, User, Bell, Shield, Heart } from 'lucide-react'
+import { ArrowLeft, LogOut, User, Bell, Shield, Heart, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -13,11 +13,38 @@ export default function SettingsPage() {
   const { user, profile, signOut } = useUser()
   const router = useRouter()
   const [signingOut, setSigningOut] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [resetMessage, setResetMessage] = useState<string | null>(null)
 
   const handleSignOut = async () => {
     setSigningOut(true)
     await signOut()
     router.push('/login')
+  }
+
+  const handleResetToday = async () => {
+    if (!confirm('This will reset your "I\'m Up" button and morning check-in for today. Continue?')) {
+      return
+    }
+    setResetting(true)
+    setResetMessage(null)
+    try {
+      const res = await fetch('/api/reset-today', { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        setResetMessage('Reset successful! Refreshing...')
+        setTimeout(() => {
+          router.push('/')
+          router.refresh()
+        }, 1000)
+      } else {
+        setResetMessage('Reset failed. Please try again.')
+      }
+    } catch {
+      setResetMessage('Reset failed. Please try again.')
+    } finally {
+      setResetting(false)
+    }
   }
 
   return (
@@ -98,6 +125,26 @@ export default function SettingsPage() {
           <p className="text-slate-400 text-sm">
             If you're struggling, please reach out to a mental health professional or call a crisis helpline.
           </p>
+        </Card>
+
+        {/* Tools */}
+        <Card>
+          <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-4">
+            Tools
+          </h3>
+          <button
+            onClick={handleResetToday}
+            disabled={resetting}
+            className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/50 transition-colors text-left disabled:opacity-50"
+          >
+            <RotateCcw className={`w-5 h-5 text-slate-400 ${resetting ? 'animate-spin' : ''}`} />
+            <div className="flex-1">
+              <p className="text-slate-200">Reset Today</p>
+              <p className="text-sm text-slate-500">
+                {resetMessage || 'Reset your morning check-in'}
+              </p>
+            </div>
+          </button>
         </Card>
 
         {/* Sign out */}

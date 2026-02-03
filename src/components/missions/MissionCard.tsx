@@ -47,6 +47,7 @@ export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: 
           }
         `}
       >
+        {/* Main content row */}
         <div className="flex items-start gap-4">
           {/* Complete Button */}
           <button
@@ -74,8 +75,11 @@ export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: 
             )}
           </button>
 
-          {/* Content */}
-          <div className="flex-1 min-w-0">
+          {/* Content - Clickable to go to project */}
+          <Link
+            href={mission.project_id ? `/projects/${mission.project_id}` : '/projects'}
+            className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+          >
             <div className="text-xs text-teal-400 uppercase tracking-wide mb-1 flex items-center gap-1">
               <Sparkles className="w-3 h-3" />
               Today&apos;s Mission
@@ -88,51 +92,51 @@ export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: 
                 {mission.description}
               </p>
             )}
+          </Link>
+        </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-between mt-3">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-500 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-amber-400" />
-                  {mission.xp_reward} XP
-                </span>
+        {/* Footer row */}
+        <div className="flex items-center justify-between mt-3 ml-12">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-500 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              {mission.xp_reward} XP
+            </span>
 
-                {mission.project_id && (
-                  <Link
-                    href={`/projects/${mission.project_id}`}
-                    className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"
-                  >
-                    <FolderKanban className="w-3 h-3" />
-                    View Project
-                  </Link>
-                )}
+            {mission.project_id && (
+              <Link
+                href={`/projects/${mission.project_id}`}
+                className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"
+              >
+                <FolderKanban className="w-3 h-3" />
+                View Project
+              </Link>
+            )}
 
-                {/* XP Gain Animation */}
-                <AnimatePresence>
-                  {recentXp > 0 && (
-                    <motion.span
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="text-sm text-teal-400 font-medium"
-                    >
-                      +{recentXp} XP!
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {!isCompleted && !isSkipped && onSkip && (
-                <button
-                  onClick={onSkip}
-                  className="text-xs text-slate-500 hover:text-slate-400 flex items-center gap-1"
+            {/* XP Gain Animation */}
+            <AnimatePresence>
+              {recentXp > 0 && (
+                <motion.span
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="text-sm text-teal-400 font-medium"
                 >
-                  <SkipForward className="w-3 h-3" />
-                  Skip
-                </button>
+                  +{recentXp} XP!
+                </motion.span>
               )}
-            </div>
+            </AnimatePresence>
           </div>
+
+          {!isCompleted && !isSkipped && onSkip && (
+            <button
+              onClick={onSkip}
+              className="text-xs text-slate-500 hover:text-slate-400 flex items-center gap-1"
+            >
+              <SkipForward className="w-3 h-3" />
+              Skip
+            </button>
+          )}
         </div>
       </motion.div>
     )

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
+import { ConnectionStatus } from '@/components/ui/ConnectionStatus'
 import './globals.css'
 
 const inter = Inter({
@@ -44,6 +45,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className={`${inter.variable} font-sans antialiased bg-slate-900 text-slate-100 min-h-screen`}>
+        <ConnectionStatus />
         {children}
       </body>
     </html>

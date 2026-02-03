@@ -54,55 +54,71 @@ export function ProjectCard({ project, delay = 0 }: ProjectCardProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
+      transition={{ delay, duration: 0.4 }}
     >
       <Link href={`/projects/${project.id}`}>
-        <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/50 hover:bg-slate-700/50 hover:border-slate-600/50 transition-all group">
-          {/* Header */}
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-white group-hover:text-teal-400 transition-colors truncate">
-                {project.name}
-              </h3>
-              {project.description && (
-                <p className="text-sm text-slate-400 line-clamp-2 mt-1">
-                  {project.description}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 hover:border-teal-500/50 transition-all duration-300 group shadow-lg hover:shadow-teal-500/10">
+          {/* Subtle glow effect */}
+          <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+          <div className="relative p-6">
+            {/* Status indicator bar at top */}
+            <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${
+              project.status === 'discovery' ? 'from-purple-500 to-purple-400' :
+              project.status === 'planning' ? 'from-blue-500 to-blue-400' :
+              project.status === 'building' ? 'from-amber-500 to-amber-400' :
+              project.status === 'launched' ? 'from-teal-500 to-emerald-400' :
+              'from-slate-500 to-slate-400'
+            }`} />
+
+            {/* Header */}
+            <div className="flex items-start justify-between mb-5 pt-2">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold text-2xl text-white group-hover:text-teal-400 transition-colors mb-2">
+                  {project.name}
+                </h3>
+                <p className="text-base text-slate-400 line-clamp-2 leading-relaxed">
+                  {project.description || 'Your next big thing awaits...'}
                 </p>
+              </div>
+              <div className="ml-4 p-2 rounded-full bg-slate-700/50 group-hover:bg-teal-500/20 transition-colors">
+                <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-teal-400 transition-colors" />
+              </div>
+            </div>
+
+            {/* Progress Section */}
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-slate-300">Progress</span>
+                <span className="text-lg font-bold text-white">{project.progress_percent}%</span>
+              </div>
+              <div className="h-4 bg-slate-700/50 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${project.progress_percent}%` }}
+                  transition={{ duration: 0.8, delay: delay + 0.2, ease: "easeOut" }}
+                  className="h-full bg-gradient-to-r from-teal-500 via-teal-400 to-emerald-400 rounded-full shadow-lg shadow-teal-500/30"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-2">
+              <div className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ${status.bgColor} ${status.borderColor} border ${status.color}`}>
+                <StatusIcon className="w-4 h-4" />
+                {status.label}
+              </div>
+
+              {project.status === 'launched' && project.actual_income > 0 ? (
+                <div className="text-lg font-bold text-teal-400">
+                  ${(project.actual_income / 100).toFixed(0)}/mo
+                </div>
+              ) : (
+                <span className="text-sm text-slate-500">Tap to continue →</span>
               )}
             </div>
-            <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-teal-400 transition-colors flex-shrink-0 ml-2" />
-          </div>
-
-          {/* Progress Bar */}
-          <div className="mb-3">
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-slate-400">Progress</span>
-              <span className="text-slate-300 font-medium">{project.progress_percent}%</span>
-            </div>
-            <div className="h-2 bg-slate-700/50 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${project.progress_percent}%` }}
-                transition={{ duration: 0.5, delay: delay + 0.2 }}
-                className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 rounded-full"
-              />
-            </div>
-          </div>
-
-          {/* Status Badge */}
-          <div className="flex items-center justify-between">
-            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.bgColor} ${status.borderColor} border ${status.color}`}>
-              <StatusIcon className="w-3.5 h-3.5" />
-              {status.label}
-            </div>
-
-            {project.status === 'launched' && project.actual_income > 0 && (
-              <div className="text-sm text-teal-400 font-medium">
-                ${(project.actual_income / 100).toFixed(0)}/mo
-              </div>
-            )}
           </div>
         </div>
       </Link>

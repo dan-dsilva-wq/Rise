@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { format, subDays, parseISO } from 'date-fns'
+import { subDays, parseISO } from 'date-fns'
+
+// Use UTC date to match server-side (Vercel runs in UTC)
+function getUtcDateString(date: Date = new Date()): string {
+  return date.toISOString().split('T')[0]
+}
 
 interface StreakInfo {
   current: number
@@ -71,8 +76,8 @@ export function useStreak(userId: string | undefined) {
     }
 
     // Calculate current streak
-    const today = format(new Date(), 'yyyy-MM-dd')
-    const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+    const today = getUtcDateString()
+    const yesterday = getUtcDateString(subDays(new Date(), 1))
 
     let streak = 0
     let lastActiveDate: string | null = null
@@ -107,7 +112,7 @@ export function useStreak(userId: string | undefined) {
         1
       )
 
-      if (format(currentDate, 'yyyy-MM-dd') === format(expectedDate, 'yyyy-MM-dd')) {
+      if (getUtcDateString(currentDate) === getUtcDateString(expectedDate)) {
         streak++
       } else {
         break

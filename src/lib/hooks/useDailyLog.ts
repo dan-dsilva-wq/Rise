@@ -2,19 +2,23 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { format } from 'date-fns'
 import type { DailyLog, DailyLogInsert } from '@/lib/supabase/types'
 import { calculateMorningXp } from '@/lib/gamification/xp-values'
 
-export function useDailyLog(userId: string | undefined) {
-  const [todayLog, setTodayLog] = useState<DailyLog | null>(null)
+// Use UTC date to match server-side (Vercel runs in UTC)
+function getUtcDateString(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
+export function useDailyLog(userId: string | undefined, initialLog?: DailyLog | null) {
+  const [todayLog, setTodayLog] = useState<DailyLog | null>(initialLog || null)
   const [recentLogs, setRecentLogs] = useState<DailyLog[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initialLog)
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
 
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = getUtcDateString()
 
   // Fetch today's log and recent logs
   const fetchLogs = useCallback(async () => {
@@ -45,11 +49,16 @@ export function useDailyLog(userId: string | undefined) {
 
     setRecentLogs((recentData as DailyLog[]) || [])
     setLoading(false)
-  }, [userId, today, client])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, today]) // Intentionally omit client - it's stable
 
   useEffect(() => {
-    fetchLogs()
-  }, [fetchLogs])
+    // Only fetch if we don't have initial data
+    if (!initialLog) {
+      fetchLogs()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Run once on mount only
 
   // Create or update today's log when "I'm Up" is pressed
   const pressImUp = async (): Promise<{ xpEarned: number; isNewDay: boolean }> => {
@@ -93,7 +102,7 @@ export function useDailyLog(userId: string | undefined) {
     return { xpEarned, isNewDay: true }
   }
 
-  // Update checklist items
+  // Update checklist items (with optimistic UI)
   const updateChecklist = async (
     field: 'feet_on_floor' | 'light_exposure' | 'drank_water',
     value: boolean
@@ -107,79 +116,94 @@ export function useDailyLog(userId: string | undefined) {
     }
 
     const xpDelta = value ? xpValues[field] : -xpValues[field]
+    const newXp = todayLog.xp_earned + xpDelta
 
-    const { data, error } = await client
-      .from('daily_logs')
-      .update({
-        [field]: value,
-        xp_earned: todayLog.xp_earned + xpDelta,
-      })
-      .eq('id', todayLog.id)
-      .select()
-      .single()
-
-    if (error) throw error
-
-    // Update user's total XP
-    if (value) {
-      await client.rpc('increment_xp', { user_id: userId, xp_amount: xpValues[field] })
+    // Optimistic update - show immediately and keep it
+    const previousLog = todayLog
+    const optimisticLog = {
+      ...todayLog,
+      [field]: value,
+      xp_earned: newXp,
     }
+    setTodayLog(optimisticLog)
 
-    setTodayLog(data as DailyLog)
-    return value ? xpValues[field] : 0
+    try {
+      const { error } = await client
+        .from('daily_logs')
+        .update({
+          [field]: value,
+          xp_earned: newXp,
+        })
+        .eq('id', todayLog.id)
+
+      if (error) throw error
+
+      // Update user's total XP in background (don't await)
+      if (value) {
+        client.rpc('increment_xp', { user_id: userId, xp_amount: xpValues[field] }).catch(() => {})
+      }
+
+      // Don't re-set state - optimistic update is already correct
+      return value ? xpValues[field] : 0
+    } catch (error) {
+      // Rollback on error
+      setTodayLog(previousLog)
+      throw error
+    }
   }
 
-  // Update mood and energy
+  // Update mood and energy (with optimistic UI)
   const updateMoodEnergy = async (
     morningEnergy: number,
     morningMood: number
   ): Promise<number> => {
-    if (!userId || !todayLog) throw new Error('No log')
+    if (!userId || !todayLog) {
+      console.error('Cannot save mood: no user or todayLog', { userId, hasTodayLog: !!todayLog })
+      throw new Error('Please press "I\'m Up" first to start your day')
+    }
 
-    // Check if already submitted
-    if (todayLog.morning_energy !== null && todayLog.morning_mood !== null) {
-      // Just update values, no XP
+    const isFirstSubmission = todayLog.morning_energy === null && todayLog.morning_mood === null
+    const xpBonus = isFirstSubmission ? 20 : 0
+    const currentXp = todayLog.xp_earned || 0
+
+    // Optimistic update - show immediately
+    const previousLog = todayLog
+    setTodayLog({
+      ...todayLog,
+      morning_energy: morningEnergy,
+      morning_mood: morningMood,
+      xp_earned: currentXp + xpBonus,
+    })
+
+    try {
       const { data, error } = await client
         .from('daily_logs')
-        .update({ morning_energy: morningEnergy, morning_mood: morningMood })
+        .update({
+          morning_energy: morningEnergy,
+          morning_mood: morningMood,
+          xp_earned: currentXp + xpBonus,
+        })
         .eq('id', todayLog.id)
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Failed to update daily_logs:', error)
+        throw error
+      }
+
+      // Try to update profile XP in background
+      if (isFirstSubmission) {
+        client.rpc('increment_xp', { user_id: userId, xp_amount: xpBonus }).catch(() => {})
+      }
+
       setTodayLog(data as DailyLog)
-      return 0
-    }
-
-    // First submission - award XP
-    const xpBonus = 20
-    const currentXp = todayLog.xp_earned || 0
-
-    const { data, error } = await client
-      .from('daily_logs')
-      .update({
-        morning_energy: morningEnergy,
-        morning_mood: morningMood,
-        xp_earned: currentXp + xpBonus,
-      })
-      .eq('id', todayLog.id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Failed to update daily_logs:', error)
+      return xpBonus
+    } catch (error) {
+      // Rollback on error
+      setTodayLog(previousLog)
       throw error
     }
-
-    // Try to update profile XP, but don't fail if RPC doesn't exist
-    try {
-      await client.rpc('increment_xp', { user_id: userId, xp_amount: xpBonus })
-    } catch (rpcError) {
-      console.warn('Could not update profile XP via RPC:', rpcError)
-    }
-
-    setTodayLog(data as DailyLog)
-    return xpBonus
   }
 
   // Get a random daily prompt

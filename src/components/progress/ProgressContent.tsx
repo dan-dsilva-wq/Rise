@@ -2,8 +2,9 @@
 
 import { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Award, TrendingUp, Moon, Calendar } from 'lucide-react'
+import { ArrowLeft, Award, TrendingUp, Calendar } from 'lucide-react'
 import Link from 'next/link'
+import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { WakeTimeChart } from './WakeTimeChart'
 import { MoodChart } from './MoodChart'
 import { WeeklyHeatmap } from './WeeklyHeatmap'
@@ -173,35 +174,9 @@ export function ProgressContent({
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-around">
-          <Link
-            href="/"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center">
-              <span className="text-xs text-slate-300 font-bold">R</span>
-            </div>
-            <span className="text-xs">Today</span>
-          </Link>
-
-          <Link
-            href="/progress"
-            className="flex flex-col items-center gap-1 text-teal-400"
-          >
-            <TrendingUp className="w-6 h-6" />
-            <span className="text-xs">Progress</span>
-          </Link>
-
-          <Link
-            href="/evening"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <Moon className="w-6 h-6" />
-            <span className="text-xs">Evening</span>
-          </Link>
-        </div>
-      </nav>
+      <div className="fixed bottom-0 left-0 right-0">
+        <BottomNavigation />
+      </div>
     </div>
   )
 }

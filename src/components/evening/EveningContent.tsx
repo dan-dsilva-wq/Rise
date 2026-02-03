@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Moon, TrendingUp, Lock } from 'lucide-react'
+import { ArrowLeft, Moon, Lock } from 'lucide-react'
 import Link from 'next/link'
+import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { Slider } from '@/components/ui/Slider'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -106,24 +107,9 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
         </main>
 
         {/* Bottom nav */}
-        <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
-          <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-around">
-            <Link href="/" className="flex flex-col items-center gap-1 text-slate-400">
-              <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center">
-                <span className="text-xs text-slate-300 font-bold">R</span>
-              </div>
-              <span className="text-xs">Today</span>
-            </Link>
-            <Link href="/progress" className="flex flex-col items-center gap-1 text-slate-400">
-              <TrendingUp className="w-6 h-6" />
-              <span className="text-xs">Progress</span>
-            </Link>
-            <Link href="/evening" className="flex flex-col items-center gap-1 text-teal-400">
-              <Moon className="w-6 h-6" />
-              <span className="text-xs">Evening</span>
-            </Link>
-          </div>
-        </nav>
+        <div className="fixed bottom-0 left-0 right-0">
+          <BottomNavigation />
+        </div>
       </div>
     )
   }
@@ -246,24 +232,9 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
       </main>
 
       {/* Bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-around">
-          <Link href="/" className="flex flex-col items-center gap-1 text-slate-400">
-            <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center">
-              <span className="text-xs text-slate-300 font-bold">R</span>
-            </div>
-            <span className="text-xs">Today</span>
-          </Link>
-          <Link href="/progress" className="flex flex-col items-center gap-1 text-slate-400">
-            <TrendingUp className="w-6 h-6" />
-            <span className="text-xs">Progress</span>
-          </Link>
-          <Link href="/evening" className="flex flex-col items-center gap-1 text-teal-400">
-            <Moon className="w-6 h-6" />
-            <span className="text-xs">Evening</span>
-          </Link>
-        </div>
-      </nav>
+      <div className="fixed bottom-0 left-0 right-0">
+        <BottomNavigation />
+      </div>
     </div>
   )
 }

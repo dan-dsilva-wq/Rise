@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, Circle, Clock, Sparkles, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, Circle, Clock, Sparkles, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import type { Milestone } from '@/lib/supabase/types'
 import { Button } from '@/components/ui/Button'
 
 interface MilestoneListProps {
   milestones: Milestone[]
+  projectId: string
   onComplete: (id: string) => Promise<number>
   onAdd?: () => void
   onDelete?: (id: string) => void
@@ -17,18 +19,21 @@ interface MilestoneListProps {
 
 export function MilestoneList({
   milestones,
+  projectId,
   onComplete,
   onAdd,
   onDelete,
   showAddButton = false,
   isEditable = false,
 }: MilestoneListProps) {
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const router = useRouter()
   const [completingId, setCompletingId] = useState<string | null>(null)
   const [recentXp, setRecentXp] = useState<{ id: string; amount: number } | null>(null)
 
-  const completedCount = milestones.filter(m => m.status === 'completed').length
-  const totalCount = milestones.length
+  // Filter out discarded milestones
+  const activeMilestones = milestones.filter(m => m.status !== 'discarded')
+  const completedCount = activeMilestones.filter(m => m.status === 'completed').length
+  const totalCount = activeMilestones.length
 
   const handleComplete = async (milestone: Milestone) => {
     if (milestone.status === 'completed' || completingId) return
@@ -43,6 +48,11 @@ export function MilestoneList({
     }
 
     setCompletingId(null)
+  }
+
+  const handleMilestoneClick = (milestone: Milestone) => {
+    // Navigate to Milestone Mode for AI assistance
+    router.push(`/projects/${projectId}/milestone/${milestone.id}`)
   }
 
   return (
@@ -63,12 +73,16 @@ export function MilestoneList({
         )}
       </div>
 
+      {/* Hint text */}
+      {activeMilestones.length > 0 && (
+        <p className="text-xs text-slate-500">Tap a milestone to work on it with AI</p>
+      )}
+
       {/* Milestone Items */}
       <div className="space-y-2">
-        {milestones.map((milestone, index) => {
+        {activeMilestones.map((milestone, index) => {
           const isCompleted = milestone.status === 'completed'
           const isInProgress = milestone.status === 'in_progress'
-          const isExpanded = expandedId === milestone.id
           const isCompleting = completingId === milestone.id
           const showXpGain = recentXp?.id === milestone.id
 
@@ -78,21 +92,19 @@ export function MilestoneList({
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
+              onClick={() => handleMilestoneClick(milestone)}
               className={`
-                rounded-lg border transition-all
+                rounded-lg border transition-all cursor-pointer group
                 ${isCompleted
-                  ? 'bg-teal-500/5 border-teal-500/20'
+                  ? 'bg-teal-500/5 border-teal-500/20 hover:bg-teal-500/10'
                   : isInProgress
-                    ? 'bg-amber-500/5 border-amber-500/20'
-                    : 'bg-slate-800/30 border-slate-700/30'
+                    ? 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10'
+                    : 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-800/50 hover:border-slate-600/50'
                 }
               `}
             >
-              <div
-                className="p-3 flex items-start gap-3 cursor-pointer"
-                onClick={() => setExpandedId(isExpanded ? null : milestone.id)}
-              >
-                {/* Status Icon */}
+              <div className="p-3 flex items-start gap-3">
+                {/* Status Icon - clicking marks complete */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -106,6 +118,7 @@ export function MilestoneList({
                       : 'text-slate-500 hover:text-teal-400'
                     }
                   `}
+                  title={isCompleted ? 'Completed' : 'Mark as complete'}
                 >
                   {isCompleting ? (
                     <motion.div
@@ -124,7 +137,7 @@ export function MilestoneList({
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className={`font-medium ${isCompleted ? 'text-slate-400 line-through' : 'text-white'}`}>
+                    <span className={`font-medium ${isCompleted ? 'text-slate-400 line-through' : 'text-white group-hover:text-teal-300'} transition-colors`}>
                       {milestone.title}
                     </span>
                     {isInProgress && (
@@ -133,6 +146,13 @@ export function MilestoneList({
                       </span>
                     )}
                   </div>
+
+                  {/* Description preview if exists */}
+                  {milestone.description && (
+                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
+                      {milestone.description}
+                    </p>
+                  )}
 
                   {/* XP Badge */}
                   <div className="flex items-center gap-2 mt-1">
@@ -163,8 +183,8 @@ export function MilestoneList({
                   </div>
                 </div>
 
-                {/* Expand/Collapse */}
-                <div className="flex items-center gap-2">
+                {/* Actions & Arrow */}
+                <div className="flex items-center gap-1">
                   {isEditable && onDelete && (
                     <button
                       onClick={(e) => {
@@ -176,38 +196,17 @@ export function MilestoneList({
                       <Trash2 className="w-4 h-4" />
                     </button>
                   )}
-                  {milestone.description && (
-                    isExpanded ? (
-                      <ChevronUp className="w-4 h-4 text-slate-500" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-slate-500" />
-                    )
-                  )}
+                  {/* Arrow indicator - shows it's clickable */}
+                  <ChevronRight className={`w-5 h-5 transition-all ${isCompleted ? 'text-slate-600' : 'text-slate-500 group-hover:text-teal-400 group-hover:translate-x-0.5'}`} />
                 </div>
               </div>
-
-              {/* Expanded Description */}
-              <AnimatePresence>
-                {isExpanded && milestone.description && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-3 pb-3 pl-11 text-sm text-slate-400">
-                      {milestone.description}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
           )
         })}
       </div>
 
       {/* Empty State */}
-      {milestones.length === 0 && (
+      {activeMilestones.length === 0 && (
         <div className="text-center py-8 text-slate-400">
           <p className="text-sm">No milestones yet</p>
           {showAddButton && onAdd && (

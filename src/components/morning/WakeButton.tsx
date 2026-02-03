@@ -13,15 +13,22 @@ interface WakeButtonProps {
 export function WakeButton({ onPress, isPressed = false, className = '' }: WakeButtonProps) {
   const [isPressing, setIsPressing] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handlePress = async () => {
     if (isPressed || isPressing) return
 
     setIsPressing(true)
+    setError(null)
     try {
       await onPress()
       setShowSuccess(true)
       setTimeout(() => setShowSuccess(false), 2000)
+    } catch (err) {
+      console.error('WakeButton error:', err)
+      const message = err instanceof Error ? err.message : 'Something went wrong'
+      setError(message)
+      setTimeout(() => setError(null), 10000)
     } finally {
       setIsPressing(false)
     }
@@ -104,6 +111,17 @@ export function WakeButton({ onPress, isPressed = false, className = '' }: WakeB
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Error display */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg max-w-xs"
+        >
+          <p className="text-red-400 text-sm text-center">{error}</p>
+        </motion.div>
+      )}
 
       <p className="mt-4 text-slate-400 text-sm">Tap to start your day</p>
     </div>

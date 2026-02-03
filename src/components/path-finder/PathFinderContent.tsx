@@ -1,15 +1,20 @@
 'use client'
 
-import { Settings, TrendingUp, FolderKanban, ChevronLeft, Sparkles } from 'lucide-react'
+import { Settings, ChevronLeft, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { PathFinderChat } from './PathFinderChat'
-import type { Profile } from '@/lib/supabase/types'
+import { BottomNavigation } from '@/components/ui/BottomNavigation'
+import type { PathFinderConversation, PathFinderMessage, UserProfileFact } from '@/lib/supabase/types'
 
 interface PathFinderContentProps {
-  profile: Profile | null
+  userId: string
+  initialConversation: PathFinderConversation | null
+  initialConversations: PathFinderConversation[]
+  initialMessages: PathFinderMessage[]
+  initialFacts: UserProfileFact[]
 }
 
-export function PathFinderContent({ profile }: PathFinderContentProps) {
+export function PathFinderContent({ userId, initialConversation, initialConversations, initialMessages, initialFacts }: PathFinderContentProps) {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
       {/* Header */}
@@ -41,39 +46,17 @@ export function PathFinderContent({ profile }: PathFinderContentProps) {
 
       {/* Chat Interface */}
       <main className="flex-1 max-w-lg mx-auto w-full">
-        <PathFinderChat />
+        <PathFinderChat
+          userId={userId}
+          initialConversation={initialConversation}
+          initialConversations={initialConversations}
+          initialMessages={initialMessages}
+          initialFacts={initialFacts}
+        />
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-around">
-          <Link
-            href="/"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center">
-              <span className="text-xs text-slate-300 font-bold">R</span>
-            </div>
-            <span className="text-xs">Today</span>
-          </Link>
-
-          <Link
-            href="/projects"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <FolderKanban className="w-6 h-6" />
-            <span className="text-xs">Projects</span>
-          </Link>
-
-          <Link
-            href="/progress"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <TrendingUp className="w-6 h-6" />
-            <span className="text-xs">Progress</span>
-          </Link>
-        </div>
-      </nav>
+      <BottomNavigation />
     </div>
   )
 }

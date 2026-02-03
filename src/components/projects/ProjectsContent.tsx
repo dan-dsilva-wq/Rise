@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Settings, TrendingUp, Compass, FolderKanban, Plus, Rocket } from 'lucide-react'
+import { Settings, Compass, FolderKanban, Plus, Rocket } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { ProjectCard } from './ProjectCard'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { useProjects } from '@/lib/hooks/useProject'
 import { useUser } from '@/lib/hooks/useUser'
 import type { Profile, Project } from '@/lib/supabase/types'
@@ -20,12 +22,14 @@ export function ProjectsContent({
   profile: initialProfile,
   initialProjects,
 }: ProjectsContentProps) {
+  const router = useRouter()
   const { user, profile } = useUser()
-  const { projects, loading, createProject } = useProjects(user?.id)
+  const { projects, loading, createProject } = useProjects(user?.id, initialProjects)
   const [isCreating, setIsCreating] = useState(false)
 
   const currentProfile = profile || initialProfile
-  const displayProjects = loading ? initialProjects : projects
+  // Always use projects from hook - it's initialized with initialProjects
+  const displayProjects = projects
 
   // Separate projects by status
   const activeProjects = displayProjects.filter(p => ['discovery', 'planning', 'building'].includes(p.status))
@@ -43,7 +47,7 @@ export function ProjectsContent({
 
     if (project) {
       // Navigate to the new project
-      window.location.href = `/projects/${project.id}`
+      router.push(`/projects/${project.id}`)
     }
   }
 
@@ -69,42 +73,9 @@ export function ProjectsContent({
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* Quick Actions */}
-        <div className="flex gap-3">
-          <Link href="/path-finder" className="flex-1">
-            <Card className="p-4 hover:bg-slate-700/30 transition-colors cursor-pointer">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-teal-500/10">
-                  <Compass className="w-5 h-5 text-teal-500" />
-                </div>
-                <div>
-                  <div className="font-medium text-white text-sm">Find Path</div>
-                  <div className="text-xs text-slate-400">Discover projects</div>
-                </div>
-              </div>
-            </Card>
-          </Link>
-          <button onClick={handleCreateProject} disabled={isCreating} className="flex-1">
-            <Card className="p-4 hover:bg-slate-700/30 transition-colors cursor-pointer h-full">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-500/10">
-                  <Plus className="w-5 h-5 text-purple-500" />
-                </div>
-                <div className="text-left">
-                  <div className="font-medium text-white text-sm">Quick Start</div>
-                  <div className="text-xs text-slate-400">Create blank</div>
-                </div>
-              </div>
-            </Card>
-          </button>
-        </div>
-
-        {/* Active Projects */}
+        {/* Active Projects - Main Focus */}
         {activeProjects.length > 0 && (
           <section>
-            <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide mb-3">
-              Active Projects
-            </h2>
             <div className="space-y-3">
               {activeProjects.map((project, index) => (
                 <ProjectCard key={project.id} project={project} delay={index * 0.05} />
@@ -142,6 +113,29 @@ export function ProjectsContent({
           </section>
         )}
 
+        {/* Add Another Project - subtle, at bottom when projects exist */}
+        {displayProjects.length > 0 && (
+          <section className="pt-4 border-t border-slate-800">
+            <p className="text-xs text-slate-500 uppercase tracking-wide mb-3">Add another project</p>
+            <div className="flex gap-2">
+              <Link href="/path-finder" className="flex-1">
+                <button className="w-full px-3 py-2 text-sm text-slate-400 hover:text-slate-200 bg-slate-800/50 hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center gap-2">
+                  <Compass className="w-4 h-4" />
+                  Path Finder
+                </button>
+              </Link>
+              <button
+                onClick={handleCreateProject}
+                disabled={isCreating}
+                className="flex-1 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 bg-slate-800/50 hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Blank Project
+              </button>
+            </div>
+          </section>
+        )}
+
         {/* Empty State */}
         {displayProjects.length === 0 && (
           <Card className="text-center py-12">
@@ -167,35 +161,9 @@ export function ProjectsContent({
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-around">
-          <Link
-            href="/"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center">
-              <span className="text-xs text-slate-300 font-bold">R</span>
-            </div>
-            <span className="text-xs">Today</span>
-          </Link>
-
-          <Link
-            href="/projects"
-            className="flex flex-col items-center gap-1 text-teal-400"
-          >
-            <FolderKanban className="w-6 h-6" />
-            <span className="text-xs">Projects</span>
-          </Link>
-
-          <Link
-            href="/progress"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <TrendingUp className="w-6 h-6" />
-            <span className="text-xs">Progress</span>
-          </Link>
-        </div>
-      </nav>
+      <div className="fixed bottom-0 left-0 right-0">
+        <BottomNavigation />
+      </div>
     </div>
   )
 }

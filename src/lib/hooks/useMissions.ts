@@ -2,8 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { format } from 'date-fns'
 import type { DailyMission, DailyMissionInsert, Project, Milestone } from '@/lib/supabase/types'
+
+// Use UTC date to match server-side (Vercel runs in UTC)
+function getUtcDateString(): string {
+  return new Date().toISOString().split('T')[0]
+}
 
 export function useMissions(userId: string | undefined) {
   const [todayMissions, setTodayMissions] = useState<DailyMission[]>([])
@@ -12,7 +16,7 @@ export function useMissions(userId: string | undefined) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
 
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = getUtcDateString()
 
   const fetchMissions = useCallback(async () => {
     if (!userId) {

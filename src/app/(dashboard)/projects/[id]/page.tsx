@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { ProjectDetailContent } from '@/components/projects/ProjectDetailContent'
 import type { Project, Milestone } from '@/lib/supabase/types'
 
+export const dynamic = 'force-dynamic'
+
 interface PageProps {
   params: Promise<{ id: string }>
 }

@@ -4,14 +4,13 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import {
-  Settings, ChevronLeft, MessageSquare, Target, Hammer, Rocket,
-  PauseCircle, MoreVertical, Pencil, Trash2, Play, CheckCircle
+  ChevronLeft, Target, Hammer, Rocket,
+  PauseCircle, MoreVertical, Pencil, Trash2, Play, Sparkles, Compass, X
 } from 'lucide-react'
 import Link from 'next/link'
 import { MilestoneList } from './MilestoneList'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { XpCounter } from '@/components/gamification/XpCounter'
 import { useProject } from '@/lib/hooks/useProject'
 import { useUser } from '@/lib/hooks/useUser'
 import type { Profile, Project, Milestone } from '@/lib/supabase/types'
@@ -42,22 +41,22 @@ export function ProjectDetailContent({
     milestones,
     loading,
     updateProject,
+    deleteProject,
     addMilestone,
     completeMilestone,
     deleteMilestone,
-  } = useProject(initialProject?.id, user?.id)
+  } = useProject(initialProject?.id, user?.id, initialProject, initialMilestones)
 
   const [showMenu, setShowMenu] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(initialProject?.name || '')
   const [editDescription, setEditDescription] = useState(initialProject?.description || '')
-  const [recentXpGain, setRecentXpGain] = useState(0)
   const [showAddMilestone, setShowAddMilestone] = useState(false)
   const [newMilestoneTitle, setNewMilestoneTitle] = useState('')
-
-  const currentProfile = profile || initialProfile
-  const currentProject = loading ? initialProject : project
-  const currentMilestones = loading ? initialMilestones : milestones
+  const [errorToast, setErrorToast] = useState<string | null>(null)
+  // Use data from hook - it's initialized with server data
+  const currentProject = project
+  const currentMilestones = milestones
 
   if (!currentProject) {
     return (
@@ -91,18 +90,21 @@ export function ProjectDetailContent({
   }
 
   const handleDelete = async () => {
-    if (confirm('Are you sure you want to delete this project?')) {
-      // Delete via Supabase directly since we don't have a delete in useProject for single project
-      router.push('/projects')
+    if (confirm('Are you sure you want to delete this project? This cannot be undone.')) {
+      const success = await deleteProject()
+      if (success) {
+        router.push('/projects')
+      } else {
+        setErrorToast('Failed to delete project. Please try again.')
+        setTimeout(() => setErrorToast(null), 5000)
+      }
     }
   }
 
   const handleCompleteMilestone = async (milestoneId: string) => {
     const xp = await completeMilestone(milestoneId)
     if (xp > 0) {
-      setRecentXpGain(xp)
       await refreshProfile()
-      setTimeout(() => setRecentXpGain(0), 3000)
     }
     return xp
   }
@@ -180,6 +182,14 @@ export function ProjectDetailContent({
                     Edit Details
                   </button>
 
+                  <Link
+                    href="/path-finder"
+                    className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 flex items-center gap-2"
+                  >
+                    <Compass className="w-4 h-4" />
+                    Rethink in Path Finder
+                  </Link>
+
                   {status.next && (
                     <button
                       onClick={() => handleStatusChange(status.next as Project['status'])}
@@ -240,52 +250,23 @@ export function ProjectDetailContent({
           </Card>
         )}
 
-        {/* Progress Card */}
-        <Card variant="elevated">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-white">Progress</h3>
-            <XpCounter
-              totalXp={currentProfile?.total_xp || 0}
-              level={currentProfile?.current_level || 1}
-              recentGain={recentXpGain}
-            />
-          </div>
-
-          {/* Progress Bar */}
-          <div className="mb-2">
-            <div className="flex items-center justify-between text-sm mb-1">
-              <span className="text-slate-400">Overall</span>
-              <span className="text-white font-medium">{currentProject.progress_percent}%</span>
-            </div>
-            <div className="h-3 bg-slate-700/50 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${currentProject.progress_percent}%` }}
-                transition={{ duration: 0.5 }}
-                className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 rounded-full"
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* Description (when not editing) */}
+        {/* Description - subtle, only when exists and not editing */}
         {!isEditing && currentProject.description && (
-          <Card>
-            <p className="text-slate-300">{currentProject.description}</p>
-          </Card>
+          <p className="text-slate-400 text-sm px-1">{currentProject.description}</p>
         )}
 
-        {/* AI Builder Button */}
+        {/* Work on Project - single clear action */}
         <Link href={`/projects/${currentProject.id}/build`}>
-          <Card className="bg-gradient-to-br from-teal-900/30 to-slate-800/50 border-teal-700/30 hover:border-teal-600/50 transition-colors cursor-pointer">
+          <Card className="bg-gradient-to-br from-teal-900/40 to-slate-800/50 border-teal-700/30 hover:border-teal-500/50 transition-colors cursor-pointer">
             <div className="flex items-center gap-4">
-              <div className="p-3 rounded-xl bg-teal-500/10">
-                <MessageSquare className="w-6 h-6 text-teal-400" />
+              <div className="p-3 rounded-xl bg-teal-500/20">
+                <Sparkles className="w-6 h-6 text-teal-400" />
               </div>
-              <div>
-                <h3 className="font-semibold text-white">AI Builder</h3>
-                <p className="text-sm text-slate-400">Work with AI to build your project</p>
+              <div className="flex-1">
+                <h3 className="font-semibold text-white">Work on Project</h3>
+                <p className="text-sm text-slate-400">Chat with AI to make progress</p>
               </div>
+              <ChevronLeft className="w-5 h-5 text-slate-500 rotate-180" />
             </div>
           </Card>
         </Link>
@@ -294,6 +275,7 @@ export function ProjectDetailContent({
         <Card>
           <MilestoneList
             milestones={currentMilestones}
+            projectId={currentProject.id}
             onComplete={handleCompleteMilestone}
             onAdd={() => setShowAddMilestone(true)}
             onDelete={deleteMilestone}
@@ -330,6 +312,27 @@ export function ProjectDetailContent({
             )}
           </AnimatePresence>
         </Card>
+
+        {/* Error Toast */}
+        <AnimatePresence>
+          {errorToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed bottom-28 left-4 right-4 max-w-lg mx-auto px-4 py-3 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-2"
+            >
+              <X className="w-4 h-4 text-red-400 flex-shrink-0" />
+              <span className="text-sm text-red-400 flex-1">{errorToast}</span>
+              <button
+                onClick={() => setErrorToast(null)}
+                className="text-red-400 hover:text-red-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   )

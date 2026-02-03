@@ -1,130 +1,28 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Settings, TrendingUp, FolderKanban, Target, Sparkles, ChevronRight } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Settings, Sparkles, Compass, Rocket, Hammer } from 'lucide-react'
 import Link from 'next/link'
-import { WakeButton } from '@/components/morning/WakeButton'
-import { MorningChecklist } from '@/components/morning/MorningChecklist'
-import { MoodSlider } from '@/components/morning/MoodSlider'
+import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { DailyPrompt } from '@/components/morning/DailyPrompt'
-import { XpCounter } from '@/components/gamification/XpCounter'
-import { StreakDisplay } from '@/components/gamification/StreakDisplay'
-import { AchievementToast, useAchievementToast } from '@/components/gamification/AchievementToast'
-import { MissionCard } from '@/components/missions/MissionCard'
-import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { useDailyLog } from '@/lib/hooks/useDailyLog'
-import { useMissions } from '@/lib/hooks/useMissions'
 import { useUser } from '@/lib/hooks/useUser'
-import type { Profile, DailyLog, DailyMission } from '@/lib/supabase/types'
+import type { Profile, DailyLog, Project } from '@/lib/supabase/types'
 
 interface DashboardContentProps {
   profile: Profile | null
   todayLog: DailyLog | null
   dailyPrompt: { prompt_text: string; author: string | null }
-  initialMission?: DailyMission | null
+  projects?: Project[]
 }
 
 export function DashboardContent({
   profile: initialProfile,
-  todayLog: initialTodayLog,
   dailyPrompt,
-  initialMission,
+  projects = [],
 }: DashboardContentProps) {
-  const { user, profile, refreshProfile } = useUser()
-  const { todayLog, pressImUp, updateChecklist, updateMoodEnergy } = useDailyLog(user?.id)
-  const { primaryMission, completeMission, skipMission, generateMissions, loading: missionsLoading } = useMissions(user?.id)
-  const { show: showAchievement, current: currentAchievement, hideAchievement } = useAchievementToast()
-
-  const [recentXpGain, setRecentXpGain] = useState(0)
-  const [energy, setEnergy] = useState(initialTodayLog?.morning_energy || 5)
-  const [mood, setMood] = useState(initialTodayLog?.morning_mood || 5)
-  const [showMoodSaved, setShowMoodSaved] = useState(false)
-  const [savingMood, setSavingMood] = useState(false)
-  const [moodError, setMoodError] = useState<string | null>(null)
+  const { profile } = useUser()
 
   const currentProfile = profile || initialProfile
-  const currentLog = todayLog || initialTodayLog
-  const currentMission = missionsLoading ? initialMission : primaryMission
-
-  const hasCheckedIn = currentLog?.im_up_pressed_at !== null
-
-  // Generate missions when user checks in
-  useEffect(() => {
-    if (hasCheckedIn && user?.id) {
-      generateMissions()
-    }
-  }, [hasCheckedIn, user?.id, generateMissions])
-
-  const handleImUp = async () => {
-    try {
-      const { xpEarned } = await pressImUp()
-      setRecentXpGain(xpEarned)
-      await refreshProfile()
-      setTimeout(() => setRecentXpGain(0), 3000)
-    } catch (error) {
-      console.error('Error pressing I\'m Up:', error)
-    }
-  }
-
-  const handleChecklistToggle = async (field: 'feetOnFloor' | 'lightExposure' | 'drankWater') => {
-    const fieldMap = {
-      feetOnFloor: 'feet_on_floor',
-      lightExposure: 'light_exposure',
-      drankWater: 'drank_water',
-    } as const
-
-    const currentValue = currentLog?.[fieldMap[field]] ?? false
-    try {
-      const xp = await updateChecklist(fieldMap[field], !currentValue)
-      if (xp > 0) {
-        setRecentXpGain(xp)
-        await refreshProfile()
-        setTimeout(() => setRecentXpGain(0), 3000)
-      }
-    } catch (error) {
-      console.error('Error updating checklist:', error)
-    }
-  }
-
-  const handleSaveMood = async () => {
-    setSavingMood(true)
-    setMoodError(null)
-    try {
-      const xp = await updateMoodEnergy(energy, mood)
-      if (xp > 0) {
-        setRecentXpGain(xp)
-        await refreshProfile()
-        setTimeout(() => setRecentXpGain(0), 3000)
-      }
-      setShowMoodSaved(true)
-      setTimeout(() => setShowMoodSaved(false), 2000)
-    } catch (error) {
-      console.error('Error saving mood:', error)
-      setMoodError('Failed to save. Try again.')
-      setTimeout(() => setMoodError(null), 3000)
-    } finally {
-      setSavingMood(false)
-    }
-  }
-
-  const handleCompleteMission = async () => {
-    if (!currentMission) return 0
-    const xp = await completeMission(currentMission.id)
-    if (xp > 0) {
-      setRecentXpGain(xp)
-      await refreshProfile()
-      setTimeout(() => setRecentXpGain(0), 3000)
-    }
-    return xp
-  }
-
-  const handleSkipMission = () => {
-    if (currentMission) {
-      skipMission(currentMission.id)
-    }
-  }
 
   // Determine time of day for greeting
   const hour = new Date().getHours()
@@ -158,51 +56,118 @@ export function DashboardContent({
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* XP and Streak Bar */}
-        <Card variant="elevated">
-          <div className="flex items-center justify-between">
-            <XpCounter
-              totalXp={currentProfile?.total_xp || 0}
-              level={currentProfile?.current_level || 1}
-              recentGain={recentXpGain}
-              className="flex-1"
-            />
-            <div className="pl-4 border-l border-slate-700">
-              <StreakDisplay
-                streak={currentProfile?.current_streak || 0}
-                longestStreak={currentProfile?.longest_streak || 0}
-                size="md"
-              />
-            </div>
-          </div>
-        </Card>
+        {/* PROJECTS - The Main Focus */}
+        {projects.length > 0 ? (
+          <section className="space-y-4">
+            {projects.map((project, index) => (
+              <motion.div
+                key={project.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <Link href={`/projects/${project.id}`}>
+                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 hover:border-teal-500/50 transition-all duration-300 group shadow-lg hover:shadow-teal-500/10">
+                    {/* Status bar */}
+                    <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${
+                      project.status === 'discovery' ? 'from-purple-500 to-purple-400' :
+                      project.status === 'planning' ? 'from-blue-500 to-blue-400' :
+                      project.status === 'building' ? 'from-amber-500 to-amber-400' :
+                      'from-teal-500 to-emerald-400'
+                    }`} />
 
-        {/* Today's Mission - Show after check-in */}
-        {hasCheckedIn && currentMission && (
-          <MissionCard
-            mission={currentMission}
-            isPrimary
-            onComplete={handleCompleteMission}
-            onSkip={handleSkipMission}
-          />
-        )}
+                    <div className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h2 className="font-bold text-2xl text-white group-hover:text-teal-400 transition-colors">
+                            {project.name}
+                          </h2>
+                          {project.description && (
+                            <p className="text-slate-400 mt-1 line-clamp-2">{project.description}</p>
+                          )}
+                        </div>
+                        <div className="ml-4 p-2 rounded-full bg-slate-700/50 group-hover:bg-teal-500/20 transition-colors">
+                          {project.status === 'building' ? (
+                            <Hammer className="w-5 h-5 text-amber-400" />
+                          ) : project.status === 'discovery' ? (
+                            <Compass className="w-5 h-5 text-purple-400" />
+                          ) : (
+                            <Rocket className="w-5 h-5 text-teal-400" />
+                          )}
+                        </div>
+                      </div>
 
-        {/* No Mission - Prompt to find path */}
-        {hasCheckedIn && !currentMission && !missionsLoading && (
-          <Link href="/path-finder">
-            <Card className="bg-gradient-to-br from-purple-900/30 to-slate-800/50 border-purple-700/30 hover:border-purple-600/50 transition-colors cursor-pointer">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-purple-500/10">
-                  <Target className="w-6 h-6 text-purple-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-white">Find Your Mission</h3>
-                  <p className="text-sm text-slate-400">Discover what to build today</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-slate-400" />
+                      {/* Progress */}
+                      <div className="mb-4">
+                        <div className="flex justify-between text-sm mb-2">
+                          <span className="text-slate-400">Progress</span>
+                          <span className="text-white font-bold">{project.progress_percent}%</span>
+                        </div>
+                        <div className="h-3 bg-slate-700/50 rounded-full overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${project.progress_percent}%` }}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            className="h-full bg-gradient-to-r from-teal-500 to-emerald-400 rounded-full"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-medium ${
+                          project.status === 'discovery' ? 'text-purple-400' :
+                          project.status === 'planning' ? 'text-blue-400' :
+                          project.status === 'building' ? 'text-amber-400' :
+                          'text-teal-400'
+                        }`}>
+                          {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+                        </span>
+                        <span className="text-sm text-slate-500 group-hover:text-teal-400 transition-colors">
+                          Tap to continue →
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
+
+            {/* Add another project link */}
+            <Link href="/path-finder">
+              <div className="flex items-center justify-center gap-2 py-4 text-slate-500 hover:text-teal-400 transition-colors">
+                <Compass className="w-4 h-4" />
+                <span className="text-sm">Start another project</span>
               </div>
-            </Card>
-          </Link>
+            </Link>
+          </section>
+        ) : (
+          /* No projects - Big Path Finder CTA */
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <Link href="/path-finder">
+              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-900/40 via-slate-800 to-teal-900/40 border border-purple-500/30 hover:border-teal-500/50 transition-all duration-300 group shadow-xl p-8 text-center">
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-teal-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                <div className="relative">
+                  <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500/20 to-teal-500/20 flex items-center justify-center">
+                    <Compass className="w-10 h-10 text-purple-400 group-hover:text-teal-400 transition-colors" />
+                  </div>
+
+                  <h2 className="text-2xl font-bold text-white mb-3">Find Your Path</h2>
+                  <p className="text-slate-400 mb-6 max-w-xs mx-auto">
+                    Discover what to build. Have a conversation with AI to find your next project.
+                  </p>
+
+                  <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-purple-500 to-teal-500 text-white font-semibold group-hover:shadow-lg group-hover:shadow-teal-500/25 transition-all">
+                    <Sparkles className="w-5 h-5" />
+                    Start Path Finder
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </motion.div>
         )}
 
         {/* Daily Prompt */}
@@ -210,133 +175,12 @@ export function DashboardContent({
           prompt={dailyPrompt.prompt_text}
           author={dailyPrompt.author}
         />
-
-        {/* Main Content - depends on check-in status */}
-        {!hasCheckedIn ? (
-          /* Not checked in yet - show Wake Button */
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col items-center py-8"
-          >
-            <WakeButton onPress={handleImUp} isPressed={false} />
-          </motion.div>
-        ) : (
-          /* Checked in - show checklist and mood */
-          <AnimatePresence mode="wait">
-            <motion.div
-              key="checked-in"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
-            >
-              {/* Success message */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-4"
-              >
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-500/10 border border-teal-500/30">
-                  <span className="text-2xl">☀️</span>
-                  <span className="text-teal-400 font-medium">You&apos;re up!</span>
-                </div>
-              </motion.div>
-
-              {/* Morning Checklist */}
-              <Card>
-                <MorningChecklist
-                  feetOnFloor={currentLog?.feet_on_floor ?? false}
-                  lightExposure={currentLog?.light_exposure ?? false}
-                  drankWater={currentLog?.drank_water ?? false}
-                  onToggle={handleChecklistToggle}
-                />
-              </Card>
-
-              {/* Mood & Energy */}
-              <Card>
-                <h3 className="text-lg font-semibold text-slate-200 mb-4">
-                  How are you feeling?
-                </h3>
-                <MoodSlider
-                  energy={energy}
-                  mood={mood}
-                  onEnergyChange={setEnergy}
-                  onMoodChange={setMood}
-                />
-                <div className="mt-6 flex items-center gap-3">
-                  <Button onClick={handleSaveMood} isLoading={savingMood} className="flex-1">
-                    Save check-in
-                  </Button>
-                  <AnimatePresence>
-                    {showMoodSaved && (
-                      <motion.span
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        className="text-teal-400 text-sm"
-                      >
-                        Saved!
-                      </motion.span>
-                    )}
-                    {moodError && (
-                      <motion.span
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        className="text-red-400 text-sm"
-                      >
-                        {moodError}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </Card>
-            </motion.div>
-          </AnimatePresence>
-        )}
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-around">
-          <Link
-            href="/"
-            className="flex flex-col items-center gap-1 text-teal-400"
-          >
-            <div className="w-6 h-6 rounded-full bg-teal-500 flex items-center justify-center">
-              <span className="text-xs text-white font-bold">R</span>
-            </div>
-            <span className="text-xs">Today</span>
-          </Link>
-
-          <Link
-            href="/projects"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <FolderKanban className="w-6 h-6" />
-            <span className="text-xs">Projects</span>
-          </Link>
-
-          <Link
-            href="/progress"
-            className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200"
-          >
-            <TrendingUp className="w-6 h-6" />
-            <span className="text-xs">Progress</span>
-          </Link>
-        </div>
-      </nav>
-
-      {/* Achievement Toast */}
-      {currentAchievement && (
-        <AchievementToast
-          show={showAchievement}
-          emoji={currentAchievement.emoji}
-          name={currentAchievement.name}
-          xpReward={currentAchievement.xpReward}
-          onClose={hideAchievement}
-        />
-      )}
+      <div className="fixed bottom-0 left-0 right-0">
+        <BottomNavigation />
+      </div>
     </div>
   )
 }

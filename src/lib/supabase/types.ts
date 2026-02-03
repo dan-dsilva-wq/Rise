@@ -375,7 +375,7 @@ export interface Database {
           title: string
           description: string | null
           sort_order: number
-          status: 'pending' | 'in_progress' | 'completed'
+          status: 'pending' | 'in_progress' | 'completed' | 'discarded'
           due_date: string | null
           xp_reward: number
           completed_at: string | null
@@ -389,7 +389,7 @@ export interface Database {
           title: string
           description?: string | null
           sort_order?: number
-          status?: 'pending' | 'in_progress' | 'completed'
+          status?: 'pending' | 'in_progress' | 'completed' | 'discarded'
           due_date?: string | null
           xp_reward?: number
           completed_at?: string | null
@@ -403,7 +403,7 @@ export interface Database {
           title?: string
           description?: string | null
           sort_order?: number
-          status?: 'pending' | 'in_progress' | 'completed'
+          status?: 'pending' | 'in_progress' | 'completed' | 'discarded'
           due_date?: string | null
           xp_reward?: number
           completed_at?: string | null
@@ -487,6 +487,140 @@ export interface Database {
           created_at?: string
         }
       }
+      user_profile_facts: {
+        Row: {
+          id: string
+          user_id: string
+          category: 'background' | 'skills' | 'situation' | 'goals' | 'preferences' | 'constraints'
+          fact: string
+          created_at: string
+          updated_at: string
+          is_active: boolean
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          category: 'background' | 'skills' | 'situation' | 'goals' | 'preferences' | 'constraints'
+          fact: string
+          created_at?: string
+          updated_at?: string
+          is_active?: boolean
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          category?: 'background' | 'skills' | 'situation' | 'goals' | 'preferences' | 'constraints'
+          fact?: string
+          created_at?: string
+          updated_at?: string
+          is_active?: boolean
+        }
+      }
+      path_finder_conversations: {
+        Row: {
+          id: string
+          user_id: string
+          title: string | null
+          created_at: string
+          updated_at: string
+          is_active: boolean
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title?: string | null
+          created_at?: string
+          updated_at?: string
+          is_active?: boolean
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string | null
+          created_at?: string
+          updated_at?: string
+          is_active?: boolean
+        }
+      }
+      path_finder_messages: {
+        Row: {
+          id: string
+          conversation_id: string
+          user_id: string
+          role: 'user' | 'assistant'
+          content: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          user_id: string
+          role: 'user' | 'assistant'
+          content: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          user_id?: string
+          role?: 'user' | 'assistant'
+          content?: string
+          created_at?: string
+        }
+      }
+      // Milestone Mode tables
+      milestone_conversations: {
+        Row: {
+          id: string
+          milestone_id: string
+          user_id: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          milestone_id: string
+          user_id: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          milestone_id?: string
+          user_id?: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      milestone_messages: {
+        Row: {
+          id: string
+          conversation_id: string
+          user_id: string
+          role: 'user' | 'assistant'
+          content: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          user_id: string
+          role: 'user' | 'assistant'
+          content: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          user_id?: string
+          role?: 'user' | 'assistant'
+          content?: string
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -561,3 +695,21 @@ export type ProjectLogInsert = Database['public']['Tables']['project_logs']['Ins
 export type ProjectUpdate = Database['public']['Tables']['projects']['Update']
 export type MilestoneUpdate = Database['public']['Tables']['milestones']['Update']
 export type DailyMissionUpdate = Database['public']['Tables']['daily_missions']['Update']
+
+// User Profile Facts types
+export type UserProfileFact = Database['public']['Tables']['user_profile_facts']['Row']
+export type UserProfileFactInsert = Database['public']['Tables']['user_profile_facts']['Insert']
+export type UserProfileFactUpdate = Database['public']['Tables']['user_profile_facts']['Update']
+export type ProfileCategory = 'background' | 'skills' | 'situation' | 'goals' | 'preferences' | 'constraints'
+
+// Path Finder Conversation types
+export type PathFinderConversation = Database['public']['Tables']['path_finder_conversations']['Row']
+export type PathFinderConversationInsert = Database['public']['Tables']['path_finder_conversations']['Insert']
+export type PathFinderMessage = Database['public']['Tables']['path_finder_messages']['Row']
+export type PathFinderMessageInsert = Database['public']['Tables']['path_finder_messages']['Insert']
+
+// Milestone Mode types
+export type MilestoneConversation = Database['public']['Tables']['milestone_conversations']['Row']
+export type MilestoneConversationInsert = Database['public']['Tables']['milestone_conversations']['Insert']
+export type MilestoneMessage = Database['public']['Tables']['milestone_messages']['Row']
+export type MilestoneMessageInsert = Database['public']['Tables']['milestone_messages']['Insert']

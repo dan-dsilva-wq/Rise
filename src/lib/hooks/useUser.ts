@@ -16,16 +16,29 @@ export function useUser() {
   useEffect(() => {
     // Get initial session
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      console.log('[DEBUG] useUser: Getting user...')
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+      if (authError) {
+        console.error('[DEBUG] useUser: Auth error:', authError)
+      }
+
+      console.log('[DEBUG] useUser: Got user:', { userId: user?.id, email: user?.email })
       setUser(user)
 
       if (user) {
-        const { data: profileData } = await client
+        console.log('[DEBUG] useUser: Fetching profile for user:', user.id)
+        const { data: profileData, error: profileError } = await client
           .from('profiles')
           .select('*')
           .eq('id', user.id)
           .single()
 
+        if (profileError) {
+          console.error('[DEBUG] useUser: Profile error:', profileError)
+        }
+
+        console.log('[DEBUG] useUser: Got profile:', { hasProfile: !!profileData })
         setProfile(profileData as Profile | null)
       }
 
@@ -37,6 +50,7 @@ export function useUser() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('[DEBUG] useUser: Auth state changed:', { event, userId: session?.user?.id })
         setUser(session?.user ?? null)
 
         if (session?.user) {

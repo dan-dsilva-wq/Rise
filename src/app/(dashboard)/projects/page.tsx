@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { ProjectsContent } from '@/components/projects/ProjectsContent'
 import type { Project } from '@/lib/supabase/types'
 
+export const dynamic = 'force-dynamic'
+
 export default async function ProjectsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

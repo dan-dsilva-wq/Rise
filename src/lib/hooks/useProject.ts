@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Project, Milestone, ProjectInsert, ProjectUpdate, MilestoneInsert, MilestoneUpdate } from '@/lib/supabase/types'
 
-export function useProjects(userId: string | undefined) {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
+export function useProjects(userId: string | undefined, initialProjects?: Project[]) {
+  const [projects, setProjects] = useState<Project[]>(initialProjects || [])
+  const [loading, setLoading] = useState(!initialProjects)
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
@@ -17,7 +17,10 @@ export function useProjects(userId: string | undefined) {
       return
     }
 
-    setLoading(true)
+    // Don't show loading if we have initial data
+    if (!initialProjects) {
+      setLoading(true)
+    }
 
     const { data, error } = await client
       .from('projects')
@@ -31,11 +34,14 @@ export function useProjects(userId: string | undefined) {
 
     setProjects((data as Project[]) || [])
     setLoading(false)
-  }, [userId, client])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]) // Intentionally omit client - it's stable
 
   useEffect(() => {
+    // Always fetch fresh data, but don't block render if we have initial data
     fetchProjects()
-  }, [fetchProjects])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]) // Fetch when userId changes
 
   const createProject = async (project: Omit<ProjectInsert, 'user_id'>): Promise<Project | null> => {
     if (!userId) return null
@@ -99,10 +105,15 @@ export function useProjects(userId: string | undefined) {
   }
 }
 
-export function useProject(projectId: string | undefined, userId: string | undefined) {
-  const [project, setProject] = useState<Project | null>(null)
-  const [milestones, setMilestones] = useState<Milestone[]>([])
-  const [loading, setLoading] = useState(true)
+export function useProject(
+  projectId: string | undefined,
+  userId: string | undefined,
+  initialProject?: Project | null,
+  initialMilestones?: Milestone[]
+) {
+  const [project, setProject] = useState<Project | null>(initialProject || null)
+  const [milestones, setMilestones] = useState<Milestone[]>(initialMilestones || [])
+  const [loading, setLoading] = useState(!initialProject)
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
@@ -113,7 +124,10 @@ export function useProject(projectId: string | undefined, userId: string | undef
       return
     }
 
-    setLoading(true)
+    // Don't show loading if we have initial data
+    if (!initialProject) {
+      setLoading(true)
+    }
 
     // Fetch project
     const { data: projectData, error: projectError } = await client
@@ -144,11 +158,14 @@ export function useProject(projectId: string | undefined, userId: string | undef
 
     setMilestones((milestoneData as Milestone[]) || [])
     setLoading(false)
-  }, [projectId, userId, client])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, userId]) // Intentionally omit client - it's stable
 
   useEffect(() => {
+    // Always fetch fresh data in background
     fetchProject()
-  }, [fetchProject])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, userId]) // Fetch when projectId or userId changes
 
   const updateProject = async (updates: ProjectUpdate): Promise<Project | null> => {
     if (!projectId) return null
@@ -289,11 +306,29 @@ export function useProject(projectId: string | undefined, userId: string | undef
     return true
   }
 
+  const deleteProject = async (): Promise<boolean> => {
+    if (!projectId) return false
+
+    const { error } = await client
+      .from('projects')
+      .delete()
+      .eq('id', projectId)
+
+    if (error) {
+      console.error('Error deleting project:', error)
+      return false
+    }
+
+    setProject(null)
+    return true
+  }
+
   return {
     project,
     milestones,
     loading,
     updateProject,
+    deleteProject,
     addMilestone,
     updateMilestone,
     completeMilestone,

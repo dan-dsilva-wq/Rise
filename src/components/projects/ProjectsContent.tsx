@@ -38,6 +38,7 @@ export function ProjectsContent({
   // Use initialProjects as fallback when user is still loading
   const { projects, loading, createProject } = useProjects(user?.id, initialProjects)
   const [isCreating, setIsCreating] = useState(false)
+  const [loadingMilestones, setLoadingMilestones] = useState(true)
   // Initialize with initialProjects to avoid blank state
   const [projectsWithMilestones, setProjectsWithMilestones] = useState<ProjectWithMilestone[]>(
     () => initialProjects.map(p => ({ ...p, activeMilestone: null }))
@@ -52,6 +53,7 @@ export function ProjectsContent({
   // Fetch active milestone for each project
   useEffect(() => {
     const fetchMilestones = async () => {
+      setLoadingMilestones(true)
       const client = getClient()
       const enhanced: ProjectWithMilestone[] = []
       for (const project of displayProjects) {
@@ -71,12 +73,14 @@ export function ProjectsContent({
         })
       }
       setProjectsWithMilestones(enhanced)
+      setLoadingMilestones(false)
     }
 
     if (displayProjects.length > 0) {
       fetchMilestones()
     } else {
       setProjectsWithMilestones([])
+      setLoadingMilestones(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectIds]) // Only re-run when project IDs actually change
@@ -134,7 +138,11 @@ export function ProjectsContent({
                     <span className="text-xs font-medium text-teal-400 uppercase tracking-wide">Current Objective</span>
                   </div>
 
-                  {singleProject.activeMilestone ? (
+                  {loadingMilestones ? (
+                    <div className="animate-pulse">
+                      <div className="h-6 bg-slate-700/50 rounded w-3/4"></div>
+                    </div>
+                  ) : singleProject.activeMilestone ? (
                     <p className="text-lg font-semibold text-white">
                       {singleProject.activeMilestone.title}
                     </p>
@@ -152,7 +160,17 @@ export function ProjectsContent({
             </Link>
 
             {/* Quick action to work with AI */}
-            {singleProject.activeMilestone && (
+            {loadingMilestones ? (
+              <div className="mt-3 p-4 rounded-xl bg-gradient-to-r from-teal-500/5 to-emerald-500/5 border border-slate-700/50 animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-slate-700/50 w-9 h-9"></div>
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-slate-700/50 rounded w-1/2"></div>
+                    <div className="h-3 bg-slate-700/50 rounded w-3/4"></div>
+                  </div>
+                </div>
+              </div>
+            ) : singleProject.activeMilestone && (
               <Link href={`/projects/${singleProject.id}/milestone/${singleProject.activeMilestone.id}`} className="block mt-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
                 <div className="p-4 rounded-xl bg-gradient-to-r from-teal-500/10 to-emerald-500/10 border border-teal-500/20 flex items-center gap-3 hover:border-teal-500/40 transition-colors">
                   <div className="p-2 rounded-lg bg-teal-500/20">
@@ -186,7 +204,12 @@ export function ProjectsContent({
                         <h3 className="font-semibold text-white truncate">{project.name}</h3>
 
                         {/* Show active milestone */}
-                        {project.activeMilestone ? (
+                        {loadingMilestones ? (
+                          <div className="mt-2 flex items-center gap-2 animate-pulse">
+                            <div className="w-3 h-3 bg-slate-600/50 rounded flex-shrink-0"></div>
+                            <div className="h-4 bg-slate-600/50 rounded w-32"></div>
+                          </div>
+                        ) : project.activeMilestone ? (
                           <div className="mt-2 flex items-center gap-2">
                             <Target className="w-3 h-3 text-teal-400 flex-shrink-0" />
                             <span className="text-sm text-slate-300 truncate">

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Compass, FolderKanban, Settings, LucideIcon } from 'lucide-react'
+import { motion } from 'framer-motion'
 
 interface NavItem {
   href: string
@@ -14,13 +15,18 @@ interface NavItem {
 // Home icon component
 function HomeIcon({ isActive }: { isActive: boolean }) {
   return (
-    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-      isActive ? 'bg-teal-500/20' : 'bg-slate-700'
-    }`}>
+    <motion.div
+      className={`w-6 h-6 rounded-full flex items-center justify-center ${
+        isActive ? 'bg-teal-500/20' : 'bg-slate-700'
+      }`}
+      aria-hidden="true"
+      animate={isActive ? { scale: [1, 1.1, 1] } : { scale: 1 }}
+      transition={{ duration: 0.3 }}
+    >
       <span className={`text-xs font-bold ${
         isActive ? 'text-teal-400' : 'text-slate-300'
       }`}>R</span>
-    </div>
+    </motion.div>
   )
 }
 
@@ -35,29 +41,59 @@ export function BottomNavigation() {
   const pathname = usePathname()
 
   return (
-    <nav className="bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom">
+    <nav
+      className="bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom"
+      role="navigation"
+      aria-label="Main navigation"
+    >
       <div className="max-w-lg mx-auto px-2 py-3 flex items-center justify-around">
         {NAV_ITEMS.map((item) => {
           const isActive = item.href === '/'
             ? pathname === '/'
             : pathname.startsWith(item.href)
+          const Icon = item.icon
 
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-1 px-3 py-1 transition-colors ${
-                isActive
-                  ? 'text-teal-400'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              aria-label={item.label}
+              aria-current={isActive ? 'page' : undefined}
+              className="relative"
             >
-              {item.isLogo ? (
-                <HomeIcon isActive={isActive} />
-              ) : item.icon ? (
-                <item.icon className="w-6 h-6" />
-              ) : null}
-              <span className="text-xs">{item.label}</span>
+              <motion.div
+                className={`flex flex-col items-center gap-1 px-3 py-1 ${
+                  isActive
+                    ? 'text-teal-400'
+                    : 'text-slate-400'
+                }`}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+              >
+                {item.isLogo ? (
+                  <HomeIcon isActive={isActive} />
+                ) : Icon ? (
+                  <motion.div
+                    animate={isActive ? { y: [0, -2, 0] } : { y: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <Icon className="w-6 h-6" aria-hidden="true" />
+                  </motion.div>
+                ) : null}
+                <span className="text-xs">{item.label}</span>
+
+                {/* Animated underline indicator */}
+                {isActive && (
+                  <motion.div
+                    className="absolute -bottom-1 left-1/2 h-0.5 bg-teal-400 rounded-full"
+                    layoutId="nav-indicator"
+                    initial={{ width: 0, x: '-50%' }}
+                    animate={{ width: 16, x: '-50%' }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
+              </motion.div>
             </Link>
           )
         })}

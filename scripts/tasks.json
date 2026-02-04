@@ -4,8 +4,9 @@
       "id": "1",
       "description": "Add hover states to ProjectCard component",
       "risk": "low",
-      "status": "pending",
-      "maxFiles": 3
+      "status": "completed",
+      "maxFiles": 3,
+      "note": "Done by v1.0 - ProjectCard.tsx"
     },
     {
       "id": "2",
@@ -18,15 +19,17 @@
       "id": "3",
       "description": "Add aria-labels to navigation buttons",
       "risk": "low",
-      "status": "pending",
-      "maxFiles": 3
+      "status": "completed",
+      "maxFiles": 3,
+      "note": "Done by v1.0 - BottomNavigation.tsx"
     },
     {
       "id": "4",
       "description": "Add loading skeleton to projects list",
       "risk": "low",
-      "status": "pending",
-      "maxFiles": 3
+      "status": "completed",
+      "maxFiles": 3,
+      "note": "Done by v1.0 - MilestoneList, ProjectsContent"
     },
     {
       "id": "5",
@@ -46,15 +49,17 @@
       "id": "7",
       "description": "Add toast notifications for success/error states",
       "risk": "low",
-      "status": "pending",
-      "maxFiles": 3
+      "status": "completed",
+      "maxFiles": 3,
+      "note": "Done by v1.0 - EveningContent error handling"
     },
     {
       "id": "8",
       "description": "Improve empty states with helpful CTAs",
       "risk": "low",
-      "status": "pending",
-      "maxFiles": 3
+      "status": "completed",
+      "maxFiles": 3,
+      "note": "Done by v1.0 - PathFinder Profile panel"
     },
     {
       "id": "9",
@@ -66,6 +71,43 @@
     {
       "id": "10",
       "description": "Add character counters to text inputs",
+      "risk": "low",
+      "status": "completed",
+      "maxFiles": 3,
+      "note": "Done by v1.0 - EveningContent gratitude input"
+    },
+    {
+      "id": "11",
+      "description": "Add focus-visible outlines to all interactive elements",
+      "risk": "low",
+      "status": "completed",
+      "maxFiles": 3,
+      "note": "Done by v1.0 - Button, Checkbox, globals.css"
+    },
+    {
+      "id": "12",
+      "description": "Improve form accessibility with proper labels and descriptions",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "13",
+      "description": "Add subtle animations to page transitions",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "14",
+      "description": "Improve color contrast for better readability",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "15",
+      "description": "Add pull-to-refresh on mobile for dashboard",
       "risk": "low",
       "status": "pending",
       "maxFiles": 3

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence, useDragControls, PanInfo } from 'framer-motion'
 import {
   X, Target, Sparkles, CheckCircle, Loader2,
-  Wand2, BookOpen, Send, GripHorizontal, Maximize2, Circle, CheckCircle2
+  Wand2, BookOpen, Send, GripHorizontal, Maximize2, Circle, CheckCircle2, AlertCircle
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
@@ -48,6 +48,7 @@ export function MilestoneBottomSheet({
   const [generatingSteps, setGeneratingSteps] = useState(false)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -143,6 +144,7 @@ export function MilestoneBottomSheet({
     const userMessage = input.trim()
     setInput('')
     setIsLoading(true)
+    setChatError(null)
 
     // Add user message optimistically
     addMessageOptimistic('user', userMessage)
@@ -188,7 +190,11 @@ export function MilestoneBottomSheet({
       })
     } catch (err) {
       console.error('Chat error:', err)
-      addMessageOptimistic('assistant', 'Sorry, I had trouble responding. Please try again.')
+      // Set error state and restore the user's message for easy retry
+      setChatError('Failed to send message. Please try again.')
+      setInput(userMessage)
+      // Remove the optimistic user message on error
+      setMessages(prev => prev.filter(m => !m.id.startsWith('temp-')))
     } finally {
       setIsLoading(false)
     }
@@ -478,25 +484,64 @@ export function MilestoneBottomSheet({
                   Full screen
                 </Link>
               </div>
-              <form
+
+              {/* Error message */}
+              <AnimatePresence>
+                {chatError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="flex items-center gap-2 mb-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg"
+                  >
+                    <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                    <p className="text-red-400 text-sm flex-1">{chatError}</p>
+                    <button
+                      onClick={() => setChatError(null)}
+                      className="text-red-400 hover:text-red-300 transition-colors"
+                      aria-label="Dismiss error"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <motion.form
                 onSubmit={(e) => { e.preventDefault(); handleSendMessage() }}
                 className="flex gap-2"
+                animate={chatError ? { x: [0, -4, 4, -4, 4, 0] } : {}}
+                transition={{ duration: 0.4 }}
               >
                 <input
                   type="text"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    setInput(e.target.value)
+                    if (chatError) setChatError(null)
+                  }}
                   placeholder="Ask a question..."
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                  className={`flex-1 bg-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-colors ${
+                    chatError
+                      ? 'border-2 border-red-500/50 focus:ring-red-500'
+                      : 'border border-slate-700 focus:ring-teal-500'
+                  }`}
+                  aria-invalid={!!chatError}
+                  aria-describedby={chatError ? 'chat-error' : undefined}
                 />
                 <button
                   type="submit"
                   disabled={!input.trim() || isLoading}
-                  className="w-12 h-12 rounded-xl bg-teal-500 hover:bg-teal-400 disabled:bg-slate-700 transition-colors flex items-center justify-center"
+                  className={`w-12 h-12 rounded-xl transition-colors flex items-center justify-center ${
+                    chatError && input.trim()
+                      ? 'bg-red-500 hover:bg-red-400'
+                      : 'bg-teal-500 hover:bg-teal-400 disabled:bg-slate-700'
+                  }`}
+                  aria-label={chatError ? 'Retry sending message' : 'Send message'}
                 >
                   <Send className="w-5 h-5 text-white" />
                 </button>
-              </form>
+              </motion.form>
             </div>
           )}
         </motion.div>

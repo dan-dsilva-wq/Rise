@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Moon, Lock } from 'lucide-react'
+import { ArrowLeft, Moon, Lock, Sparkles, X } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { Slider } from '@/components/ui/Slider'
@@ -23,8 +23,30 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
   const [gratitude, setGratitude] = useState(todayLog?.gratitude_entry || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [earnedXP, setEarnedXP] = useState(0)
+  const [errorToast, setErrorToast] = useState<string | null>(null)
+
+  // Track which sliders have been intentionally touched
+  const [touchedSliders, setTouchedSliders] = useState({
+    energy: !!todayLog?.evening_energy,
+    mood: !!todayLog?.evening_mood,
+    rating: !!todayLog?.day_rating,
+  })
 
   const supabase = createClient()
+
+  const MAX_GRATITUDE_LENGTH = 280
+  const gratitudeLength = gratitude.length
+  const isNearLimit = gratitudeLength >= MAX_GRATITUDE_LENGTH * 0.8
+  const isAtLimit = gratitudeLength >= MAX_GRATITUDE_LENGTH
+
+  const gratitudeCharacterInfo = useMemo(() => {
+    const remaining = MAX_GRATITUDE_LENGTH - gratitudeLength
+    if (gratitudeLength === 0) return { text: 'Start writing to earn +30 XP', color: 'text-slate-500' }
+    if (isAtLimit) return { text: 'Character limit reached', color: 'text-amber-400' }
+    if (isNearLimit) return { text: `${remaining} characters left`, color: 'text-amber-400' }
+    return { text: `${remaining} characters left`, color: 'text-slate-500' }
+  }, [gratitudeLength, isAtLimit, isNearLimit])
   const tier = profile?.unlock_tier || 1
 
   // Tier 3+ unlocks evening reflection
@@ -34,6 +56,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
     if (!todayLog) return
 
     setSaving(true)
+    setErrorToast(null)
     try {
       let xpBonus = 0
 
@@ -49,7 +72,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any)
+      const { error: updateError } = await (supabase as any)
         .from('daily_logs')
         .update({
           evening_energy: eveningEnergy,
@@ -60,16 +83,30 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
         })
         .eq('id', todayLog.id)
 
+      if (updateError) {
+        throw new Error('Failed to save reflection')
+      }
+
       if (xpBonus > 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any).rpc('increment_xp', {
+        const { error: xpError } = await (supabase as any).rpc('increment_xp', {
           user_id: profile?.id,
           xp_amount: xpBonus,
         })
+        if (xpError) {
+          throw new Error('Failed to award XP')
+        }
       }
 
+      setEarnedXP(xpBonus)
       setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      setTimeout(() => {
+        setSaved(false)
+        setEarnedXP(0)
+      }, 4000)
+    } catch {
+      setErrorToast('Failed to save. Please try again.')
+      setTimeout(() => setErrorToast(null), 5000)
     } finally {
       setSaving(false)
     }
@@ -159,6 +196,8 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                   max={10}
                   leftLabel="Drained"
                   rightLabel="Energized"
+                  touched={touchedSliders.energy}
+                  onTouch={() => setTouchedSliders((prev) => ({ ...prev, energy: true }))}
                 />
 
                 <Slider
@@ -169,6 +208,8 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                   max={10}
                   leftLabel="Low"
                   rightLabel="Great"
+                  touched={touchedSliders.mood}
+                  onTouch={() => setTouchedSliders((prev) => ({ ...prev, mood: true }))}
                 />
               </div>
             </Card>
@@ -179,12 +220,15 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                 Rate your day
               </h3>
               <Slider
+                label="Day Rating"
                 value={dayRating}
                 onChange={setDayRating}
                 min={1}
                 max={10}
                 leftLabel="Tough day"
                 rightLabel="Great day"
+                touched={touchedSliders.rating}
+                onTouch={() => setTouchedSliders((prev) => ({ ...prev, rating: true }))}
               />
             </Card>
 
@@ -196,13 +240,32 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
               <p className="text-sm text-slate-400 mb-4">
                 Even small things count. +30 XP
               </p>
-              <textarea
-                value={gratitude}
-                onChange={(e) => setGratitude(e.target.value)}
-                placeholder="Today I'm grateful for..."
-                className="w-full p-4 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
-                rows={3}
-              />
+              <div className="relative">
+                <textarea
+                  value={gratitude}
+                  onChange={(e) => {
+                    if (e.target.value.length <= MAX_GRATITUDE_LENGTH) {
+                      setGratitude(e.target.value)
+                    }
+                  }}
+                  placeholder="Today I'm grateful for..."
+                  className={`w-full p-4 bg-slate-800 border rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none transition-colors ${
+                    isAtLimit ? 'border-amber-500/50' : 'border-slate-700'
+                  }`}
+                  rows={3}
+                  maxLength={MAX_GRATITUDE_LENGTH}
+                  aria-describedby="gratitude-counter"
+                />
+                <div
+                  id="gratitude-counter"
+                  className={`flex items-center justify-between mt-2 text-xs transition-colors ${gratitudeCharacterInfo.color}`}
+                >
+                  <span>{gratitudeCharacterInfo.text}</span>
+                  <span className={`tabular-nums ${isNearLimit ? 'font-medium' : ''}`}>
+                    {gratitudeLength}/{MAX_GRATITUDE_LENGTH}
+                  </span>
+                </div>
+              </div>
             </Card>
 
             {/* Save Button */}
@@ -217,14 +280,49 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
 
             <AnimatePresence>
               {saved && (
-                <motion.p
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="text-center text-teal-400"
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex flex-col items-center gap-2"
                 >
-                  Saved! Rest well tonight.
-                </motion.p>
+                  <p className="text-center text-teal-400 font-medium">
+                    Saved! Rest well tonight.
+                  </p>
+                  {earnedXP > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.2 }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500/10 border border-teal-500/20 rounded-full"
+                    >
+                      <Sparkles className="w-4 h-4 text-teal-400" />
+                      <span className="text-sm font-semibold text-teal-300">+{earnedXP} XP</span>
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Error Toast */}
+            <AnimatePresence>
+              {errorToast && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="fixed bottom-28 left-4 right-4 max-w-lg mx-auto px-4 py-3 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-2"
+                >
+                  <X className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <span className="text-sm text-red-400 flex-1">{errorToast}</span>
+                  <button
+                    onClick={() => setErrorToast(null)}
+                    className="text-red-400 hover:text-red-300"
+                    aria-label="Dismiss error"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
               )}
             </AnimatePresence>
           </>

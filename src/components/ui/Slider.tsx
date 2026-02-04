@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useCallback, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface SliderProps {
   min?: number
@@ -13,6 +13,8 @@ interface SliderProps {
   leftLabel?: string
   rightLabel?: string
   className?: string
+  touched?: boolean
+  onTouch?: () => void
 }
 
 export function Slider({
@@ -25,16 +27,33 @@ export function Slider({
   leftLabel,
   rightLabel,
   className = '',
+  touched: controlledTouched,
+  onTouch,
 }: SliderProps) {
   const [isDragging, setIsDragging] = useState(false)
+  const [internalTouched, setInternalTouched] = useState(false)
+
+  // Use controlled touched state if provided, otherwise use internal
+  const isTouched = controlledTouched !== undefined ? controlledTouched : internalTouched
+
+  // If value differs from initial default (5), consider it touched
+  useEffect(() => {
+    if (controlledTouched === undefined && value !== 5) {
+      setInternalTouched(true)
+    }
+  }, [value, controlledTouched])
 
   const percentage = ((value - min) / (max - min)) * 100
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!isTouched) {
+        setInternalTouched(true)
+        onTouch?.()
+      }
       onChange(Number(e.target.value))
     },
-    [onChange]
+    [onChange, isTouched, onTouch]
   )
 
   // Color gradient based on value (1-10 mood/energy scale)
@@ -49,13 +68,29 @@ export function Slider({
     <div className={`w-full ${className}`}>
       {label && (
         <div className="flex items-center justify-between mb-3">
-          <span className="text-slate-300 font-medium">{label}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-300 font-medium">{label}</span>
+            <AnimatePresence>
+              {!isTouched && (
+                <motion.span
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full"
+                >
+                  Adjust me
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </div>
           {showValue && (
             <motion.span
-              key={value}
+              key={`${value}-${isTouched}`}
               initial={{ scale: 1.2 }}
               animate={{ scale: 1 }}
-              className="text-2xl font-bold text-teal-400"
+              className={`text-2xl font-bold transition-colors ${
+                isTouched ? 'text-teal-400' : 'text-slate-500'
+              }`}
             >
               {value}
             </motion.span>
@@ -92,14 +127,23 @@ export function Slider({
 
         {/* Thumb indicator */}
         <motion.div
-          className="absolute top-1/2 -translate-y-1/2 w-6 h-6 bg-white rounded-full shadow-lg pointer-events-none"
+          className={`absolute top-1/2 -translate-y-1/2 w-6 h-6 rounded-full shadow-lg pointer-events-none ${
+            isTouched ? 'bg-white' : 'bg-slate-300'
+          }`}
           style={{ left: `calc(${percentage}% - 12px)` }}
           animate={{
-            scale: isDragging ? 1.2 : 1,
+            scale: isDragging ? 1.2 : isTouched ? 1 : [1, 1.1, 1],
             boxShadow: isDragging
               ? '0 0 20px rgba(45, 212, 191, 0.5)'
-              : '0 4px 6px rgba(0, 0, 0, 0.3)',
+              : isTouched
+              ? '0 4px 6px rgba(0, 0, 0, 0.3)'
+              : '0 0 12px rgba(148, 163, 184, 0.4)',
           }}
+          transition={
+            !isTouched && !isDragging
+              ? { scale: { repeat: Infinity, duration: 2, ease: 'easeInOut' } }
+              : undefined
+          }
         />
       </div>
 

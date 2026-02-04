@@ -23,9 +23,12 @@ export function Checkbox({
   return (
     <motion.button
       type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={description ? `${label}: ${description}` : label}
       onClick={() => onChange(!checked)}
       whileTap={{ scale: 0.98 }}
-      className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all ${
+      className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
         checked
           ? 'bg-teal-500/10 border-teal-500/50'
           : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'

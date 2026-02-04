@@ -58,8 +58,16 @@ export function ProjectCard({ project, delay = 0 }: ProjectCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
     >
-      <Link href={`/projects/${project.id}`}>
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 hover:border-teal-500/50 transition-all duration-300 group shadow-lg hover:shadow-teal-500/10">
+      <Link
+        href={`/projects/${project.id}`}
+        className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 rounded-3xl"
+      >
+        <motion.div
+          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 hover:border-teal-500/50 transition-all duration-300 group shadow-lg hover:shadow-teal-500/10"
+          whileHover={{ y: -4, scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+        >
           {/* Subtle glow effect */}
           <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
@@ -84,7 +92,7 @@ export function ProjectCard({ project, delay = 0 }: ProjectCardProps) {
                 </p>
               </div>
               <div className="ml-4 p-2 rounded-full bg-slate-700/50 group-hover:bg-teal-500/20 transition-colors">
-                <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-teal-400 transition-colors" />
+                <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-teal-400 group-hover:translate-x-0.5 transition-all duration-200" />
               </div>
             </div>
 
@@ -106,7 +114,7 @@ export function ProjectCard({ project, delay = 0 }: ProjectCardProps) {
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-2">
-              <div className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ${status.bgColor} ${status.borderColor} border ${status.color}`}>
+              <div className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ${status.bgColor} ${status.borderColor} border ${status.color} group-hover:scale-105 transition-transform duration-200`}>
                 <StatusIcon className="w-4 h-4" />
                 {status.label}
               </div>
@@ -116,11 +124,11 @@ export function ProjectCard({ project, delay = 0 }: ProjectCardProps) {
                   ${(project.actual_income / 100).toFixed(0)}/mo
                 </div>
               ) : (
-                <span className="text-sm text-slate-500">Tap to continue →</span>
+                <span className="text-sm text-slate-500 group-hover:text-slate-400 transition-colors">Tap to continue →</span>
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       </Link>
     </motion.div>
   )

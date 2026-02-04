@@ -37,6 +37,12 @@ interface MilestoneContext {
   title: string
   description: string | null
   status: string
+  currentStep?: {
+    text: string
+    stepNumber: number
+    totalSteps: number
+    completedSteps: number
+  }
 }
 
 // Helper to parse insight tags from AI response
@@ -173,7 +179,13 @@ ${projectOverview}
 **${milestone.title}**
 ${milestone.description ? `Description: ${milestone.description}` : ''}
 This is milestone ${currentIndex} of ${totalCount}.
+${milestone.currentStep ? `
+## Current Step They're Working On
+**Step ${milestone.currentStep.stepNumber}/${milestone.currentStep.totalSteps}: "${milestone.currentStep.text}"**
+Progress: ${milestone.currentStep.completedSteps} of ${milestone.currentStep.totalSteps} steps complete
 
+IMPORTANT: Focus your help on THIS specific step. They've already completed ${milestone.currentStep.completedSteps} previous steps.
+` : ''}
 ## Your Role - DO IT FOR THEM
 The user chose "Do it for me" mode. They want you to:
 - **Write code** - Give them complete, working code they can copy-paste
@@ -242,7 +254,13 @@ ${projectOverview}
 **${milestone.title}**
 ${milestone.description ? `Description: ${milestone.description}` : ''}
 This is milestone ${currentIndex} of ${totalCount}.
+${milestone.currentStep ? `
+## Current Step They're Working On
+**Step ${milestone.currentStep.stepNumber}/${milestone.currentStep.totalSteps}: "${milestone.currentStep.text}"**
+Progress: ${milestone.currentStep.completedSteps} of ${milestone.currentStep.totalSteps} steps complete
 
+IMPORTANT: Guide them through THIS specific step. They've already completed ${milestone.currentStep.completedSteps} previous steps.
+` : ''}
 ## Your Role - GUIDE THEM
 The user chose "Guide me" mode. They want to LEARN and DO it themselves with your coaching.
 You are NOT here to do the work for them - you're here to help them do it.

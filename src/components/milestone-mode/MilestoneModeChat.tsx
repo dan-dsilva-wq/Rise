@@ -233,11 +233,34 @@ export function MilestoneModeChat({
         })),
       }
 
-      const milestoneContext = {
+      // Build milestone context with current step info
+      const milestoneContext: {
+        id: string
+        title: string
+        description: string | null
+        status: string
+        currentStep?: {
+          text: string
+          stepNumber: number
+          totalSteps: number
+          completedSteps: number
+        }
+      } = {
         id: milestone.id,
         title: milestone.title,
         description: milestone.description,
         status: milestone.status,
+      }
+
+      // Add current step context if we have steps
+      if (currentStep && steps.length > 0) {
+        const stepNumber = steps.findIndex(s => s.id === currentStep.id) + 1
+        milestoneContext.currentStep = {
+          text: currentStep.text,
+          stepNumber,
+          totalSteps: steps.length,
+          completedSteps,
+        }
       }
 
       const response = await fetch('/api/milestone-mode', {

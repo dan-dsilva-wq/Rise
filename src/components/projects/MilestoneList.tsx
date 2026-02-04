@@ -202,43 +202,51 @@ export function MilestoneList({
           {/* Actions - always visible for mobile */}
           <div className="flex items-center gap-1">
             {showSetActive && onSetFocus && (
-              <button
+              <motion.button
                 onClick={(e) => { e.stopPropagation(); handleSetActive(milestone) }}
                 className="p-1 text-slate-500 hover:text-teal-400 transition-colors"
                 title="Set as active"
                 aria-label={`Set "${milestone.title}" as active milestone`}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.9 }}
               >
                 <Play className="w-4 h-4" />
-              </button>
+              </motion.button>
             )}
             {showMoveToNext && onSetFocus && upNext.length < 3 && (
-              <button
+              <motion.button
                 onClick={(e) => { e.stopPropagation(); handleMoveToNext(milestone) }}
                 className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
                 title="Move to Up Next"
                 aria-label={`Move "${milestone.title}" to Up Next`}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.9 }}
               >
                 <ArrowUp className="w-4 h-4" />
-              </button>
+              </motion.button>
             )}
             {showMoveToBacklog && onSetFocus && (
-              <button
+              <motion.button
                 onClick={(e) => { e.stopPropagation(); handleMoveToBacklog(milestone) }}
                 className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
                 title="Move to Backlog"
                 aria-label={`Move "${milestone.title}" to Backlog`}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.9 }}
               >
                 <ChevronDown className="w-4 h-4" />
-              </button>
+              </motion.button>
             )}
             {isEditable && onDelete && (
-              <button
+              <motion.button
                 onClick={(e) => { e.stopPropagation(); onDelete(milestone.id) }}
                 className="p-1 text-slate-500 hover:text-red-400 transition-colors"
                 aria-label={`Delete "${milestone.title}"`}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.9 }}
               >
                 <Trash2 className="w-4 h-4" />
-              </button>
+              </motion.button>
             )}
           </div>
 
@@ -412,23 +420,27 @@ export function MilestoneList({
                       <Lightbulb className="w-4 h-4 text-yellow-400/50 flex-shrink-0" />
                       <span className="text-sm text-slate-400 flex-1">{idea.title}</span>
                       {onPromote && (
-                        <button
+                        <motion.button
                           onClick={() => onPromote(idea.id)}
                           className="p-1 text-yellow-400/50 hover:text-teal-400 active:text-teal-400 transition-colors"
                           title="Promote to milestone"
                           aria-label={`Promote "${idea.title}" to milestone`}
+                          whileHover={{ scale: 1.15 }}
+                          whileTap={{ scale: 0.9 }}
                         >
                           <ArrowUp className="w-4 h-4" />
-                        </button>
+                        </motion.button>
                       )}
                       {isEditable && onDelete && (
-                        <button
+                        <motion.button
                           onClick={() => onDelete(idea.id)}
                           className="p-1 text-slate-600 hover:text-red-400 active:text-red-400 transition-colors"
                           aria-label={`Delete idea "${idea.title}"`}
+                          whileHover={{ scale: 1.15 }}
+                          whileTap={{ scale: 0.9 }}
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </motion.button>
                       )}
                     </div>
                   ))}

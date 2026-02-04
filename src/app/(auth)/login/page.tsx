@@ -107,6 +107,8 @@ export default function LoginPage() {
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
+              role="alert"
+              aria-live="polite"
               className="text-red-400 text-sm"
             >
               {error}

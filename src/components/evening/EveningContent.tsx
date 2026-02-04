@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Moon, Lock } from 'lucide-react'
+import { ArrowLeft, Moon, Lock, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { Slider } from '@/components/ui/Slider'
@@ -23,8 +23,22 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
   const [gratitude, setGratitude] = useState(todayLog?.gratitude_entry || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [earnedXP, setEarnedXP] = useState(0)
 
   const supabase = createClient()
+
+  const MAX_GRATITUDE_LENGTH = 280
+  const gratitudeLength = gratitude.length
+  const isNearLimit = gratitudeLength >= MAX_GRATITUDE_LENGTH * 0.8
+  const isAtLimit = gratitudeLength >= MAX_GRATITUDE_LENGTH
+
+  const gratitudeCharacterInfo = useMemo(() => {
+    const remaining = MAX_GRATITUDE_LENGTH - gratitudeLength
+    if (gratitudeLength === 0) return { text: 'Start writing to earn +30 XP', color: 'text-slate-500' }
+    if (isAtLimit) return { text: 'Character limit reached', color: 'text-amber-400' }
+    if (isNearLimit) return { text: `${remaining} characters left`, color: 'text-amber-400' }
+    return { text: `${remaining} characters left`, color: 'text-slate-500' }
+  }, [gratitudeLength, isAtLimit, isNearLimit])
   const tier = profile?.unlock_tier || 1
 
   // Tier 3+ unlocks evening reflection
@@ -68,8 +82,12 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
         })
       }
 
+      setEarnedXP(xpBonus)
       setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      setTimeout(() => {
+        setSaved(false)
+        setEarnedXP(0)
+      }, 4000)
     } finally {
       setSaving(false)
     }
@@ -196,13 +214,32 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
               <p className="text-sm text-slate-400 mb-4">
                 Even small things count. +30 XP
               </p>
-              <textarea
-                value={gratitude}
-                onChange={(e) => setGratitude(e.target.value)}
-                placeholder="Today I'm grateful for..."
-                className="w-full p-4 bg-slate-800 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
-                rows={3}
-              />
+              <div className="relative">
+                <textarea
+                  value={gratitude}
+                  onChange={(e) => {
+                    if (e.target.value.length <= MAX_GRATITUDE_LENGTH) {
+                      setGratitude(e.target.value)
+                    }
+                  }}
+                  placeholder="Today I'm grateful for..."
+                  className={`w-full p-4 bg-slate-800 border rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none transition-colors ${
+                    isAtLimit ? 'border-amber-500/50' : 'border-slate-700'
+                  }`}
+                  rows={3}
+                  maxLength={MAX_GRATITUDE_LENGTH}
+                  aria-describedby="gratitude-counter"
+                />
+                <div
+                  id="gratitude-counter"
+                  className={`flex items-center justify-between mt-2 text-xs transition-colors ${gratitudeCharacterInfo.color}`}
+                >
+                  <span>{gratitudeCharacterInfo.text}</span>
+                  <span className={`tabular-nums ${isNearLimit ? 'font-medium' : ''}`}>
+                    {gratitudeLength}/{MAX_GRATITUDE_LENGTH}
+                  </span>
+                </div>
+              </div>
             </Card>
 
             {/* Save Button */}
@@ -217,14 +254,27 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
 
             <AnimatePresence>
               {saved && (
-                <motion.p
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="text-center text-teal-400"
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex flex-col items-center gap-2"
                 >
-                  Saved! Rest well tonight.
-                </motion.p>
+                  <p className="text-center text-teal-400 font-medium">
+                    Saved! Rest well tonight.
+                  </p>
+                  {earnedXP > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.2 }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500/10 border border-teal-500/20 rounded-full"
+                    >
+                      <Sparkles className="w-4 h-4 text-teal-400" />
+                      <span className="text-sm font-semibold text-teal-300">+{earnedXP} XP</span>
+                    </motion.div>
+                  )}
+                </motion.div>
               )}
             </AnimatePresence>
           </>

@@ -2,11 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle } from 'lucide-react'
+import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Circle, Target } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { useUser } from '@/lib/hooks/useUser'
 import type { Profile, DailyLog, Project, MorningBriefing } from '@/lib/supabase/types'
+
+interface CurrentStepInfo {
+  stepId: string
+  stepText: string
+  stepNumber: number
+  totalSteps: number
+  completedSteps: number
+}
 
 interface DashboardContentProps {
   profile: Profile | null
@@ -21,6 +29,7 @@ export function DashboardContent({
 }: DashboardContentProps) {
   const { profile } = useUser()
   const [briefing, setBriefing] = useState<MorningBriefing | null>(null)
+  const [currentStep, setCurrentStep] = useState<CurrentStepInfo | null>(null)
   const [loadingBriefing, setLoadingBriefing] = useState(true)
   const [briefingError, setBriefingError] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
@@ -41,6 +50,7 @@ export function DashboardContent({
       if (response.ok) {
         const data = await response.json()
         setBriefing(data.briefing)
+        setCurrentStep(data.currentStep || null)
       } else {
         setBriefingError('Unable to load your morning briefing')
       }
@@ -60,6 +70,7 @@ export function DashboardContent({
       if (response.ok) {
         const data = await response.json()
         setBriefing(data.briefing)
+        setCurrentStep(data.currentStep || null)
         setBriefingError(null)
       } else {
         setRegenerateError(true)
@@ -191,17 +202,65 @@ export function DashboardContent({
                   })()}
                 </div>
 
-                {/* AI Nudge */}
-                <div className="mb-6 p-4 rounded-2xl bg-slate-700/30 border border-slate-600/30">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-full bg-purple-500/20 flex-shrink-0">
-                      <Sparkles className="w-4 h-4 text-purple-400" />
+                {/* Current Step - THE KEY "PULL" FACTOR */}
+                {currentStep && briefing.focus_milestone_id && (
+                  <Link href={`/projects/${briefing.focus_project_id}/milestone/${briefing.focus_milestone_id}`}>
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border-2 border-orange-500/30 hover:border-orange-400/50 transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <Target className="w-4 h-4 text-orange-400" />
+                        <span className="text-xs font-bold text-orange-400 uppercase tracking-wide">Your Next Step</span>
+                        <span className="ml-auto text-xs text-slate-500">
+                          {currentStep.stepNumber}/{currentStep.totalSteps}
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex-shrink-0">
+                          <div className="w-5 h-5 rounded-full border-2 border-orange-400 flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-white font-medium group-hover:text-orange-200 transition-colors">
+                            {currentStep.stepText}
+                          </p>
+                          {currentStep.completedSteps > 0 && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              {currentStep.completedSteps} step{currentStep.completedSteps !== 1 ? 's' : ''} completed
+                            </p>
+                          )}
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-orange-400/50 group-hover:text-orange-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                      </div>
+                      {/* Progress bar */}
+                      <div className="mt-3 h-1 bg-slate-700/50 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(currentStep.completedSteps / currentStep.totalSteps) * 100}%` }}
+                          transition={{ duration: 0.5, ease: 'easeOut' }}
+                          className="h-full bg-orange-400"
+                        />
+                      </div>
+                    </motion.div>
+                  </Link>
+                )}
+
+                {/* AI Nudge - Only show if no current step, to keep focus */}
+                {!currentStep && (
+                  <div className="mb-6 p-4 rounded-2xl bg-slate-700/30 border border-slate-600/30">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-full bg-purple-500/20 flex-shrink-0">
+                        <Sparkles className="w-4 h-4 text-purple-400" />
+                      </div>
+                      <p className="text-slate-300 italic leading-relaxed">
+                        &ldquo;{briefing.nudge}&rdquo;
+                      </p>
                     </div>
-                    <p className="text-slate-300 italic leading-relaxed">
-                      &ldquo;{briefing.nudge}&rdquo;
-                    </p>
                   </div>
-                </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="flex gap-3">

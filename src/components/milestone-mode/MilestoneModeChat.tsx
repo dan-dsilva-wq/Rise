@@ -2,13 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, User, Zap, ArrowLeft, CheckCircle, Target } from 'lucide-react'
+import { Send, Loader2, User, Zap, ArrowLeft, CheckCircle, Target, Circle, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { useMilestoneConversation } from '@/lib/hooks/useMilestoneConversation'
 import { createClient } from '@/lib/supabase/client'
 import { addDebugLog } from '@/components/ui/ConnectionStatus'
-import type { Milestone, Project, MilestoneConversation, MilestoneMessage } from '@/lib/supabase/types'
+import type { Milestone, Project, MilestoneConversation, MilestoneMessage, MilestoneStep } from '@/lib/supabase/types'
 
 interface Message {
   id: string
@@ -19,6 +19,7 @@ interface Message {
 interface MilestoneWithProject extends Milestone {
   project: Project
   allMilestones: Milestone[]
+  steps: MilestoneStep[]
 }
 
 interface MilestoneModeChatProps {
@@ -28,11 +29,20 @@ interface MilestoneModeChatProps {
   initialMessages?: MilestoneMessage[]
 }
 
-const INITIAL_MESSAGE = (milestoneName: string) => `Let's get "${milestoneName}" done.
+const INITIAL_MESSAGE = (milestoneName: string, currentStep?: string) => {
+  if (currentStep) {
+    return `Let's work on "${milestoneName}".
+
+Your current step is: **${currentStep}**
+
+Ready to tackle this? Tell me what you're thinking, or if you're stuck, share what's blocking you and we'll figure it out together.`
+  }
+  return `Let's get "${milestoneName}" done.
 
 **What's the very first thing you need to do to make progress on this?**
 
 (If you're not sure, tell me what's making you stuck and we'll figure it out together.)`
+}
 
 export function MilestoneModeChat({
   userId,
@@ -59,7 +69,65 @@ export function MilestoneModeChat({
   const [initialized, setInitialized] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [steps, setSteps] = useState<MilestoneStep[]>(milestone.steps || [])
+  const [showSteps, setShowSteps] = useState(true)
+  const [celebratingStep, setCelebratingStep] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Calculate step progress
+  const completedSteps = steps.filter(s => s.is_completed).length
+  const totalSteps = steps.length
+  const currentStep = steps.find(s => !s.is_completed)
+  const stepsProgress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0
+
+  // Toggle step completion
+  const toggleStep = async (stepId: string) => {
+    const step = steps.find(s => s.id === stepId)
+    if (!step) return
+
+    const newCompleted = !step.is_completed
+
+    // Optimistic update
+    setSteps(prev =>
+      prev.map(s =>
+        s.id === stepId
+          ? { ...s, is_completed: newCompleted, completed_at: newCompleted ? new Date().toISOString() : null }
+          : s
+      )
+    )
+
+    // Show celebration if completing
+    if (newCompleted) {
+      setCelebratingStep(stepId)
+      setTimeout(() => setCelebratingStep(null), 1500)
+    }
+
+    // Persist to database
+    try {
+      const { error } = await client
+        .from('milestone_steps')
+        .update({
+          is_completed: newCompleted,
+          completed_at: newCompleted ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', stepId)
+
+      if (error) {
+        console.error('Error toggling step:', error)
+        // Revert on error
+        setSteps(prev =>
+          prev.map(s =>
+            s.id === stepId
+              ? { ...s, is_completed: !newCompleted, completed_at: null }
+              : s
+          )
+        )
+      }
+    } catch (err) {
+      console.error('Failed to toggle step:', err)
+    }
+  }
 
   // Initialize with server data or create initial message
   useEffect(() => {
@@ -76,14 +144,15 @@ export function MilestoneModeChat({
           content: m.content,
         })))
       } else {
-        // New conversation - show initial message
+        // New conversation - show initial message with current step context
+        const initialContent = INITIAL_MESSAGE(milestone.title, currentStep?.text)
         setMessages([{
           id: 'initial',
           role: 'assistant',
-          content: INITIAL_MESSAGE(milestone.title),
+          content: initialContent,
         }])
         // Save initial message
-        saveMessage('assistant', INITIAL_MESSAGE(milestone.title))
+        saveMessage('assistant', initialContent)
       }
       setCurrentDirect(initialConversation, initialMessages)
       setInitialized(true)
@@ -102,17 +171,18 @@ export function MilestoneModeChat({
           content: m.content,
         })))
       } else {
-        // New conversation
+        // New conversation with current step context
+        const initialContent = INITIAL_MESSAGE(milestone.title, currentStep?.text)
         setMessages([{
           id: 'initial',
           role: 'assistant',
-          content: INITIAL_MESSAGE(milestone.title),
+          content: initialContent,
         }])
-        saveMessage('assistant', INITIAL_MESSAGE(milestone.title))
+        saveMessage('assistant', initialContent)
       }
     }
     setInitialized(true)
-  }, [initialized, hasInitialData, initialMessages, initialConversation, convoLoading, currentConversation, milestone.title, saveMessage, setCurrentDirect])
+  }, [initialized, hasInitialData, initialMessages, initialConversation, convoLoading, currentConversation, milestone.title, currentStep?.text, saveMessage, setCurrentDirect])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -346,6 +416,127 @@ export function MilestoneModeChat({
           </div>
         </div>
       </div>
+
+      {/* Steps Panel - The Heart of Focus Mode */}
+      {steps.length > 0 && (
+        <div className="border-b border-slate-800 bg-slate-900/50">
+          {/* Steps Header - Always Visible */}
+          <button
+            onClick={() => setShowSteps(!showSteps)}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-800/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${stepsProgress === 100 ? 'bg-green-400' : 'bg-orange-400'}`} />
+                <span className="text-sm font-medium text-white">
+                  {completedSteps}/{totalSteps} steps
+                </span>
+              </div>
+              {/* Progress Bar */}
+              <div className="w-20 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${stepsProgress}%` }}
+                  transition={{ duration: 0.5, ease: 'easeOut' }}
+                  className={`h-full ${stepsProgress === 100 ? 'bg-green-400' : 'bg-orange-400'}`}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-slate-400">
+              <span className="text-xs">{showSteps ? 'Hide' : 'Show'}</span>
+              {showSteps ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </div>
+          </button>
+
+          {/* Steps List - Collapsible */}
+          <AnimatePresence>
+            {showSteps && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-4 pb-4 space-y-2">
+                  {steps.map((step, index) => {
+                    const isCurrentStep = currentStep?.id === step.id
+                    const isCelebrating = celebratingStep === step.id
+
+                    return (
+                      <motion.button
+                        key={step.id}
+                        onClick={() => toggleStep(step.id)}
+                        className={`
+                          w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all
+                          ${isCurrentStep && !step.is_completed
+                            ? 'bg-orange-500/10 border-2 border-orange-500/30 shadow-lg shadow-orange-500/5'
+                            : step.is_completed
+                              ? 'bg-slate-800/30 border border-slate-700/30'
+                              : 'bg-slate-800/50 border border-slate-700/50 hover:border-slate-600'
+                          }
+                        `}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {/* Checkbox */}
+                        <div className="mt-0.5 flex-shrink-0">
+                          {step.is_completed ? (
+                            <motion.div
+                              initial={isCelebrating ? { scale: 0 } : { scale: 1 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                              className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5 text-white" />
+                            </motion.div>
+                          ) : isCurrentStep ? (
+                            <div className="w-5 h-5 rounded-full border-2 border-orange-400 flex items-center justify-center">
+                              <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                            </div>
+                          ) : (
+                            <Circle className="w-5 h-5 text-slate-500" />
+                          )}
+                        </div>
+
+                        {/* Step Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            {isCurrentStep && !step.is_completed && (
+                              <span className="text-[10px] font-bold text-orange-400 bg-orange-500/20 px-1.5 py-0.5 rounded">
+                                NOW
+                              </span>
+                            )}
+                            <span className={`text-sm ${step.is_completed ? 'text-slate-500 line-through' : 'text-white'}`}>
+                              {step.text}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Step Number */}
+                        <span className={`text-xs ${step.is_completed ? 'text-slate-600' : 'text-slate-500'}`}>
+                          {index + 1}
+                        </span>
+                      </motion.button>
+                    )
+                  })}
+
+                  {/* Celebration when all steps done */}
+                  {stepsProgress === 100 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center justify-center gap-2 py-3 text-green-400"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span className="text-sm font-medium">All steps complete! Ready to mark this milestone done?</span>
+                    </motion.div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Error Toast */}
       <AnimatePresence>

@@ -26,6 +26,58 @@ interface ProjectWithMilestones {
   }[]
 }
 
+interface CurrentStepInfo {
+  stepId: string
+  stepText: string
+  stepNumber: number
+  totalSteps: number
+  completedSteps: number
+}
+
+// Helper function to fetch current step for a milestone
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchCurrentStep(client: any, milestoneId: string, userId: string): Promise<CurrentStepInfo | null> {
+  try {
+    const { data: steps } = await client
+      .from('milestone_steps')
+      .select('id, text, is_completed, sort_order')
+      .eq('milestone_id', milestoneId)
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true })
+
+    if (!steps || steps.length === 0) {
+      return null
+    }
+
+    const typedSteps = steps as { id: string; text: string; is_completed: boolean; sort_order: number }[]
+    const completedSteps = typedSteps.filter(s => s.is_completed).length
+    const currentStep = typedSteps.find(s => !s.is_completed)
+
+    if (!currentStep) {
+      // All steps complete
+      return {
+        stepId: typedSteps[typedSteps.length - 1].id,
+        stepText: typedSteps[typedSteps.length - 1].text,
+        stepNumber: typedSteps.length,
+        totalSteps: typedSteps.length,
+        completedSteps,
+      }
+    }
+
+    const stepNumber = typedSteps.findIndex(s => s.id === currentStep.id) + 1
+
+    return {
+      stepId: currentStep.id,
+      stepText: currentStep.text,
+      stepNumber,
+      totalSteps: typedSteps.length,
+      completedSteps,
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabaseClient = await createClient()
@@ -67,7 +119,9 @@ export async function GET(request: NextRequest) {
 
           // Fall through to generate new briefing
         } else {
-          return Response.json({ briefing: existingBriefing, cached: true })
+          // Fetch current step info for the focus milestone
+          const currentStep = await fetchCurrentStep(client, existingBriefing.focus_milestone_id, user.id)
+          return Response.json({ briefing: existingBriefing, cached: true, currentStep })
         }
       } else {
         return Response.json({ briefing: existingBriefing, cached: true })
@@ -199,7 +253,12 @@ export async function GET(request: NextRequest) {
         .select()
         .single()
 
-      return Response.json({ briefing: savedBriefing, cached: false })
+      // Fetch current step info if we have a focus milestone
+      const currentStep = focusMilestone?.id
+        ? await fetchCurrentStep(client, focusMilestone.id, user.id)
+        : null
+
+      return Response.json({ briefing: savedBriefing, cached: false, currentStep })
     }
 
     const response = await getAnthropic().messages.create({
@@ -270,6 +329,11 @@ Respond in JSON format:
       .select()
       .single()
 
+    // Fetch current step info if we have a focus milestone
+    const currentStep = focusMilestone?.id
+      ? await fetchCurrentStep(client, focusMilestone.id, user.id)
+      : null
+
     if (saveError) {
       console.error('Error saving briefing:', saveError)
       // Return the generated content even if save fails
@@ -287,10 +351,11 @@ Respond in JSON format:
         },
         cached: false,
         saveError: true,
+        currentStep,
       })
     }
 
-    return Response.json({ briefing: savedBriefing, cached: false })
+    return Response.json({ briefing: savedBriefing, cached: false, currentStep })
 
   } catch (error) {
     console.error('Morning briefing error:', error)

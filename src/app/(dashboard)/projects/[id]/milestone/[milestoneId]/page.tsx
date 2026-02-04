@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { MilestoneModeChat } from '@/components/milestone-mode/MilestoneModeChat'
-import type { Milestone, Project, MilestoneConversation, MilestoneMessage } from '@/lib/supabase/types'
+import type { Milestone, Project, MilestoneConversation, MilestoneMessage, MilestoneStep } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
 
 interface MilestoneWithProject extends Milestone {
   project: Project
   allMilestones: Milestone[]
+  steps: MilestoneStep[]
 }
 
 export default async function MilestoneModePage({
@@ -61,6 +62,21 @@ export default async function MilestoneModePage({
 
   let conversation: MilestoneConversation | null = null
   let messages: MilestoneMessage[] = []
+  let steps: MilestoneStep[] = []
+
+  // Fetch milestone steps
+  try {
+    const { data: stepsData } = await client
+      .from('milestone_steps')
+      .select('*')
+      .eq('milestone_id', milestoneId)
+      .eq('user_id', user.id)
+      .order('sort_order', { ascending: true })
+
+    steps = (stepsData as MilestoneStep[]) || []
+  } catch {
+    // Table may not exist yet
+  }
 
   try {
     const { data: existingConvo } = await client
@@ -106,6 +122,7 @@ export default async function MilestoneModePage({
     ...(milestone as Milestone),
     project: project as Project,
     allMilestones: (allMilestones as Milestone[]) || [],
+    steps,
   }
 
   return (

@@ -157,7 +157,7 @@ export function MilestoneList({
         `}
       >
         <div className="p-3 flex items-center gap-2">
-          {/* Checkbox */}
+          {/* Checkbox - min 44x44px touch target for accessibility */}
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -165,7 +165,7 @@ export function MilestoneList({
             }}
             disabled={isCompleting || isUncompleting}
             aria-label={isCompleted ? `Mark "${milestone.title}" as incomplete` : `Mark "${milestone.title}" as complete`}
-            className={`flex-shrink-0 transition-colors ${isCompleted ? 'text-teal-500' : 'text-slate-500 hover:text-teal-400'}`}
+            className={`flex-shrink-0 min-w-[44px] min-h-[44px] -m-2 flex items-center justify-center transition-colors ${isCompleted ? 'text-teal-500' : 'text-slate-500 hover:text-teal-400'}`}
           >
             {isCompleting || isUncompleting ? (
               <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
@@ -199,16 +199,16 @@ export function MilestoneList({
             )}
           </AnimatePresence>
 
-          {/* Actions - always visible for mobile */}
-          <div className="flex items-center gap-1">
+          {/* Actions - min 44x44px touch targets for mobile accessibility */}
+          <div className="flex items-center -mr-2">
             {showSetActive && onSetFocus && (
               <motion.button
                 onClick={(e) => { e.stopPropagation(); handleSetActive(milestone) }}
-                className="p-1 text-slate-500 hover:text-teal-400 transition-colors"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 hover:text-teal-400 active:text-teal-400 transition-colors"
                 title="Set as active"
                 aria-label={`Set "${milestone.title}" as active milestone`}
-                whileHover={{ scale: 1.15 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
               >
                 <Play className="w-4 h-4" />
               </motion.button>
@@ -216,11 +216,11 @@ export function MilestoneList({
             {showMoveToNext && onSetFocus && upNext.length < 3 && (
               <motion.button
                 onClick={(e) => { e.stopPropagation(); handleMoveToNext(milestone) }}
-                className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 hover:text-amber-400 active:text-amber-400 transition-colors"
                 title="Move to Up Next"
                 aria-label={`Move "${milestone.title}" to Up Next`}
-                whileHover={{ scale: 1.15 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
               >
                 <ArrowUp className="w-4 h-4" />
               </motion.button>
@@ -228,11 +228,11 @@ export function MilestoneList({
             {showMoveToBacklog && onSetFocus && (
               <motion.button
                 onClick={(e) => { e.stopPropagation(); handleMoveToBacklog(milestone) }}
-                className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 hover:text-slate-300 active:text-slate-300 transition-colors"
                 title="Move to Backlog"
                 aria-label={`Move "${milestone.title}" to Backlog`}
-                whileHover={{ scale: 1.15 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
               >
                 <ChevronDown className="w-4 h-4" />
               </motion.button>
@@ -240,10 +240,10 @@ export function MilestoneList({
             {isEditable && onDelete && (
               <motion.button
                 onClick={(e) => { e.stopPropagation(); onDelete(milestone.id) }}
-                className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 hover:text-red-400 active:text-red-400 transition-colors"
                 aria-label={`Delete "${milestone.title}"`}
-                whileHover={{ scale: 1.15 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
               >
                 <Trash2 className="w-4 h-4" />
               </motion.button>
@@ -273,7 +273,8 @@ export function MilestoneList({
             onClick={() => handleMilestoneClick(activeMilestone)}
             className="rounded-xl border-2 border-teal-500/30 bg-gradient-to-br from-teal-500/10 to-slate-800/50 p-4 cursor-pointer hover:border-teal-500/50 transition-all group"
           >
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-1">
+              {/* Checkbox - min 44x44px touch target for accessibility */}
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -281,7 +282,7 @@ export function MilestoneList({
                 }}
                 disabled={completingId === activeMilestone.id}
                 aria-label={`Mark "${activeMilestone.title}" as complete`}
-                className="flex-shrink-0 mt-0.5 text-teal-400 hover:text-teal-300 transition-colors"
+                className="flex-shrink-0 min-w-[44px] min-h-[44px] -m-2 flex items-center justify-center text-teal-400 hover:text-teal-300 transition-colors"
               >
                 {completingId === activeMilestone.id ? (
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
@@ -419,33 +420,36 @@ export function MilestoneList({
                   {ideas.map(idea => (
                     <div
                       key={idea.id}
-                      className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-2 flex items-center gap-2 group"
+                      className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-2 pr-0 flex items-center gap-2 group"
                     >
                       <Lightbulb className="w-4 h-4 text-yellow-400/50 flex-shrink-0" />
                       <span className="text-sm text-slate-400 flex-1">{idea.title}</span>
-                      {onPromote && (
-                        <motion.button
-                          onClick={() => onPromote(idea.id)}
-                          className="p-1 text-yellow-400/50 hover:text-teal-400 active:text-teal-400 transition-colors"
-                          title="Promote to milestone"
-                          aria-label={`Promote "${idea.title}" to milestone`}
-                          whileHover={{ scale: 1.15 }}
-                          whileTap={{ scale: 0.9 }}
-                        >
-                          <ArrowUp className="w-4 h-4" />
-                        </motion.button>
-                      )}
-                      {isEditable && onDelete && (
-                        <motion.button
-                          onClick={() => onDelete(idea.id)}
-                          className="p-1 text-slate-600 hover:text-red-400 active:text-red-400 transition-colors"
-                          aria-label={`Delete idea "${idea.title}"`}
-                          whileHover={{ scale: 1.15 }}
-                          whileTap={{ scale: 0.9 }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </motion.button>
-                      )}
+                      {/* Action buttons with min 44x44px touch targets */}
+                      <div className="flex items-center -mr-1">
+                        {onPromote && (
+                          <motion.button
+                            onClick={() => onPromote(idea.id)}
+                            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-yellow-400/50 hover:text-teal-400 active:text-teal-400 transition-colors"
+                            title="Promote to milestone"
+                            aria-label={`Promote "${idea.title}" to milestone`}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            <ArrowUp className="w-4 h-4" />
+                          </motion.button>
+                        )}
+                        {isEditable && onDelete && (
+                          <motion.button
+                            onClick={() => onDelete(idea.id)}
+                            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-600 hover:text-red-400 active:text-red-400 transition-colors"
+                            aria-label={`Delete idea "${idea.title}"`}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </motion.button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

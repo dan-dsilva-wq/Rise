@@ -342,18 +342,20 @@ export function MilestoneList({
       {/* BACKLOG - Collapsed */}
       {backlog.length > 0 && (
         <div>
-          <button
+          <motion.button
             onClick={() => setShowBacklog(!showBacklog)}
             aria-expanded={showBacklog}
             aria-controls="backlog-section"
-            className="flex items-center gap-2 w-full text-left group"
+            className="flex items-center gap-2 w-full text-left py-1.5 px-2 -mx-2 rounded-lg transition-colors hover:bg-slate-700/30 focus:outline-none focus:ring-2 focus:ring-teal-500/40 focus:ring-offset-2 focus:ring-offset-slate-900 group"
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
           >
-            <ListTodo className="w-4 h-4 text-slate-500" />
+            <ListTodo className="w-4 h-4 text-slate-500 group-hover:text-slate-400 transition-colors" />
             <span className="text-sm font-medium text-slate-400 group-hover:text-slate-300 transition-colors">
               Backlog ({backlog.length})
             </span>
-            <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform ${showBacklog ? 'rotate-180' : ''}`} />
-          </button>
+            <ChevronDown className={`w-4 h-4 text-slate-600 group-hover:text-slate-500 transition-all ${showBacklog ? 'rotate-180' : ''}`} />
+          </motion.button>
 
           <AnimatePresence>
             {showBacklog && (
@@ -389,18 +391,20 @@ export function MilestoneList({
       {/* IDEAS - Collapsed */}
       {ideas.length > 0 && (
         <div className="pt-2 border-t border-slate-800">
-          <button
+          <motion.button
             onClick={() => setShowIdeas(!showIdeas)}
             aria-expanded={showIdeas}
             aria-controls="ideas-section"
-            className="flex items-center gap-2 w-full text-left group"
+            className="flex items-center gap-2 w-full text-left py-1.5 px-2 -mx-2 rounded-lg transition-colors hover:bg-yellow-500/10 focus:outline-none focus:ring-2 focus:ring-yellow-500/40 focus:ring-offset-2 focus:ring-offset-slate-900 group"
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
           >
-            <Lightbulb className="w-4 h-4 text-yellow-400" />
+            <Lightbulb className="w-4 h-4 text-yellow-400 group-hover:text-yellow-300 transition-colors" />
             <span className="text-sm font-medium text-yellow-400/70 group-hover:text-yellow-400 transition-colors">
               Ideas ({ideas.length})
             </span>
-            <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform ${showIdeas ? 'rotate-180' : ''}`} />
-          </button>
+            <ChevronDown className={`w-4 h-4 text-slate-600 group-hover:text-yellow-500/50 transition-all ${showIdeas ? 'rotate-180' : ''}`} />
+          </motion.button>
 
           <AnimatePresence>
             {showIdeas && (
@@ -454,18 +458,20 @@ export function MilestoneList({
       {/* COMPLETED - Collapsed */}
       {completed.length > 0 && (
         <div className="pt-2 border-t border-slate-800">
-          <button
+          <motion.button
             onClick={() => setShowCompleted(!showCompleted)}
             aria-expanded={showCompleted}
             aria-controls="completed-section"
-            className="flex items-center gap-2 w-full text-left group"
+            className="flex items-center gap-2 w-full text-left py-1.5 px-2 -mx-2 rounded-lg transition-colors hover:bg-slate-700/30 focus:outline-none focus:ring-2 focus:ring-slate-500/40 focus:ring-offset-2 focus:ring-offset-slate-900 group"
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
           >
-            <CheckCircle2 className="w-4 h-4 text-slate-600" />
+            <CheckCircle2 className="w-4 h-4 text-slate-600 group-hover:text-slate-500 transition-colors" />
             <span className="text-sm font-medium text-slate-500 group-hover:text-slate-400 transition-colors">
               Completed ({completed.length})
             </span>
-            <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform ${showCompleted ? 'rotate-180' : ''}`} />
-          </button>
+            <ChevronDown className={`w-4 h-4 text-slate-600 group-hover:text-slate-500 transition-all ${showCompleted ? 'rotate-180' : ''}`} />
+          </motion.button>
 
           <AnimatePresence>
             {showCompleted && (

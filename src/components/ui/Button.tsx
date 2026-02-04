@@ -14,6 +14,7 @@ interface ButtonProps {
   className?: string
   children?: ReactNode
   'aria-label'?: string
+  tabIndex?: number
 }
 
 function Button({
@@ -27,14 +28,15 @@ function Button({
   type = 'button',
   onClick,
   'aria-label': ariaLabel,
+  tabIndex,
 }: ButtonProps) {
-  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-2xl transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed'
+  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-2xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed'
 
   const variants = {
-    primary: 'bg-teal-500 hover:bg-teal-400 text-white focus:ring-teal-500',
-    secondary: 'bg-slate-700 hover:bg-slate-600 text-slate-100 focus:ring-slate-500',
-    ghost: 'bg-transparent hover:bg-slate-800 text-slate-300 focus:ring-slate-500',
-    danger: 'bg-red-500 hover:bg-red-400 text-white focus:ring-red-500',
+    primary: 'bg-teal-500 hover:bg-teal-400 text-white focus-visible:ring-teal-500',
+    secondary: 'bg-slate-700 hover:bg-slate-600 text-slate-100 focus-visible:ring-slate-500',
+    ghost: 'bg-transparent hover:bg-slate-800 text-slate-300 focus-visible:ring-slate-500',
+    danger: 'bg-red-500 hover:bg-red-400 text-white focus-visible:ring-red-500',
   }
 
   const sizes = {
@@ -58,6 +60,7 @@ function Button({
       aria-disabled={disabled || isLoading}
       aria-label={computedAriaLabel}
       aria-live="polite"
+      tabIndex={tabIndex}
     >
       {isLoading ? (
         <svg

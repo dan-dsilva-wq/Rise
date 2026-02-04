@@ -84,6 +84,30 @@ public static extern uint SetThreadExecutionState(uint esFlags);
     }
 }
 
+# Convert PSCustomObject to Hashtable (for PowerShell 5.1 compatibility)
+function ConvertTo-Hashtable {
+    param($InputObject)
+
+    if ($null -eq $InputObject) { return @{} }
+
+    if ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string]) {
+        $collection = @(
+            foreach ($object in $InputObject) {
+                ConvertTo-Hashtable $object
+            }
+        )
+        return ,$collection
+    } elseif ($InputObject -is [PSCustomObject]) {
+        $hash = @{}
+        foreach ($property in $InputObject.PSObject.Properties) {
+            $hash[$property.Name] = ConvertTo-Hashtable $property.Value
+        }
+        return $hash
+    } else {
+        return $InputObject
+    }
+}
+
 # =============================================================================
 # STATE MANAGEMENT
 # =============================================================================
@@ -107,7 +131,7 @@ function Initialize-State {
 
 function Load-State {
     if (Test-Path $STATE_FILE) {
-        return Get-Content $STATE_FILE | ConvertFrom-Json -AsHashtable
+        return Get-Content $STATE_FILE | ConvertFrom-Json | ConvertTo-Hashtable
     }
     return Initialize-State
 }
@@ -149,7 +173,7 @@ function Load-Tasks {
         $defaultTasks | ConvertTo-Json -Depth 10 | Set-Content $TASK_FILE
         return $defaultTasks
     }
-    return Get-Content $TASK_FILE | ConvertFrom-Json -AsHashtable
+    return Get-Content $TASK_FILE | ConvertFrom-Json | ConvertTo-Hashtable
 }
 
 function Save-Tasks {

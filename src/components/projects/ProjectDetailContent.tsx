@@ -163,7 +163,7 @@ export function ProjectDetailContent({
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-white font-bold"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 text-white font-bold focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   autoFocus
                 />
               ) : (
@@ -258,7 +258,7 @@ export function ProjectDetailContent({
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white min-h-[100px]"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white min-h-[100px] focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   placeholder="What are you building?"
                 />
               </div>
@@ -328,7 +328,7 @@ export function ProjectDetailContent({
                   value={newMilestoneTitle}
                   onChange={(e) => setNewMilestoneTitle(e.target.value)}
                   placeholder="Milestone title..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white mb-3"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white mb-3 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   autoFocus
                 />
                 <div className="flex gap-2">
@@ -357,7 +357,7 @@ export function ProjectDetailContent({
                   value={newIdeaTitle}
                   onChange={(e) => setNewIdeaTitle(e.target.value)}
                   placeholder="Idea for later..."
-                  className="w-full bg-yellow-500/5 border border-yellow-500/30 rounded-lg px-3 py-2 text-white mb-3 placeholder-yellow-400/50"
+                  className="w-full bg-yellow-500/5 border border-yellow-500/30 rounded-lg px-3 py-2 text-white mb-3 placeholder-yellow-400/50 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                   autoFocus
                 />
                 <div className="flex gap-2">

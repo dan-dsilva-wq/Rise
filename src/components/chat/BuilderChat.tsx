@@ -282,7 +282,7 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
               onKeyDown={handleKeyDown}
               placeholder="Ask anything about your project..."
               rows={1}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 pr-12 text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500/50"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 pr-12 text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               style={{
                 minHeight: '48px',
                 maxHeight: '120px',

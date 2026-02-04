@@ -43,7 +43,7 @@ ${project?.description ? `Project context: ${project.description}` : ''}
 Generate 3-4 actionable first steps for this milestone.`
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 500,
       messages: [
         { role: 'user', content: userMessage }

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
-import { fetchAiContextForApi } from '@/lib/hooks/useAiContext'
+import { fetchAiContextForApi } from '@/lib/hooks/aiContextServer'
 
 // Lazy initialize to avoid build-time errors
 let openai: OpenAI | null = null

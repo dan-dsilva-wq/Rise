@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { saveProjectContext, saveAiInsight } from '@/lib/hooks/useAiContext'
+import { saveProjectContext, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import type { ProjectContextType, InsightType } from '@/lib/supabase/types'
 
 let anthropic: Anthropic | null = null

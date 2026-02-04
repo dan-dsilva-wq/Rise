@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/useAiContext'
+import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import type { InsightType } from '@/lib/supabase/types'
 
 let anthropic: Anthropic | null = null
@@ -305,7 +305,7 @@ Remember: They chose "Guide me" because they want to learn and grow.`
     }))
 
     const response = await getAnthropic().messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 2000, // Increased for expert-level detailed responses
       system: systemPrompt,
       messages: formattedMessages,

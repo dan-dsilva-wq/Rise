@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { fetchAiContextForApi } from '@/lib/hooks/useAiContext'
+import { fetchAiContextForApi } from '@/lib/hooks/aiContextServer'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response = await getAnthropic().messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 500,
       system: `You are a supportive AI cofounder helping someone build their path to freedom. Generate a morning briefing that's:
 - Specific to their current projects and milestones

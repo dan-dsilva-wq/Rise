@@ -6,4 +6,6 @@ const withSerwist = withSerwistInit({
   disable: process.env.NODE_ENV === "development",
 });
 
-export default withSerwist({});
+export default withSerwist({
+  turbopack: {}, // Silence Next.js 16 Turbopack warning
+});

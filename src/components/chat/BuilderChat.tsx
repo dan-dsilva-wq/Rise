@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, Bot, User, Sparkles, Copy, Check } from 'lucide-react'
+import { Send, Loader2, Bot, User, Sparkles, Copy, Check, AlertCircle, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { Project, Milestone, ProjectLog } from '@/lib/supabase/types'
 
@@ -11,6 +11,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  isError?: boolean
 }
 
 interface BuilderChatProps {
@@ -31,6 +32,7 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -98,14 +100,18 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
     } catch (error) {
       console.error('Chat error:', error)
 
-      // Add error message
+      // Store the failed message for retry
+      setLastFailedMessage(userMessage.content)
+
+      // Add error message with distinct styling
       setMessages(prev => [
         ...prev,
         {
           id: `error-${Date.now()}`,
           role: 'assistant',
-          content: 'Sorry, I encountered an error. Please try again.',
+          content: 'I couldn\'t connect to the server. Check your connection and try again.',
           timestamp: new Date(),
+          isError: true,
         },
       ])
     } finally {
@@ -124,6 +130,21 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
     await navigator.clipboard.writeText(text)
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  const handleRetry = () => {
+    if (!lastFailedMessage || isLoading) return
+
+    // Remove the last error message
+    setMessages(prev => prev.filter(m => !m.isError))
+    setLastFailedMessage(null)
+
+    // Set input and trigger submit
+    setInput(lastFailedMessage)
+    // Use setTimeout to ensure state is updated before submit
+    setTimeout(() => {
+      handleSubmit()
+    }, 0)
   }
 
   // Quick prompts for empty state
@@ -180,13 +201,17 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
                 <div
                   className={`
                     flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
-                    ${message.role === 'user'
-                      ? 'bg-teal-500/20'
-                      : 'bg-purple-500/20'
+                    ${message.isError
+                      ? 'bg-red-500/20'
+                      : message.role === 'user'
+                        ? 'bg-teal-500/20'
+                        : 'bg-purple-500/20'
                     }
                   `}
                 >
-                  {message.role === 'user' ? (
+                  {message.isError ? (
+                    <AlertCircle className="w-4 h-4 text-red-400" />
+                  ) : message.role === 'user' ? (
                     <User className="w-4 h-4 text-teal-400" />
                   ) : (
                     <Bot className="w-4 h-4 text-purple-400" />
@@ -197,13 +222,28 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
                 <div
                   className={`
                     flex-1 max-w-[85%] rounded-2xl px-4 py-3
-                    ${message.role === 'user'
-                      ? 'bg-teal-500/10 border border-teal-500/20'
-                      : 'bg-slate-800/50 border border-slate-700/50'
+                    ${message.isError
+                      ? 'bg-red-500/10 border border-red-500/30'
+                      : message.role === 'user'
+                        ? 'bg-teal-500/10 border border-teal-500/20'
+                        : 'bg-slate-800/50 border border-slate-700/50'
                     }
                   `}
+                  role={message.isError ? 'alert' : undefined}
                 >
-                  {message.role === 'assistant' ? (
+                  {message.isError ? (
+                    <div className="space-y-3">
+                      <p className="text-red-300 text-sm">{message.content}</p>
+                      <button
+                        onClick={handleRetry}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-red-300 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 hover:border-red-500/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Retry
+                      </button>
+                    </div>
+                  ) : message.role === 'assistant' ? (
                     <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-700">
                       <ReactMarkdown
                         components={{

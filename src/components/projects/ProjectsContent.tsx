@@ -247,7 +247,7 @@ export function ProjectsContent({
                   Find Your Path
                 </Button>
               </Link>
-              <Button variant="secondary" onClick={handleCreateProject} isLoading={isCreating}>
+              <Button variant="secondary" onClick={handleCreateProject} isLoading={isCreating} loadingText="Creating project...">
                 <Plus className="w-4 h-4 mr-2" />
                 Blank Project
               </Button>

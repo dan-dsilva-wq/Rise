@@ -305,7 +305,7 @@ export function ProjectDetailContent({
                 <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={isSaving}>
                   Cancel
                 </Button>
-                <Button onClick={handleSaveEdit} isLoading={isSaving}>
+                <Button onClick={handleSaveEdit} isLoading={isSaving} loadingText="Saving project changes...">
                   {isSaving ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
@@ -394,7 +394,7 @@ export function ProjectDetailContent({
                   }} disabled={isAddingMilestone}>
                     Cancel
                   </Button>
-                  <Button size="sm" onClick={handleAddMilestone} isLoading={isAddingMilestone}>
+                  <Button size="sm" onClick={handleAddMilestone} isLoading={isAddingMilestone} loadingText="Adding milestone...">
                     {isAddingMilestone ? 'Adding...' : 'Add Milestone'}
                   </Button>
                 </div>
@@ -443,7 +443,7 @@ export function ProjectDetailContent({
                   }} disabled={isAddingIdea}>
                     Cancel
                   </Button>
-                  <Button size="sm" onClick={handleAddIdea} isLoading={isAddingIdea} className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border-yellow-500/30">
+                  <Button size="sm" onClick={handleAddIdea} isLoading={isAddingIdea} loadingText="Adding idea..." className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border-yellow-500/30">
                     {isAddingIdea ? 'Adding...' : 'Add Idea'}
                   </Button>
                 </div>

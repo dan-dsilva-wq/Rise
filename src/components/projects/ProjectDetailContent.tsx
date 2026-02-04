@@ -61,6 +61,8 @@ export function ProjectDetailContent({
   const [showAddIdea, setShowAddIdea] = useState(false)
   const [newIdeaTitle, setNewIdeaTitle] = useState('')
   const [errorToast, setErrorToast] = useState<string | null>(null)
+  const [milestoneError, setMilestoneError] = useState<string | null>(null)
+  const [ideaError, setIdeaError] = useState<string | null>(null)
   // Use data from hook - it's initialized with server data
   const currentProject = project
   const currentMilestones = milestones
@@ -125,8 +127,12 @@ export function ProjectDetailContent({
   }
 
   const handleAddMilestone = async () => {
-    if (!newMilestoneTitle.trim()) return
+    if (!newMilestoneTitle.trim()) {
+      setMilestoneError('Please enter a milestone title')
+      return
+    }
 
+    setMilestoneError(null)
     await addMilestone({
       title: newMilestoneTitle,
       description: '',
@@ -137,8 +143,12 @@ export function ProjectDetailContent({
   }
 
   const handleAddIdea = async () => {
-    if (!newIdeaTitle.trim()) return
+    if (!newIdeaTitle.trim()) {
+      setIdeaError('Please enter an idea')
+      return
+    }
 
+    setIdeaError(null)
     await addIdea(newIdeaTitle.trim())
 
     setNewIdeaTitle('')
@@ -323,16 +333,36 @@ export function ProjectDetailContent({
                 exit={{ opacity: 0, height: 0 }}
                 className="mt-4 pt-4 border-t border-slate-700"
               >
-                <input
-                  type="text"
-                  value={newMilestoneTitle}
-                  onChange={(e) => setNewMilestoneTitle(e.target.value)}
-                  placeholder="Milestone title..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white mb-3 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  autoFocus
-                />
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    value={newMilestoneTitle}
+                    onChange={(e) => {
+                      setNewMilestoneTitle(e.target.value)
+                      if (milestoneError) setMilestoneError(null)
+                    }}
+                    placeholder="Milestone title..."
+                    className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:border-transparent ${
+                      milestoneError
+                        ? 'border-red-500 focus:ring-red-500'
+                        : 'border-slate-700 focus:ring-teal-500'
+                    }`}
+                    autoFocus
+                    aria-invalid={milestoneError ? 'true' : 'false'}
+                    aria-describedby={milestoneError ? 'milestone-error' : undefined}
+                  />
+                  {milestoneError && (
+                    <p id="milestone-error" className="mt-1 text-sm text-red-400" role="alert">
+                      {milestoneError}
+                    </p>
+                  )}
+                </div>
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setShowAddMilestone(false)}>
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setShowAddMilestone(false)
+                    setMilestoneError(null)
+                    setNewMilestoneTitle('')
+                  }}>
                     Cancel
                   </Button>
                   <Button size="sm" onClick={handleAddMilestone}>
@@ -352,16 +382,36 @@ export function ProjectDetailContent({
                 exit={{ opacity: 0, height: 0 }}
                 className="mt-4 pt-4 border-t border-yellow-700/30"
               >
-                <input
-                  type="text"
-                  value={newIdeaTitle}
-                  onChange={(e) => setNewIdeaTitle(e.target.value)}
-                  placeholder="Idea for later..."
-                  className="w-full bg-yellow-500/5 border border-yellow-500/30 rounded-lg px-3 py-2 text-white mb-3 placeholder-yellow-400/50 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                  autoFocus
-                />
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    value={newIdeaTitle}
+                    onChange={(e) => {
+                      setNewIdeaTitle(e.target.value)
+                      if (ideaError) setIdeaError(null)
+                    }}
+                    placeholder="Idea for later..."
+                    className={`w-full bg-yellow-500/5 border rounded-lg px-3 py-2 text-white placeholder-yellow-400/50 focus:outline-none focus:ring-2 focus:border-transparent ${
+                      ideaError
+                        ? 'border-red-500 focus:ring-red-500'
+                        : 'border-yellow-500/30 focus:ring-yellow-500'
+                    }`}
+                    autoFocus
+                    aria-invalid={ideaError ? 'true' : 'false'}
+                    aria-describedby={ideaError ? 'idea-error' : undefined}
+                  />
+                  {ideaError && (
+                    <p id="idea-error" className="mt-1 text-sm text-red-400" role="alert">
+                      {ideaError}
+                    </p>
+                  )}
+                </div>
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setShowAddIdea(false)}>
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setShowAddIdea(false)
+                    setIdeaError(null)
+                    setNewIdeaTitle('')
+                  }}>
                     Cancel
                   </Button>
                   <Button size="sm" onClick={handleAddIdea} className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border-yellow-500/30">

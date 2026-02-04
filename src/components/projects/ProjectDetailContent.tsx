@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import {
@@ -53,6 +53,10 @@ export function ProjectDetailContent({
   } = useProject(initialProject?.id, user?.id, initialProject, initialMilestones)
 
   const [showMenu, setShowMenu] = useState(false)
+  const [focusedMenuIndex, setFocusedMenuIndex] = useState(-1)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const menuItemsRef = useRef<(HTMLButtonElement | HTMLAnchorElement | null)[]>([])
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(initialProject?.name || '')
   const [editDescription, setEditDescription] = useState(initialProject?.description || '')
@@ -72,6 +76,100 @@ export function ProjectDetailContent({
   // Use data from hook - it's initialized with server data
   const currentProject = project
   const currentMilestones = milestones
+
+  // Calculate menu item count based on project state (for keyboard navigation)
+  const getMenuItemCount = useCallback(() => {
+    if (!currentProject) return 0
+    const projectStatus = statusConfig[currentProject.status]
+    let count = 2 // Edit Details + Rethink in Path Finder
+    if (projectStatus.next) count++ // Move to next status
+    if (currentProject.status !== 'paused' && currentProject.status !== 'launched') count++ // Pause Project
+    count++ // Delete Project
+    return count
+  }, [currentProject?.status])
+
+  // Click outside handler to close menu
+  useEffect(() => {
+    if (!showMenu) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        menuButtonRef.current &&
+        !menuButtonRef.current.contains(event.target as Node)
+      ) {
+        setShowMenu(false)
+        setFocusedMenuIndex(-1)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showMenu])
+
+  // Keyboard navigation for menu
+  useEffect(() => {
+    if (!showMenu) return
+
+    const menuItemCount = getMenuItemCount()
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      switch (event.key) {
+        case 'Escape':
+          event.preventDefault()
+          setShowMenu(false)
+          setFocusedMenuIndex(-1)
+          menuButtonRef.current?.focus()
+          break
+        case 'ArrowDown':
+          event.preventDefault()
+          setFocusedMenuIndex(prev => {
+            const next = prev < menuItemCount - 1 ? prev + 1 : 0
+            menuItemsRef.current[next]?.focus()
+            return next
+          })
+          break
+        case 'ArrowUp':
+          event.preventDefault()
+          setFocusedMenuIndex(prev => {
+            const next = prev > 0 ? prev - 1 : menuItemCount - 1
+            menuItemsRef.current[next]?.focus()
+            return next
+          })
+          break
+        case 'Home':
+          event.preventDefault()
+          setFocusedMenuIndex(0)
+          menuItemsRef.current[0]?.focus()
+          break
+        case 'End':
+          event.preventDefault()
+          setFocusedMenuIndex(menuItemCount - 1)
+          menuItemsRef.current[menuItemCount - 1]?.focus()
+          break
+        case 'Tab':
+          // Close menu on tab out
+          setShowMenu(false)
+          setFocusedMenuIndex(-1)
+          break
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [showMenu, getMenuItemCount])
+
+  // Focus first menu item when menu opens
+  useEffect(() => {
+    if (showMenu) {
+      setFocusedMenuIndex(0)
+      // Small delay to ensure menu is rendered
+      setTimeout(() => {
+        menuItemsRef.current[0]?.focus()
+      }, 50)
+    }
+  }, [showMenu])
 
   if (!currentProject) {
     return (
@@ -220,8 +318,12 @@ export function ProjectDetailContent({
           {/* Menu Button */}
           <div className="relative">
             <button
+              ref={menuButtonRef}
               onClick={() => setShowMenu(!showMenu)}
-              className="p-2 rounded-full hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-full hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+              aria-expanded={showMenu}
+              aria-haspopup="menu"
+              aria-label="Project options menu"
             >
               <MoreVertical className="w-5 h-5 text-slate-400" />
             </button>
@@ -229,57 +331,84 @@ export function ProjectDetailContent({
             <AnimatePresence>
               {showMenu && (
                 <motion.div
+                  ref={menuRef}
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="absolute right-0 top-full mt-2 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden z-50"
+                  role="menu"
+                  aria-label="Project actions"
+                  aria-orientation="vertical"
                 >
-                  <button
-                    onClick={() => {
-                      setIsEditing(true)
-                      setShowMenu(false)
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 flex items-center gap-2"
-                  >
-                    <Pencil className="w-4 h-4" />
-                    Edit Details
-                  </button>
+                  {(() => {
+                    let itemIndex = 0
+                    return (
+                      <>
+                        <button
+                          ref={el => { menuItemsRef.current[itemIndex] = el }}
+                          onClick={() => {
+                            setIsEditing(true)
+                            setShowMenu(false)
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 focus:bg-slate-700 focus:outline-none flex items-center gap-2"
+                          role="menuitem"
+                          tabIndex={focusedMenuIndex === itemIndex++ ? 0 : -1}
+                        >
+                          <Pencil className="w-4 h-4" />
+                          Edit Details
+                        </button>
 
-                  <Link
-                    href="/path-finder"
-                    className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 flex items-center gap-2"
-                  >
-                    <Compass className="w-4 h-4" />
-                    Rethink in Path Finder
-                  </Link>
+                        <Link
+                          ref={el => { menuItemsRef.current[itemIndex] = el }}
+                          href="/path-finder"
+                          className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 focus:bg-slate-700 focus:outline-none flex items-center gap-2"
+                          role="menuitem"
+                          tabIndex={focusedMenuIndex === itemIndex++ ? 0 : -1}
+                          onClick={() => setShowMenu(false)}
+                        >
+                          <Compass className="w-4 h-4" />
+                          Rethink in Path Finder
+                        </Link>
 
-                  {status.next && (
-                    <button
-                      onClick={() => handleStatusChange(status.next as Project['status'])}
-                      className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 flex items-center gap-2"
-                    >
-                      <Play className="w-4 h-4" />
-                      Move to {statusConfig[status.next as keyof typeof statusConfig].label}
-                    </button>
-                  )}
+                        {status.next && (
+                          <button
+                            ref={el => { menuItemsRef.current[itemIndex] = el }}
+                            onClick={() => handleStatusChange(status.next as Project['status'])}
+                            className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 focus:bg-slate-700 focus:outline-none flex items-center gap-2"
+                            role="menuitem"
+                            tabIndex={focusedMenuIndex === itemIndex++ ? 0 : -1}
+                          >
+                            <Play className="w-4 h-4" />
+                            Move to {statusConfig[status.next as keyof typeof statusConfig].label}
+                          </button>
+                        )}
 
-                  {currentProject.status !== 'paused' && currentProject.status !== 'launched' && (
-                    <button
-                      onClick={() => handleStatusChange('paused')}
-                      className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 flex items-center gap-2"
-                    >
-                      <PauseCircle className="w-4 h-4" />
-                      Pause Project
-                    </button>
-                  )}
+                        {currentProject.status !== 'paused' && currentProject.status !== 'launched' && (
+                          <button
+                            ref={el => { menuItemsRef.current[itemIndex] = el }}
+                            onClick={() => handleStatusChange('paused')}
+                            className="w-full px-4 py-2 text-left text-sm text-slate-300 hover:bg-slate-700 focus:bg-slate-700 focus:outline-none flex items-center gap-2"
+                            role="menuitem"
+                            tabIndex={focusedMenuIndex === itemIndex++ ? 0 : -1}
+                          >
+                            <PauseCircle className="w-4 h-4" />
+                            Pause Project
+                          </button>
+                        )}
 
-                  <button
-                    onClick={handleDelete}
-                    className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-slate-700 flex items-center gap-2"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Delete Project
-                  </button>
+                        <button
+                          ref={el => { menuItemsRef.current[itemIndex] = el }}
+                          onClick={handleDelete}
+                          className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-slate-700 focus:bg-slate-700 focus:outline-none flex items-center gap-2"
+                          role="menuitem"
+                          tabIndex={focusedMenuIndex === itemIndex++ ? 0 : -1}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete Project
+                        </button>
+                      </>
+                    )
+                  })()}
                 </motion.div>
               )}
             </AnimatePresence>

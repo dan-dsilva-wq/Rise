@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import {
   ChevronLeft, Target, Hammer, Rocket,
-  PauseCircle, MoreVertical, Pencil, Trash2, Play, Sparkles, Compass, X, Check
+  PauseCircle, MoreVertical, Pencil, Trash2, Play, Sparkles, Compass, X, Check, AlertTriangle
 } from 'lucide-react'
 import Link from 'next/link'
 import { MilestoneList } from './MilestoneList'
@@ -67,6 +67,8 @@ export function ProjectDetailContent({
   const [isSaving, setIsSaving] = useState(false)
   const [isAddingMilestone, setIsAddingMilestone] = useState(false)
   const [isAddingIdea, setIsAddingIdea] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   // Use data from hook - it's initialized with server data
   const currentProject = project
   const currentMilestones = milestones
@@ -108,14 +110,20 @@ export function ProjectDetailContent({
   }
 
   const handleDelete = async () => {
-    if (confirm('Are you sure you want to delete this project? This cannot be undone.')) {
-      const success = await deleteProject()
-      if (success) {
-        router.push('/projects')
-      } else {
-        setErrorToast('Failed to delete project. Please try again.')
-        setTimeout(() => setErrorToast(null), 5000)
-      }
+    setShowDeleteConfirm(true)
+    setShowMenu(false)
+  }
+
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true)
+    const success = await deleteProject()
+    if (success) {
+      router.push('/projects')
+    } else {
+      setIsDeleting(false)
+      setShowDeleteConfirm(false)
+      setErrorToast('Failed to delete project. Please try again.')
+      setTimeout(() => setErrorToast(null), 5000)
     }
   }
 
@@ -482,6 +490,60 @@ export function ProjectDetailContent({
               >
                 <X className="w-4 h-4" />
               </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Delete Confirmation Modal */}
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+              onClick={() => !isDeleting && setShowDeleteConfirm(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-slate-800 border border-slate-700 rounded-xl p-5 max-w-sm w-full shadow-xl"
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 rounded-full bg-red-500/20">
+                    <AlertTriangle className="w-5 h-5 text-red-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-white">Delete project?</h3>
+                </div>
+
+                <p className="text-slate-400 text-sm mb-2">
+                  This will permanently delete <span className="text-white font-medium">{currentProject.name}</span> and all its milestones and ideas.
+                </p>
+                <p className="text-red-400/80 text-xs">
+                  This action cannot be undone.
+                </p>
+
+                <div className="flex gap-3 mt-5">
+                  <Button
+                    variant="ghost"
+                    className="flex-1"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={isDeleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-300 border-red-500/30"
+                    onClick={handleConfirmDelete}
+                    isLoading={isDeleting}
+                  >
+                    {isDeleting ? 'Deleting...' : 'Delete'}
+                  </Button>
+                </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>

@@ -64,6 +64,9 @@ export function ProjectDetailContent({
   const [successToast, setSuccessToast] = useState<string | null>(null)
   const [milestoneError, setMilestoneError] = useState<string | null>(null)
   const [ideaError, setIdeaError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isAddingMilestone, setIsAddingMilestone] = useState(false)
+  const [isAddingIdea, setIsAddingIdea] = useState(false)
   // Use data from hook - it's initialized with server data
   const currentProject = project
   const currentMilestones = milestones
@@ -87,11 +90,16 @@ export function ProjectDetailContent({
   const StatusIcon = status.icon
 
   const handleSaveEdit = async () => {
-    await updateProject({
-      name: editName,
-      description: editDescription,
-    })
-    setIsEditing(false)
+    setIsSaving(true)
+    try {
+      await updateProject({
+        name: editName,
+        description: editDescription,
+      })
+      setIsEditing(false)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleStatusChange = async (newStatus: Project['status']) => {
@@ -134,15 +142,19 @@ export function ProjectDetailContent({
     }
 
     setMilestoneError(null)
-    await addMilestone({
-      title: newMilestoneTitle,
-      description: '',
-    })
-
-    setNewMilestoneTitle('')
-    setShowAddMilestone(false)
-    setSuccessToast('Milestone added')
-    setTimeout(() => setSuccessToast(null), 2000)
+    setIsAddingMilestone(true)
+    try {
+      await addMilestone({
+        title: newMilestoneTitle,
+        description: '',
+      })
+      setNewMilestoneTitle('')
+      setShowAddMilestone(false)
+      setSuccessToast('Milestone added')
+      setTimeout(() => setSuccessToast(null), 2000)
+    } finally {
+      setIsAddingMilestone(false)
+    }
   }
 
   const handleAddIdea = async () => {
@@ -152,12 +164,16 @@ export function ProjectDetailContent({
     }
 
     setIdeaError(null)
-    await addIdea(newIdeaTitle.trim())
-
-    setNewIdeaTitle('')
-    setShowAddIdea(false)
-    setSuccessToast('Idea saved')
-    setTimeout(() => setSuccessToast(null), 2000)
+    setIsAddingIdea(true)
+    try {
+      await addIdea(newIdeaTitle.trim())
+      setNewIdeaTitle('')
+      setShowAddIdea(false)
+      setSuccessToast('Idea saved')
+      setTimeout(() => setSuccessToast(null), 2000)
+    } finally {
+      setIsAddingIdea(false)
+    }
   }
 
   return (
@@ -278,11 +294,11 @@ export function ProjectDetailContent({
                 />
               </div>
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => setIsEditing(false)}>
+                <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={isSaving}>
                   Cancel
                 </Button>
-                <Button onClick={handleSaveEdit}>
-                  Save Changes
+                <Button onClick={handleSaveEdit} isLoading={isSaving}>
+                  {isSaving ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
             </div>
@@ -367,11 +383,11 @@ export function ProjectDetailContent({
                     setShowAddMilestone(false)
                     setMilestoneError(null)
                     setNewMilestoneTitle('')
-                  }}>
+                  }} disabled={isAddingMilestone}>
                     Cancel
                   </Button>
-                  <Button size="sm" onClick={handleAddMilestone}>
-                    Add Milestone
+                  <Button size="sm" onClick={handleAddMilestone} isLoading={isAddingMilestone}>
+                    {isAddingMilestone ? 'Adding...' : 'Add Milestone'}
                   </Button>
                 </div>
               </motion.div>
@@ -416,11 +432,11 @@ export function ProjectDetailContent({
                     setShowAddIdea(false)
                     setIdeaError(null)
                     setNewIdeaTitle('')
-                  }}>
+                  }} disabled={isAddingIdea}>
                     Cancel
                   </Button>
-                  <Button size="sm" onClick={handleAddIdea} className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border-yellow-500/30">
-                    Add Idea
+                  <Button size="sm" onClick={handleAddIdea} isLoading={isAddingIdea} className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border-yellow-500/30">
+                    {isAddingIdea ? 'Adding...' : 'Add Idea'}
                   </Button>
                 </div>
               </motion.div>

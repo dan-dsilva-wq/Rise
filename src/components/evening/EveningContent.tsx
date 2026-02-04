@@ -26,6 +26,13 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
   const [earnedXP, setEarnedXP] = useState(0)
   const [errorToast, setErrorToast] = useState<string | null>(null)
 
+  // Track which sliders have been intentionally touched
+  const [touchedSliders, setTouchedSliders] = useState({
+    energy: !!todayLog?.evening_energy,
+    mood: !!todayLog?.evening_mood,
+    rating: !!todayLog?.day_rating,
+  })
+
   const supabase = createClient()
 
   const MAX_GRATITUDE_LENGTH = 280
@@ -189,6 +196,8 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                   max={10}
                   leftLabel="Drained"
                   rightLabel="Energized"
+                  touched={touchedSliders.energy}
+                  onTouch={() => setTouchedSliders((prev) => ({ ...prev, energy: true }))}
                 />
 
                 <Slider
@@ -199,6 +208,8 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                   max={10}
                   leftLabel="Low"
                   rightLabel="Great"
+                  touched={touchedSliders.mood}
+                  onTouch={() => setTouchedSliders((prev) => ({ ...prev, mood: true }))}
                 />
               </div>
             </Card>
@@ -209,12 +220,15 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                 Rate your day
               </h3>
               <Slider
+                label="Day Rating"
                 value={dayRating}
                 onChange={setDayRating}
                 min={1}
                 max={10}
                 leftLabel="Tough day"
                 rightLabel="Great day"
+                touched={touchedSliders.rating}
+                onTouch={() => setTouchedSliders((prev) => ({ ...prev, rating: true }))}
               />
             </Card>
 

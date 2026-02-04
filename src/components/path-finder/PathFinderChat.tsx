@@ -1405,9 +1405,36 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
               </div>
 
               {facts.length === 0 ? (
-                <p className="text-sm text-slate-500 italic">
-                  No profile yet. As we chat, important info will be saved here.
-                </p>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-center py-6 px-4"
+                >
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/30 flex items-center justify-center">
+                    <UserCircle className="w-6 h-6 text-purple-400" />
+                  </div>
+                  <h4 className="text-sm font-medium text-slate-300 mb-2">Your profile is empty</h4>
+                  <p className="text-xs text-slate-500 mb-4 max-w-[220px] mx-auto">
+                    As we chat, I'll remember key details about you — like your background, goals, and what you're working on.
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-1.5 mb-4">
+                    {(['background', 'skills', 'goals'] as ProfileCategory[]).map((category, index) => (
+                      <motion.span
+                        key={category}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.1 + index * 0.1 }}
+                        className={`text-[10px] px-2 py-0.5 rounded border ${CATEGORY_COLORS[category]}`}
+                      >
+                        {CATEGORY_LABELS[category]}
+                      </motion.span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-600 flex items-center justify-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    Start chatting to build your profile
+                  </p>
+                </motion.div>
               ) : (
                 <div className="space-y-3">
                   {(Object.keys(CATEGORY_LABELS) as ProfileCategory[]).map(category => {

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Moon, Lock, Sparkles } from 'lucide-react'
+import { ArrowLeft, Moon, Lock, Sparkles, X } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { Slider } from '@/components/ui/Slider'
@@ -24,6 +24,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [earnedXP, setEarnedXP] = useState(0)
+  const [errorToast, setErrorToast] = useState<string | null>(null)
 
   const supabase = createClient()
 
@@ -48,6 +49,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
     if (!todayLog) return
 
     setSaving(true)
+    setErrorToast(null)
     try {
       let xpBonus = 0
 
@@ -63,7 +65,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any)
+      const { error: updateError } = await (supabase as any)
         .from('daily_logs')
         .update({
           evening_energy: eveningEnergy,
@@ -74,12 +76,19 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
         })
         .eq('id', todayLog.id)
 
+      if (updateError) {
+        throw new Error('Failed to save reflection')
+      }
+
       if (xpBonus > 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any).rpc('increment_xp', {
+        const { error: xpError } = await (supabase as any).rpc('increment_xp', {
           user_id: profile?.id,
           xp_amount: xpBonus,
         })
+        if (xpError) {
+          throw new Error('Failed to award XP')
+        }
       }
 
       setEarnedXP(xpBonus)
@@ -88,6 +97,9 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
         setSaved(false)
         setEarnedXP(0)
       }, 4000)
+    } catch {
+      setErrorToast('Failed to save. Please try again.')
+      setTimeout(() => setErrorToast(null), 5000)
     } finally {
       setSaving(false)
     }
@@ -274,6 +286,28 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                       <span className="text-sm font-semibold text-teal-300">+{earnedXP} XP</span>
                     </motion.div>
                   )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Error Toast */}
+            <AnimatePresence>
+              {errorToast && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="fixed bottom-28 left-4 right-4 max-w-lg mx-auto px-4 py-3 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-2"
+                >
+                  <X className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <span className="text-sm text-red-400 flex-1">{errorToast}</span>
+                  <button
+                    onClick={() => setErrorToast(null)}
+                    className="text-red-400 hover:text-red-300"
+                    aria-label="Dismiss error"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>

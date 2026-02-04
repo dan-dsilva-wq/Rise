@@ -5,61 +5,57 @@
       "description": "Add hover states to ProjectCard component",
       "risk": "low",
       "status": "completed",
-      "maxFiles": 3,
-      "note": "Done by v1.0 - ProjectCard.tsx"
+      "note": "v1.0: d33e46f - Add hover micro-interactions and focus states to ProjectCard"
     },
     {
       "id": "2",
       "description": "Improve error messages in auth forms",
       "risk": "low",
-      "status": "pending",
-      "maxFiles": 3
+      "status": "completed",
+      "note": "v1.0: 0a61f38 - Add role=alert and aria-live to auth form error messages"
     },
     {
       "id": "3",
       "description": "Add aria-labels to navigation buttons",
       "risk": "low",
       "status": "completed",
-      "maxFiles": 3,
-      "note": "Done by v1.0 - BottomNavigation.tsx"
+      "note": "v1.0: 1efb082 - Add accessibility improvements to BottomNavigation"
     },
     {
       "id": "4",
       "description": "Add loading skeleton to projects list",
       "risk": "low",
       "status": "completed",
-      "maxFiles": 3,
-      "note": "Done by v1.0 - MilestoneList, ProjectsContent"
+      "note": "v1.0: fe9e8d0 - Add skeleton loading states for milestones in Projects page"
     },
     {
       "id": "5",
       "description": "Improve mobile touch targets in MilestoneList",
       "risk": "low",
-      "status": "pending",
-      "maxFiles": 3
+      "status": "completed",
+      "note": "v1.0: ea5636c - Increase touch target sizes to 44x44px minimum"
     },
     {
       "id": "6",
       "description": "Add keyboard shortcuts to common actions",
       "risk": "medium",
       "status": "pending",
-      "maxFiles": 5
+      "maxFiles": 5,
+      "note": "Global shortcuts like Cmd+K for search"
     },
     {
       "id": "7",
       "description": "Add toast notifications for success/error states",
       "risk": "low",
       "status": "completed",
-      "maxFiles": 3,
-      "note": "Done by v1.0 - EveningContent error handling"
+      "note": "v1.0: e5bc398 - Add error handling and toast UI for evening reflection save"
     },
     {
       "id": "8",
       "description": "Improve empty states with helpful CTAs",
       "risk": "low",
       "status": "completed",
-      "maxFiles": 3,
-      "note": "Done by v1.0 - PathFinder Profile panel"
+      "note": "v1.0: 6df5d14 - Add enhanced empty state to Profile panel in PathFinder"
     },
     {
       "id": "9",
@@ -73,23 +69,21 @@
       "description": "Add character counters to text inputs",
       "risk": "low",
       "status": "completed",
-      "maxFiles": 3,
-      "note": "Done by v1.0 - EveningContent gratitude input"
+      "note": "v1.0: 374d41c - Add character counter and XP feedback to evening gratitude input"
     },
     {
       "id": "11",
       "description": "Add focus-visible outlines to all interactive elements",
       "risk": "low",
       "status": "completed",
-      "maxFiles": 3,
-      "note": "Done by v1.0 - Button, Checkbox, globals.css"
+      "note": "v1.0: fad4bfc - Add focus-visible states for keyboard accessibility"
     },
     {
       "id": "12",
       "description": "Improve form accessibility with proper labels and descriptions",
       "risk": "low",
-      "status": "pending",
-      "maxFiles": 3
+      "status": "completed",
+      "note": "v1.0: 0e96f7b - Add autocomplete attributes to auth forms"
     },
     {
       "id": "13",

@@ -1,12 +1,14 @@
 # =============================================================================
-# OVERNIGHT AI EXPERIMENT v2.0 - Hardened & Goal-Oriented
+# OVERNIGHT AI EXPERIMENT v2.1 - Configurable & Reusable
 # =============================================================================
 # Usage:
 #   .\scripts\overnight-hardened.ps1                           # Default run
-#   .\scripts\overnight-hardened.ps1 -TaskFile "my-tasks.json" # Custom tasks
-#   .\scripts\overnight-hardened.ps1 -RiskLevel "medium"       # Medium risk
 #   .\scripts\overnight-hardened.ps1 -MaxLoops 5               # Short test
-#   .\scripts\overnight-hardened.ps1 -Goal "Add dark mode"     # Goal mode
+#   .\scripts\overnight-hardened.ps1 -Goal "Make it awesome"   # Goal mode
+#   .\scripts\overnight-hardened.ps1 -UseVision                # Use vision file
+#   .\scripts\overnight-hardened.ps1 -DryRun                   # Test without changes
+#
+# Configuration: Edit project-config.json and product-vision.txt for your project
 # =============================================================================
 
 param(
@@ -14,36 +16,28 @@ param(
     [string]$RiskLevel = "low",
     [int]$MaxLoops = 30,
     [string]$Goal = "",
+    [switch]$UseVision = $false,
     [switch]$DryRun = $false
 )
 
 $ErrorActionPreference = "Continue"
 
 # =============================================================================
-# CONFIGURATION
+# PATHS
 # =============================================================================
 
 $SCRIPT_DIR = $PSScriptRoot
 $PROJECT_ROOT = (Resolve-Path "$SCRIPT_DIR\..").Path
+$CONFIG_FILE = "$SCRIPT_DIR\project-config.json"
 $STATE_FILE = "$SCRIPT_DIR\state.json"
 $TASK_FILE = "$SCRIPT_DIR\$TaskFile"
 $LOG_DIR = "$SCRIPT_DIR\logs"
 $REPORT_DIR = "$SCRIPT_DIR\reports"
-$PROMPT_DIR = "$SCRIPT_DIR\prompts"
 
 $TIMESTAMP = Get-Date -Format "yyyyMMdd-HHmmss"
 $DATE_STAMP = Get-Date -Format "yyyyMMdd"
 $LOG_FILE = "$LOG_DIR\overnight-$DATE_STAMP.log"
 $REPORT_FILE = "$REPORT_DIR\overnight-report-$DATE_STAMP.md"
-
-$BRANCH = "experimental/overnight-$TIMESTAMP"
-$MAIN_BRANCH = "master"
-$PAUSE_SECONDS = 30
-$MAX_RETRIES = 3
-
-# Stop conditions
-$MAX_CONSECUTIVE_FAILURES = 3
-$MAX_CONSECUTIVE_NOOPS = 3
 
 # =============================================================================
 # HELPERS
@@ -51,10 +45,10 @@ $MAX_CONSECUTIVE_NOOPS = 3
 
 function Write-Log {
     param([string]$Message, [string]$Color = "White")
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] $Message"
+    $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$ts] $Message"
     Write-Host $logMessage -ForegroundColor $Color
-    Add-Content -Path $LOG_FILE -Value $logMessage
+    if ($LOG_FILE) { Add-Content -Path $LOG_FILE -Value $logMessage -ErrorAction SilentlyContinue }
 }
 
 function Write-Banner {
@@ -66,36 +60,25 @@ function Write-Banner {
     Write-Host ""
 }
 
-# Prevent system sleep
 function Enable-SleepPrevention {
     $code = @'
 [DllImport("kernel32.dll")]
 public static extern uint SetThreadExecutionState(uint esFlags);
 '@
-    $ES_CONTINUOUS = 0x80000000
-    $ES_SYSTEM_REQUIRED = 0x00000001
-    $ES_DISPLAY_REQUIRED = 0x00000002
     try {
         $sleepUtil = Add-Type -MemberDefinition $code -Name "SleepUtil" -Namespace "Win32" -PassThru -ErrorAction SilentlyContinue
-        $sleepUtil::SetThreadExecutionState($ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED -bor $ES_DISPLAY_REQUIRED) | Out-Null
+        $sleepUtil::SetThreadExecutionState(0x80000000 -bor 0x00000001 -bor 0x00000002) | Out-Null
         Write-Log "Sleep prevention enabled" "Green"
     } catch {
-        Write-Log "Could not disable sleep - consider adjusting power settings" "Yellow"
+        Write-Log "Could not disable sleep" "Yellow"
     }
 }
 
-# Convert PSCustomObject to Hashtable (for PowerShell 5.1 compatibility)
 function ConvertTo-Hashtable {
     param($InputObject)
-
     if ($null -eq $InputObject) { return @{} }
-
     if ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string]) {
-        $collection = @(
-            foreach ($object in $InputObject) {
-                ConvertTo-Hashtable $object
-            }
-        )
+        $collection = @(foreach ($object in $InputObject) { ConvertTo-Hashtable $object })
         return ,$collection
     } elseif ($InputObject -is [PSCustomObject]) {
         $hash = @{}
@@ -106,6 +89,62 @@ function ConvertTo-Hashtable {
     } else {
         return $InputObject
     }
+}
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+function Load-ProjectConfig {
+    if (-not (Test-Path $CONFIG_FILE)) {
+        Write-Log "No project-config.json found - creating default" "Yellow"
+        $defaultConfig = @{
+            project = @{
+                name = "MyProject"
+                description = "A software project"
+                techStack = "JavaScript"
+                visionFile = "product-vision.txt"
+            }
+            qualityGates = @{
+                enabled = $true
+                commands = @{
+                    typecheck = "npx tsc --noEmit"
+                    lint = "npm run lint"
+                    build = "npm run build"
+                }
+            }
+            git = @{
+                mainBranch = "main"
+                branchPrefix = "experimental/overnight"
+            }
+            safety = @{
+                maxFilesPerTask = 3
+                maxConsecutiveFailures = 3
+                maxConsecutiveNoOps = 3
+                blockedPatterns = @(
+                    "\.env", "package-lock\.json", "yarn\.lock",
+                    "pnpm-lock\.yaml", "\.prisma", "schema\.prisma",
+                    "migrations/", "\.secret", "credentials", "node_modules/"
+                )
+            }
+            timing = @{
+                pauseSeconds = 30
+                maxRetries = 3
+            }
+        }
+        $defaultConfig | ConvertTo-Json -Depth 10 | Set-Content $CONFIG_FILE
+        return $defaultConfig
+    }
+    return Get-Content $CONFIG_FILE -Raw | ConvertFrom-Json | ConvertTo-Hashtable
+}
+
+function Load-Vision {
+    param($config)
+    $visionPath = "$SCRIPT_DIR\$($config.project.visionFile)"
+    if (Test-Path $visionPath) {
+        return Get-Content $visionPath -Raw
+    }
+    return ""
 }
 
 # =============================================================================
@@ -131,7 +170,7 @@ function Initialize-State {
 
 function Load-State {
     if (Test-Path $STATE_FILE) {
-        return Get-Content $STATE_FILE | ConvertFrom-Json | ConvertTo-Hashtable
+        return Get-Content $STATE_FILE -Raw | ConvertFrom-Json | ConvertTo-Hashtable
     }
     return Initialize-State
 }
@@ -149,31 +188,28 @@ function Add-Observation {
 }
 
 # =============================================================================
-# TASK QUEUE MANAGEMENT
+# TASK QUEUE
 # =============================================================================
 
 function Load-Tasks {
+    param($config)
     if (-not (Test-Path $TASK_FILE)) {
-        Write-Log "No task file found at $TASK_FILE - creating default" "Yellow"
+        Write-Log "No task file found - creating default" "Yellow"
         $defaultTasks = @{
             tasks = @(
                 @{ id = "1"; description = "Add hover states to interactive components"; risk = "low"; status = "pending"; maxFiles = 3 }
                 @{ id = "2"; description = "Improve error messages in forms"; risk = "low"; status = "pending"; maxFiles = 3 }
-                @{ id = "3"; description = "Add aria-labels to buttons and links"; risk = "low"; status = "pending"; maxFiles = 3 }
-                @{ id = "4"; description = "Add loading skeletons to async content"; risk = "low"; status = "pending"; maxFiles = 3 }
-                @{ id = "5"; description = "Improve mobile touch targets"; risk = "low"; status = "pending"; maxFiles = 3 }
+                @{ id = "3"; description = "Add loading states to async operations"; risk = "low"; status = "pending"; maxFiles = 3 }
             )
             config = @{
                 riskLevel = "low"
-                allowSchemaChanges = $false
-                allowDependencyChanges = $false
-                maxFilesPerTask = 3
+                maxFilesPerTask = $config.safety.maxFilesPerTask
             }
         }
         $defaultTasks | ConvertTo-Json -Depth 10 | Set-Content $TASK_FILE
         return $defaultTasks
     }
-    return Get-Content $TASK_FILE | ConvertFrom-Json | ConvertTo-Hashtable
+    return Get-Content $TASK_FILE -Raw | ConvertFrom-Json | ConvertTo-Hashtable
 }
 
 function Save-Tasks {
@@ -183,13 +219,10 @@ function Save-Tasks {
 
 function Get-NextTask {
     param($taskData, [string]$riskLevel)
-
+    $riskOrder = @{ "low" = 1; "medium" = 2; "high" = 3 }
     foreach ($task in $taskData.tasks) {
         if ($task.status -eq "pending") {
-            # Filter by risk level
             $taskRisk = if ($task.risk) { $task.risk } else { "low" }
-            $riskOrder = @{ "low" = 1; "medium" = 2; "high" = 3 }
-
             if ($riskOrder[$taskRisk] -le $riskOrder[$riskLevel]) {
                 return $task
             }
@@ -200,7 +233,6 @@ function Get-NextTask {
 
 function Update-TaskStatus {
     param($taskData, [string]$taskId, [string]$status)
-
     foreach ($task in $taskData.tasks) {
         if ($task.id -eq $taskId) {
             $task.status = $status
@@ -214,62 +246,21 @@ function Update-TaskStatus {
 # QUALITY GATES
 # =============================================================================
 
-function Test-TypeCheck {
-    Write-Log "Running TypeScript check..." "Yellow"
+function Invoke-QualityGate {
+    param([string]$name, [string]$command, $config)
 
+    if (-not $config.qualityGates.enabled) { return $true }
+    if (-not $command) { return $true }
+
+    Write-Log "Running $name..." "Yellow"
     Push-Location $PROJECT_ROOT
     try {
-        $output = npx tsc --noEmit 2>&1
-        $exitCode = $LASTEXITCODE
-
-        if ($exitCode -eq 0) {
-            Write-Log "TypeScript check passed" "Green"
+        $output = Invoke-Expression $command 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "$name passed" "Green"
             return $true
         } else {
-            Write-Log "TypeScript check FAILED" "Red"
-            Write-Log $output "Red"
-            return $false
-        }
-    } finally {
-        Pop-Location
-    }
-}
-
-function Test-Lint {
-    Write-Log "Running lint check..." "Yellow"
-
-    Push-Location $PROJECT_ROOT
-    try {
-        $output = npm run lint 2>&1
-        $exitCode = $LASTEXITCODE
-
-        if ($exitCode -eq 0) {
-            Write-Log "Lint check passed" "Green"
-            return $true
-        } else {
-            Write-Log "Lint check FAILED" "Red"
-            Write-Log $output "Red"
-            return $false
-        }
-    } finally {
-        Pop-Location
-    }
-}
-
-function Test-Build {
-    Write-Log "Running build check..." "Yellow"
-
-    Push-Location $PROJECT_ROOT
-    try {
-        $output = npm run build 2>&1
-        $exitCode = $LASTEXITCODE
-
-        if ($exitCode -eq 0) {
-            Write-Log "Build check passed" "Green"
-            return $true
-        } else {
-            Write-Log "Build check FAILED" "Red"
-            Write-Log $output "Red"
+            Write-Log "$name FAILED" "Red"
             return $false
         }
     } finally {
@@ -278,19 +269,14 @@ function Test-Build {
 }
 
 function Invoke-QualityGates {
+    param($config)
     Write-Log "Running quality gates..." "Cyan"
 
-    if (-not (Test-TypeCheck)) {
-        return $false
-    }
+    $commands = $config.qualityGates.commands
 
-    if (-not (Test-Lint)) {
-        return $false
-    }
-
-    if (-not (Test-Build)) {
-        return $false
-    }
+    if (-not (Invoke-QualityGate "TypeScript" $commands.typecheck $config)) { return $false }
+    if (-not (Invoke-QualityGate "Lint" $commands.lint $config)) { return $false }
+    if (-not (Invoke-QualityGate "Build" $commands.build $config)) { return $false }
 
     Write-Log "All quality gates passed!" "Green"
     return $true
@@ -311,53 +297,34 @@ function Get-ChangedFiles {
 }
 
 function Test-FileAllowed {
-    param([string]$file)
-
-    # Blocked patterns
-    $blockedPatterns = @(
-        "\.env",
-        "\.env\.",
-        "package-lock\.json",
-        "yarn\.lock",
-        "pnpm-lock\.yaml",
-        "\.prisma",
-        "schema\.prisma",
-        "migrations/",
-        "\.secret",
-        "credentials",
-        "node_modules/"
-    )
-
-    foreach ($pattern in $blockedPatterns) {
-        if ($file -match $pattern) {
-            return $false
-        }
+    param([string]$file, $config)
+    foreach ($pattern in $config.safety.blockedPatterns) {
+        if ($file -match $pattern) { return $false }
     }
     return $true
 }
 
 function Invoke-SmartStaging {
-    param($taskData)
-
+    param($config)
     $changedFiles = Get-ChangedFiles
     $stagedFiles = @()
     $blockedFiles = @()
-    $maxFiles = $taskData.config.maxFilesPerTask
+    $maxFiles = $config.safety.maxFilesPerTask
 
     Push-Location $PROJECT_ROOT
     try {
         foreach ($file in $changedFiles) {
-            if (Test-FileAllowed $file) {
+            if (Test-FileAllowed $file $config) {
                 if ($stagedFiles.Count -lt $maxFiles) {
                     git add $file 2>&1 | Out-Null
                     $stagedFiles += $file
                     Write-Log "Staged: $file" "Green"
                 } else {
-                    Write-Log "Skipped (file limit): $file" "Yellow"
+                    Write-Log "Skipped (limit): $file" "Yellow"
                 }
             } else {
                 $blockedFiles += $file
-                Write-Log "Blocked (sensitive): $file" "Red"
+                Write-Log "Blocked: $file" "Red"
             }
         }
     } finally {
@@ -373,7 +340,6 @@ function Invoke-SmartStaging {
 
 function Invoke-Revert {
     Write-Log "Reverting changes..." "Yellow"
-
     Push-Location $PROJECT_ROOT
     try {
         git checkout . 2>&1 | Out-Null
@@ -386,7 +352,6 @@ function Invoke-Revert {
 
 function Invoke-Commit {
     param([string]$message)
-
     Push-Location $PROJECT_ROOT
     try {
         git commit -m $message 2>&1 | Out-Null
@@ -401,12 +366,12 @@ function Invoke-Commit {
 }
 
 function Get-CommitCount {
+    param($config)
     Push-Location $PROJECT_ROOT
     try {
-        $count = git rev-list --count "$MAIN_BRANCH..HEAD" 2>&1
-        if ($count -match '^\d+$') {
-            return [int]$count
-        }
+        $mainBranch = $config.git.mainBranch
+        $count = git rev-list --count "${mainBranch}..HEAD" 2>&1
+        if ($count -match '^\d+$') { return [int]$count }
         return 0
     } finally {
         Pop-Location
@@ -418,12 +383,13 @@ function Get-CommitCount {
 # =============================================================================
 
 function Get-TaskPrompt {
-    param($task, $taskData)
+    param($task, $config)
+    $projectName = $config.project.name
+    $techStack = $config.project.techStack
+    $maxFiles = $config.safety.maxFilesPerTask
 
-    $maxFiles = if ($task.maxFiles) { $task.maxFiles } else { $taskData.config.maxFilesPerTask }
-
-    $prompt = @"
-You are improving Rise, an AI cofounder app (Next.js + Supabase).
+    return @"
+You are improving $projectName ($techStack).
 
 CURRENT TASK:
 $($task.description)
@@ -431,137 +397,113 @@ $($task.description)
 STRICT RULES:
 - Maximum $maxFiles files changed
 - NO package.json changes (no new dependencies)
-- NO database schema changes (no .prisma files)
-- NO .env or secret files
-- NO node_modules changes
-
-WORKFLOW:
-1. First, understand what files you'll need to modify
-2. List the specific files BEFORE editing (max $maxFiles)
-3. Implement the change
-4. Stage only the files you changed with: git add <specific-files>
-5. Commit with a clear message describing what you did
-
-If the task requires more than $maxFiles files, output "SKIP: [reason]" and stop.
-If you encounter blockers, output "NOOP: [explanation]" and stop.
-
-Focus on quality over speed. Make it work correctly.
-"@
-
-    return $prompt
-}
-
-function Get-GoalPrompt {
-    param([string]$goal, $state, $taskData)
-
-    $observations = $state.observations | Select-Object -Last 5
-    $observationText = if ($observations) { $observations -join "`n" } else { "None yet" }
-    $loopNum = $state.currentLoop
-
-    $prompt = @"
-You are the overnight AI improving Rise - an app that helps people find their path to freedom and build toward it with an AI cofounder.
-
-PRODUCT VISION:
-Rise should be INDISPENSABLE. Users should feel like they have a brilliant, supportive cofounder who:
-- Helps them discover what they really want (PathFinder)
-- Breaks big dreams into achievable milestones
-- Provides expert guidance when they're stuck (Milestone Mode)
-- Celebrates progress and keeps them motivated
-- Makes the journey feel manageable and rewarding
-
-BUSINESS GOAL: $goal
-
-Create an app people will want to BUY, USE DAILY, and RECOMMEND to friends.
-
-YOUR MISSION (Loop $loopNum):
-1. First, EXPLORE the codebase - read key files to understand what exists
-2. Think like a product person: "What would make users say WOW?"
-3. Pick ONE high-impact improvement that moves toward the goal
-4. Implement it with quality (this ships to real users)
-
-WHAT MAKES USERS LOVE AN APP:
-- Moments of delight (micro-interactions, smooth animations)
-- Feeling understood (personalization, smart defaults)
-- Trust signals (polish, no bugs, professional feel)
-- Reduced friction (fast, intuitive, forgiving)
-- Progress visibility (streaks, stats, celebrations)
-- Emotional resonance (copy that connects, not corporate)
-
-RECENT OBSERVATIONS FROM PREVIOUS LOOPS:
-$observationText
-
-STRICT RULES:
-- Maximum 3 files changed per iteration
-- NO package.json changes (no new dependencies)
 - NO database schema changes
 - NO .env or secret files
 
 WORKFLOW:
-1. Explore: Read 2-3 key files to find opportunities
-2. Decide: Pick the highest-impact improvement you can make in 3 files
-3. Implement: Make it excellent, not just functional
-4. Test mentally: Would this impress a user? A reviewer?
-5. Stage: git add <specific-files>
-6. Commit: git commit -m "Improve: [what and why it matters to users]"
+1. Understand what files you need to modify
+2. List files BEFORE editing (max $maxFiles)
+3. Implement the change
+4. Stage files: git add <specific-files>
+5. Commit with a clear message
 
-IMPORTANT - Record observations for future loops:
-If you notice other opportunities, START your response with:
-OBSERVATION: [what you noticed for future improvement]
+If task requires more than $maxFiles files: output "SKIP: [reason]"
+If blocked: output "NOOP: [explanation]"
+
+Focus on quality. Make it work correctly.
+"@
+}
+
+function Get-GoalPrompt {
+    param([string]$goal, [string]$vision, $state, $config)
+
+    $projectName = $config.project.name
+    $projectDesc = $config.project.description
+    $techStack = $config.project.techStack
+    $maxFiles = $config.safety.maxFilesPerTask
+    $loopNum = $state.currentLoop
+
+    $observations = $state.observations | Select-Object -Last 5
+    $observationText = if ($observations) { $observations -join "`n" } else { "None yet" }
+
+    $visionSection = if ($vision) {
+        @"
+
+PRODUCT VISION:
+$vision
+"@
+    } else { "" }
+
+    return @"
+You are the overnight AI improving $projectName - $projectDesc ($techStack).
+$visionSection
+
+BUSINESS GOAL: $goal
+
+YOUR MISSION (Loop $loopNum):
+1. EXPLORE the codebase - read key files to understand what exists
+2. Think: "What would make users say WOW?"
+3. Pick ONE high-impact improvement
+4. Implement it with quality
+
+WHAT MAKES USERS LOVE AN APP:
+- Moments of delight (micro-interactions, animations)
+- Feeling understood (personalization, smart defaults)
+- Trust signals (polish, no bugs, professional feel)
+- Reduced friction (fast, intuitive, forgiving)
+- Progress visibility (streaks, stats, celebrations)
+
+RECENT OBSERVATIONS:
+$observationText
+
+STRICT RULES:
+- Maximum $maxFiles files changed
+- NO package.json changes
+- NO database schema changes
+- NO .env or secret files
+
+WORKFLOW:
+1. Explore: Read 2-3 key files
+2. Decide: Pick highest-impact improvement
+3. Implement: Make it excellent
+4. Stage: git add <specific-files>
+5. Commit: git commit -m "Improve: [what and why]"
+
+If you notice opportunities for later, START with:
+OBSERVATION: [what you noticed]
 
 OUTPUT SIGNALS:
 - If blocked: "BLOCKED: [reason]"
-- If goal fully achieved: "GOAL_COMPLETE"
-- Otherwise: Just do the work and commit
+- If goal complete: "GOAL_COMPLETE"
 
 Think like a founder. Ship something you'd be proud of.
 "@
-
-    return $prompt
 }
 
 # =============================================================================
-# REPORT GENERATION
+# REPORT
 # =============================================================================
 
 function New-MorningReport {
-    param($state, $taskData)
+    param($state, $taskData, $config)
 
+    $projectName = $config.project.name
+    $mainBranch = $config.git.mainBranch
     $endTime = Get-Date
     $startTime = [DateTime]::Parse($state.startedAt)
     $duration = $endTime - $startTime
 
-    $completedList = ""
-    foreach ($taskId in $state.completedTasks) {
-        $task = $taskData.tasks | Where-Object { $_.id -eq $taskId }
-        if ($task) {
-            $completedList += "- [x] $($task.description)`n"
-        }
-    }
-    if (-not $completedList) { $completedList = "None`n" }
+    $completedList = ($state.completedTasks | ForEach-Object { "- [x] Task $_" }) -join "`n"
+    if (-not $completedList) { $completedList = "None" }
 
-    $failedList = ""
-    foreach ($taskId in $state.failedTasks) {
-        $task = $taskData.tasks | Where-Object { $_.id -eq $taskId }
-        if ($task) {
-            $failedList += "- [ ] $($task.description)`n"
-        }
-    }
-    if (-not $failedList) { $failedList = "None`n" }
+    $failedList = ($state.failedTasks | ForEach-Object { "- [ ] Task $_" }) -join "`n"
+    if (-not $failedList) { $failedList = "None" }
 
-    $observationList = ""
-    foreach ($obs in $state.observations) {
-        $observationList += "- $obs`n"
-    }
-    if (-not $observationList) { $observationList = "None recorded`n" }
-
-    $reviewList = ""
-    foreach ($item in $state.reviewRequired) {
-        $reviewList += "- $item`n"
-    }
-    if (-not $reviewList) { $reviewList = "None`n" }
+    $observationList = ($state.observations | ForEach-Object { "- $_" }) -join "`n"
+    if (-not $observationList) { $observationList = "None recorded" }
 
     $report = @"
-# Overnight Report - $(Get-Date -Format "yyyy-MM-dd")
+# Overnight Report - $projectName - $(Get-Date -Format "yyyy-MM-dd")
 
 ## Summary
 - **Started:** $($startTime.ToString("h:mm tt"))
@@ -569,305 +511,256 @@ function New-MorningReport {
 - **Duration:** $([math]::Round($duration.TotalHours, 1)) hours
 - **Loops:** $($state.currentLoop)
 - **Commits:** $($state.totalCommits)
-- **Completed Tasks:** $($state.completedTasks.Count)
-- **Failed Tasks:** $($state.failedTasks.Count)
-- **Skipped Tasks:** $($state.skippedTasks.Count)
 
-## Completed Tasks
+## Completed
 $completedList
 
-## Failed Tasks
+## Failed
 $failedList
-
-## Review Required
-$reviewList
 
 ## AI Observations
 $observationList
 
-## Stop Reason
-$(if ($state.consecutiveFailures -ge $MAX_CONSECUTIVE_FAILURES) { "Consecutive failures threshold reached ($MAX_CONSECUTIVE_FAILURES)" }
-elseif ($state.consecutiveNoOps -ge $MAX_CONSECUTIVE_NOOPS) { "Consecutive no-ops threshold reached ($MAX_CONSECUTIVE_NOOPS)" }
-elseif ($state.currentLoop -ge $MaxLoops) { "Maximum loops reached ($MaxLoops)" }
-else { "Manual stop or completion" })
-
 ## Next Steps
-1. Review the changes: ``git log --oneline $MAIN_BRANCH..HEAD``
-2. Check diff: ``git diff $MAIN_BRANCH..HEAD``
-3. Cherry-pick good commits or merge the branch
+1. Review: ``git log --oneline $mainBranch..HEAD``
+2. Diff: ``git diff $mainBranch..HEAD``
+3. Merge or cherry-pick
 
 ---
-*Generated by Overnight AI Experiment v2.0*
+*Generated by Overnight AI Experiment v2.1*
 "@
 
-    # Ensure reports directory exists
-    if (-not (Test-Path $REPORT_DIR)) {
-        New-Item -ItemType Directory -Path $REPORT_DIR -Force | Out-Null
-    }
-
+    if (-not (Test-Path $REPORT_DIR)) { New-Item -ItemType Directory -Path $REPORT_DIR -Force | Out-Null }
     $report | Set-Content $REPORT_FILE
-    Write-Log "Morning report saved to: $REPORT_FILE" "Green"
-
+    Write-Log "Report saved: $REPORT_FILE" "Green"
     return $report
 }
 
 # =============================================================================
-# MAIN LOOP
+# MAIN
 # =============================================================================
 
 function Start-OvernightExperiment {
-    Write-Banner "OVERNIGHT AI EXPERIMENT v2.0"
+    # Load config
+    $config = Load-ProjectConfig
+    $projectName = $config.project.name
+    $mainBranch = $config.git.mainBranch
+    $branchPrefix = $config.git.branchPrefix
+    $pauseSeconds = $config.timing.pauseSeconds
+    $maxRetries = $config.timing.maxRetries
+    $maxFailures = $config.safety.maxConsecutiveFailures
+    $maxNoOps = $config.safety.maxConsecutiveNoOps
 
-    # Setup
+    Write-Banner "OVERNIGHT AI EXPERIMENT v2.1"
+    Write-Banner $projectName
+
     Enable-SleepPrevention
     Set-Location $PROJECT_ROOT
 
-    # Ensure directories exist
+    # Ensure directories
     if (-not (Test-Path $LOG_DIR)) { New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null }
     if (-not (Test-Path $REPORT_DIR)) { New-Item -ItemType Directory -Path $REPORT_DIR -Force | Out-Null }
-    if (-not (Test-Path $PROMPT_DIR)) { New-Item -ItemType Directory -Path $PROMPT_DIR -Force | Out-Null }
 
-    Write-Log "Starting experiment" "Cyan"
-    Write-Log "Risk Level: $RiskLevel" "Cyan"
-    Write-Log "Max Loops: $MaxLoops" "Cyan"
-    Write-Log "Task File: $TaskFile" "Cyan"
-    if ($Goal) { Write-Log "Goal: $Goal" "Cyan" }
-
-    # Load state and tasks
-    $state = Initialize-State
-    $taskData = Load-Tasks
-
-    # Create experimental branch
-    Write-Log "Creating branch: $BRANCH" "Green"
-    git checkout -b $BRANCH 2>&1 | Out-Null
-
-    if ($DryRun) {
-        Write-Log "DRY RUN MODE - No actual changes will be made" "Yellow"
+    # Load vision if requested
+    $vision = ""
+    if ($UseVision) {
+        $vision = Load-Vision $config
+        if ($vision) {
+            Write-Log "Loaded product vision" "Green"
+        } else {
+            Write-Log "No vision file found" "Yellow"
+        }
     }
 
-    Write-Log "Starting main loop. Press Ctrl+C to stop." "Yellow"
+    # If using vision and no goal specified, use a default goal
+    if ($UseVision -and -not $Goal) {
+        $Goal = "Make this the best possible product users will love"
+    }
+
+    Write-Log "Project: $projectName" "Cyan"
+    Write-Log "Max Loops: $MaxLoops" "Cyan"
+    if ($Goal) { Write-Log "Goal Mode: $($Goal.Substring(0, [Math]::Min(50, $Goal.Length)))..." "Cyan" }
+    if ($DryRun) { Write-Log "DRY RUN MODE" "Yellow" }
+
+    # Initialize
+    $state = Initialize-State
+    $taskData = Load-Tasks $config
+
+    # Create branch
+    $branch = "$branchPrefix-$TIMESTAMP"
+    Write-Log "Creating branch: $branch" "Green"
+    git checkout -b $branch 2>&1 | Out-Null
+
+    Write-Log "Starting. Press Ctrl+C to stop." "Yellow"
     Start-Sleep -Seconds 3
 
-    # Main experiment loop
+    # Main loop
     for ($i = 1; $i -le $MaxLoops; $i++) {
         $state.currentLoop = $i
         Save-State $state
 
         Write-Banner "Loop $i of $MaxLoops"
 
-        # Check stop conditions
-        if ($state.consecutiveFailures -ge $MAX_CONSECUTIVE_FAILURES) {
-            Write-Log "STOPPING: $MAX_CONSECUTIVE_FAILURES consecutive failures" "Red"
+        # Stop conditions
+        if ($state.consecutiveFailures -ge $maxFailures) {
+            Write-Log "STOPPING: $maxFailures consecutive failures" "Red"
             break
         }
-        if ($state.consecutiveNoOps -ge $MAX_CONSECUTIVE_NOOPS) {
-            Write-Log "STOPPING: $MAX_CONSECUTIVE_NOOPS consecutive no-ops" "Yellow"
+        if ($state.consecutiveNoOps -ge $maxNoOps) {
+            Write-Log "STOPPING: $maxNoOps consecutive no-ops" "Yellow"
             break
         }
 
-        # Get prompt based on mode
+        # Build prompt
         if ($Goal) {
-            $prompt = Get-GoalPrompt -goal $Goal -state $state -taskData $taskData
+            $prompt = Get-GoalPrompt -goal $Goal -vision $vision -state $state -config $config
             $currentTaskId = "goal-$i"
         } else {
             $task = Get-NextTask -taskData $taskData -riskLevel $RiskLevel
-
             if (-not $task) {
-                Write-Log "No more tasks available at risk level: $RiskLevel" "Yellow"
+                Write-Log "No more tasks at risk level: $RiskLevel" "Yellow"
                 break
             }
-
             Write-Log "Task: $($task.description)" "Cyan"
-            $prompt = Get-TaskPrompt -task $task -taskData $taskData
+            $prompt = Get-TaskPrompt -task $task -config $config
             $currentTaskId = $task.id
             Update-TaskStatus -taskData $taskData -taskId $task.id -status "in_progress"
         }
 
         # Run Claude
-        $retry = 0
         $success = $false
         $claudeOutput = ""
-
-        while (-not $success -and $retry -lt $MAX_RETRIES) {
+        for ($retry = 0; $retry -lt $maxRetries; $retry++) {
             try {
                 if ($DryRun) {
-                    Write-Log "DRY RUN: Would execute Claude with prompt" "Yellow"
-                    $claudeOutput = "DRY RUN - No actual execution"
+                    Write-Log "DRY RUN: Would run Claude" "Yellow"
+                    $claudeOutput = "DRY RUN"
                     $success = $true
                 } else {
                     $claudeOutput = claude --dangerously-skip-permissions --print $prompt 2>&1
                     $success = $true
                 }
+                break
             } catch {
-                $retry++
-                Write-Log "Error occurred, retry $retry of $MAX_RETRIES..." "Yellow"
+                Write-Log "Retry $($retry + 1) of $maxRetries..." "Yellow"
                 Start-Sleep -Seconds 30
             }
         }
 
         if (-not $success) {
-            Write-Log "Failed after $MAX_RETRIES retries" "Red"
+            Write-Log "Failed after retries" "Red"
             $state.consecutiveFailures++
-            if (-not $Goal) {
-                Update-TaskStatus -taskData $taskData -taskId $currentTaskId -status "failed"
-                $state.failedTasks += $currentTaskId
-            }
             Save-State $state
             continue
         }
 
-        # Check for special outputs
+        # Check output signals
         if ($claudeOutput -match "SKIP:\s*(.+)") {
-            $reason = $Matches[1]
-            Write-Log "Task skipped: $reason" "Yellow"
-            if (-not $Goal) {
-                Update-TaskStatus -taskData $taskData -taskId $currentTaskId -status "skipped"
-                $state.skippedTasks += $currentTaskId
-            }
+            Write-Log "Skipped: $($Matches[1])" "Yellow"
             $state.consecutiveNoOps++
             Save-State $state
             continue
         }
-
         if ($claudeOutput -match "NOOP:\s*(.+)") {
-            $reason = $Matches[1]
-            Write-Log "No-op: $reason" "Yellow"
+            Write-Log "No-op: $($Matches[1])" "Yellow"
             $state.consecutiveNoOps++
             Save-State $state
             continue
         }
-
         if ($claudeOutput -match "BLOCKED:\s*(.+)") {
-            $reason = $Matches[1]
-            Write-Log "Blocked: $reason" "Yellow"
-            Add-Observation -state $state -observation "Blocked - $reason"
+            Write-Log "Blocked: $($Matches[1])" "Yellow"
+            Add-Observation $state "Blocked - $($Matches[1])"
             $state.consecutiveNoOps++
             Save-State $state
             continue
         }
-
         if ($claudeOutput -match "GOAL_COMPLETE") {
             Write-Log "Goal completed!" "Green"
             break
         }
-
-        # Capture observations
         if ($claudeOutput -match "OBSERVATION:\s*(.+)") {
-            Add-Observation -state $state -observation $Matches[1]
+            Add-Observation $state $Matches[1]
         }
 
-        # Check if any changes were made
+        # Check for changes
         $changedFiles = Get-ChangedFiles
         if ($changedFiles.Count -eq 0) {
             Write-Log "No changes detected" "Yellow"
             $state.consecutiveNoOps++
             Save-State $state
-            Start-Sleep -Seconds $PAUSE_SECONDS
+            Start-Sleep -Seconds $pauseSeconds
             continue
         }
 
-        Write-Log "Changes detected in $($changedFiles.Count) files" "Cyan"
+        Write-Log "Changes in $($changedFiles.Count) files" "Cyan"
 
-        # Run quality gates
+        # Quality gates
         if (-not $DryRun) {
-            $qualityPassed = Invoke-QualityGates
-
-            if (-not $qualityPassed) {
-                Write-Log "Quality gates failed - reverting changes" "Red"
+            if (-not (Invoke-QualityGates $config)) {
+                Write-Log "Quality gates failed - reverting" "Red"
                 Invoke-Revert
                 $state.consecutiveFailures++
-                if (-not $Goal) {
-                    Update-TaskStatus -taskData $taskData -taskId $currentTaskId -status "failed"
-                    $state.failedTasks += $currentTaskId
-                }
                 Save-State $state
-                Start-Sleep -Seconds $PAUSE_SECONDS
+                Start-Sleep -Seconds $pauseSeconds
                 continue
             }
         }
 
-        # Smart staging
-        $stagingResult = Invoke-SmartStaging -taskData $taskData
-
-        if ($stagingResult.staged.Count -eq 0) {
-            Write-Log "No files staged (all blocked or none changed)" "Yellow"
+        # Stage and commit
+        $staging = Invoke-SmartStaging $config
+        if ($staging.staged.Count -eq 0) {
+            Write-Log "No files staged" "Yellow"
             Invoke-Revert
             $state.consecutiveNoOps++
             Save-State $state
             continue
         }
 
-        if ($stagingResult.exceededLimit) {
-            Write-Log "WARNING: File limit exceeded, some changes not staged" "Yellow"
-            $state.reviewRequired += "Loop $i exceeded file limit"
-        }
-
-        if ($stagingResult.blocked.Count -gt 0) {
-            Write-Log "Blocked files: $($stagingResult.blocked -join ', ')" "Yellow"
-        }
-
-        # Commit
-        $commitMsg = if ($Goal) {
-            "overnight: Goal progress (loop $i)"
-        } else {
-            $taskDesc = ($taskData.tasks | Where-Object { $_.id -eq $currentTaskId }).description
-            "overnight: $taskDesc"
-        }
+        $commitMsg = if ($Goal) { "overnight: Goal progress (loop $i)" } else { "overnight: $($task.description)" }
 
         if (-not $DryRun) {
-            $committed = Invoke-Commit -message $commitMsg
-
-            if ($committed) {
+            if (Invoke-Commit $commitMsg) {
                 $state.totalCommits++
                 $state.consecutiveFailures = 0
                 $state.consecutiveNoOps = 0
-
                 if (-not $Goal) {
-                    Update-TaskStatus -taskData $taskData -taskId $currentTaskId -status "completed"
+                    Update-TaskStatus $taskData $currentTaskId "completed"
                     $state.completedTasks += $currentTaskId
                 }
-
-                Write-Log "Loop $i completed successfully" "Green"
+                Write-Log "Loop $i completed" "Green"
             }
         } else {
-            Write-Log "DRY RUN: Would commit - $commitMsg" "Yellow"
+            Write-Log "DRY RUN: Would commit" "Yellow"
         }
 
         Save-State $state
+        $commitCount = Get-CommitCount $config
+        Write-Log "Commits: $commitCount | Completed: $($state.completedTasks.Count)" "Magenta"
 
-        # Progress update
-        $commitCount = Get-CommitCount
-        Write-Log "Total commits: $commitCount | Completed: $($state.completedTasks.Count) | Failed: $($state.failedTasks.Count)" "Magenta"
-
-        # Pause before next loop
-        Write-Log "Pausing $PAUSE_SECONDS seconds..." "Gray"
-        Start-Sleep -Seconds $PAUSE_SECONDS
+        Write-Log "Pausing ${pauseSeconds}s..." "Gray"
+        Start-Sleep -Seconds $pauseSeconds
     }
 
-    # Generate morning report
+    # Report
     Write-Banner "EXPERIMENT COMPLETE"
-    $report = New-MorningReport -state $state -taskData $taskData
-
+    $report = New-MorningReport $state $taskData $config
     Write-Host $report
-
-    Write-Log "Branch: $BRANCH" "Cyan"
-    Write-Log "Report: $REPORT_FILE" "Cyan"
-    Write-Log "Log: $LOG_FILE" "Cyan"
+    Write-Log "Branch: $branch" "Cyan"
 }
 
 # =============================================================================
-# ENTRY POINT
+# RUN
 # =============================================================================
 
 try {
     Start-OvernightExperiment
 } catch {
     Write-Log "Fatal error: $_" "Red"
-    # Still try to generate report on error
     try {
+        $config = Load-ProjectConfig
         $state = Load-State
-        $taskData = Load-Tasks
-        New-MorningReport -state $state -taskData $taskData
+        $taskData = Load-Tasks $config
+        New-MorningReport $state $taskData $config
     } catch {
         Write-Log "Could not generate report: $_" "Red"
     }

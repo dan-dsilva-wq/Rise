@@ -430,18 +430,40 @@ Focus on quality over speed. Make it work correctly.
 function Get-GoalPrompt {
     param([string]$goal, $state, $taskData)
 
-    $completed = $state.completedTasks -join ", "
     $observations = $state.observations | Select-Object -Last 5
     $observationText = if ($observations) { $observations -join "`n" } else { "None yet" }
+    $loopNum = $state.currentLoop
 
     $prompt = @"
-You are working toward a goal for Rise (Next.js + Supabase app).
+You are the overnight AI improving Rise - an app that helps people find their path to freedom and build toward it with an AI cofounder.
 
-GOAL: $goal
+PRODUCT VISION:
+Rise should be INDISPENSABLE. Users should feel like they have a brilliant, supportive cofounder who:
+- Helps them discover what they really want (PathFinder)
+- Breaks big dreams into achievable milestones
+- Provides expert guidance when they're stuck (Milestone Mode)
+- Celebrates progress and keeps them motivated
+- Makes the journey feel manageable and rewarding
 
-COMPLETED SO FAR: $completed
+BUSINESS GOAL: $goal
 
-RECENT OBSERVATIONS:
+Create an app people will want to BUY, USE DAILY, and RECOMMEND to friends.
+
+YOUR MISSION (Loop $loopNum):
+1. First, EXPLORE the codebase - read key files to understand what exists
+2. Think like a product person: "What would make users say WOW?"
+3. Pick ONE high-impact improvement that moves toward the goal
+4. Implement it with quality (this ships to real users)
+
+WHAT MAKES USERS LOVE AN APP:
+- Moments of delight (micro-interactions, smooth animations)
+- Feeling understood (personalization, smart defaults)
+- Trust signals (polish, no bugs, professional feel)
+- Reduced friction (fast, intuitive, forgiving)
+- Progress visibility (streaks, stats, celebrations)
+- Emotional resonance (copy that connects, not corporate)
+
+RECENT OBSERVATIONS FROM PREVIOUS LOOPS:
 $observationText
 
 STRICT RULES:
@@ -451,15 +473,23 @@ STRICT RULES:
 - NO .env or secret files
 
 WORKFLOW:
-1. Analyze what's already been done
-2. Identify the NEXT SMALL STEP toward the goal
-3. Implement that one step
-4. Stage specific files: git add <files>
-5. Commit with: "Goal progress: [what you did]"
-6. If you notice something for later, start your output with "OBSERVATION: [note]"
+1. Explore: Read 2-3 key files to find opportunities
+2. Decide: Pick the highest-impact improvement you can make in 3 files
+3. Implement: Make it excellent, not just functional
+4. Test mentally: Would this impress a user? A reviewer?
+5. Stage: git add <specific-files>
+6. Commit: git commit -m "Improve: [what and why it matters to users]"
 
-If goal is complete, output "GOAL_COMPLETE" and stop.
-If blocked, output "BLOCKED: [reason]" and stop.
+IMPORTANT - Record observations for future loops:
+If you notice other opportunities, START your response with:
+OBSERVATION: [what you noticed for future improvement]
+
+OUTPUT SIGNALS:
+- If blocked: "BLOCKED: [reason]"
+- If goal fully achieved: "GOAL_COMPLETE"
+- Otherwise: Just do the work and commit
+
+Think like a founder. Ship something you'd be proud of.
 "@
 
     return $prompt

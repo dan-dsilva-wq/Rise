@@ -101,36 +101,36 @@ export function DashboardContent({
 
           <div className="p-6">
             {loadingBriefing ? (
-              /* Skeleton loading state - matches actual briefing layout */
-              <div className="animate-pulse">
+              /* Skeleton loading state with shimmer effect */
+              <div>
                 {/* Mission Summary Skeleton */}
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-5 h-5 rounded bg-slate-700" />
-                    <div className="h-4 w-28 rounded bg-slate-700" />
+                    <div className="w-5 h-5 rounded skeleton-shimmer" />
+                    <div className="h-4 w-28 rounded skeleton-shimmer skeleton-shimmer-delay-1" />
                   </div>
-                  <div className="h-7 w-3/4 rounded bg-slate-700 mb-2" />
-                  <div className="h-4 w-full rounded bg-slate-700/70" />
-                  <div className="h-4 w-2/3 rounded bg-slate-700/70 mt-2" />
+                  <div className="h-7 w-3/4 rounded skeleton-shimmer skeleton-shimmer-delay-1 mb-2" />
+                  <div className="h-4 w-full rounded skeleton-shimmer skeleton-shimmer-delay-2" />
+                  <div className="h-4 w-2/3 rounded skeleton-shimmer skeleton-shimmer-delay-3 mt-2" />
                 </div>
 
                 {/* AI Nudge Skeleton */}
                 <div className="mb-6 p-4 rounded-2xl bg-slate-700/30 border border-slate-600/30">
                   <div className="flex items-start gap-3">
                     <div className="p-2 rounded-full bg-slate-700/50 flex-shrink-0">
-                      <div className="w-4 h-4 rounded bg-slate-600" />
+                      <div className="w-4 h-4 rounded skeleton-shimmer" />
                     </div>
                     <div className="flex-1 space-y-2">
-                      <div className="h-4 w-full rounded bg-slate-600/50" />
-                      <div className="h-4 w-4/5 rounded bg-slate-600/50" />
+                      <div className="h-4 w-full rounded skeleton-shimmer skeleton-shimmer-delay-1" />
+                      <div className="h-4 w-4/5 rounded skeleton-shimmer skeleton-shimmer-delay-2" />
                     </div>
                   </div>
                 </div>
 
                 {/* Action Buttons Skeleton */}
                 <div className="flex gap-3">
-                  <div className="flex-1 h-14 rounded-2xl bg-slate-700" />
-                  <div className="w-14 h-14 rounded-2xl bg-slate-700/50" />
+                  <div className="flex-1 h-14 rounded-2xl skeleton-shimmer skeleton-shimmer-delay-2" />
+                  <div className="w-14 h-14 rounded-2xl skeleton-shimmer skeleton-shimmer-delay-3" />
                 </div>
               </div>
             ) : briefing ? (

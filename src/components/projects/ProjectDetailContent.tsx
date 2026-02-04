@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import {
   ChevronLeft, Target, Hammer, Rocket,
-  PauseCircle, MoreVertical, Pencil, Trash2, Play, Sparkles, Compass, X
+  PauseCircle, MoreVertical, Pencil, Trash2, Play, Sparkles, Compass, X, Check
 } from 'lucide-react'
 import Link from 'next/link'
 import { MilestoneList } from './MilestoneList'
@@ -61,6 +61,7 @@ export function ProjectDetailContent({
   const [showAddIdea, setShowAddIdea] = useState(false)
   const [newIdeaTitle, setNewIdeaTitle] = useState('')
   const [errorToast, setErrorToast] = useState<string | null>(null)
+  const [successToast, setSuccessToast] = useState<string | null>(null)
   const [milestoneError, setMilestoneError] = useState<string | null>(null)
   const [ideaError, setIdeaError] = useState<string | null>(null)
   // Use data from hook - it's initialized with server data
@@ -140,6 +141,8 @@ export function ProjectDetailContent({
 
     setNewMilestoneTitle('')
     setShowAddMilestone(false)
+    setSuccessToast('Milestone added')
+    setTimeout(() => setSuccessToast(null), 2000)
   }
 
   const handleAddIdea = async () => {
@@ -153,6 +156,8 @@ export function ProjectDetailContent({
 
     setNewIdeaTitle('')
     setShowAddIdea(false)
+    setSuccessToast('Idea saved')
+    setTimeout(() => setSuccessToast(null), 2000)
   }
 
   return (
@@ -422,6 +427,27 @@ export function ProjectDetailContent({
             )}
           </AnimatePresence>
         </Card>
+
+        {/* Success Toast */}
+        <AnimatePresence>
+          {successToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              className="fixed bottom-28 left-4 right-4 max-w-lg mx-auto px-4 py-3 bg-teal-500/20 border border-teal-500/30 rounded-lg flex items-center gap-2"
+            >
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.1, type: 'spring', stiffness: 500, damping: 25 }}
+              >
+                <Check className="w-4 h-4 text-teal-400 flex-shrink-0" />
+              </motion.div>
+              <span className="text-sm text-teal-400">{successToast}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Error Toast */}
         <AnimatePresence>

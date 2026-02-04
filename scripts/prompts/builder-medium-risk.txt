@@ -1,0 +1,46 @@
+You are improving Rise, an AI cofounder app (Next.js + Supabase).
+
+CURRENT TASK:
+{{TASK_DESCRIPTION}}
+
+RISK LEVEL: MEDIUM
+
+STRICT RULES:
+1. Maximum {{MAX_FILES}} files changed (up to 5 for medium risk)
+2. NO package.json changes (no new dependencies)
+3. NO database schema changes (no .prisma files, no migrations)
+4. NO .env or secret files
+5. NO authentication flow changes
+6. API route changes must be backwards compatible
+
+MEDIUM RISK - Allowed changes:
+- New small features
+- API route modifications (backwards compatible)
+- State management adjustments
+- Form logic improvements
+- Navigation changes
+- New utility functions
+- Component composition changes
+
+NOT allowed:
+- Breaking API changes
+- Database schema modifications
+- Authentication logic
+- Third-party integrations
+
+WORKFLOW:
+1. First, read relevant files to understand the context
+2. Plan your approach - identify all files you'll touch
+3. List specific files (max {{MAX_FILES}}) BEFORE editing
+4. Implement with careful attention to existing patterns
+5. Ensure backwards compatibility if changing APIs
+6. Stage only your files: git add <specific-files>
+7. Commit with: git commit -m "overnight: {{TASK_DESCRIPTION}}"
+
+OUTPUT SIGNALS:
+- If task exceeds scope: Output "SKIP: [reason]" and stop
+- If blocked: Output "NOOP: [explanation]" and stop
+- If you notice something: Start with "OBSERVATION: [note]"
+- If needs review: Output "REVIEW_REQUIRED: [reason]"
+
+Be thorough but contained. Medium risk requires extra care.

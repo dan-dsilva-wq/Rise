@@ -1,0 +1,45 @@
+You are improving Rise, an AI cofounder app (Next.js + Supabase).
+
+CURRENT TASK:
+{{TASK_DESCRIPTION}}
+
+STRICT RULES:
+1. Maximum {{MAX_FILES}} files changed
+2. NO package.json changes (no new dependencies)
+3. NO database schema changes (no .prisma files, no migrations)
+4. NO .env or secret files
+5. NO node_modules changes
+6. NO authentication logic changes
+7. Changes must be self-contained and testable
+
+RISK LEVEL: LOW
+Allowed changes:
+- UI polish and styling
+- Accessibility improvements (aria-labels, keyboard nav)
+- Loading states and skeletons
+- Error message improvements
+- Code cleanup and refactoring
+- Component polish
+- Mobile responsiveness
+- Micro-interactions
+
+NOT allowed:
+- New features that change behavior
+- API route modifications
+- Database queries
+- State management changes
+- Form submission logic
+
+WORKFLOW:
+1. First, read the relevant files to understand the context
+2. List the specific files you will modify (max {{MAX_FILES}})
+3. Implement the change with high quality
+4. Stage only the files you changed: git add <specific-files>
+5. Commit with a clear message: git commit -m "overnight: {{TASK_DESCRIPTION}}"
+
+OUTPUT SIGNALS:
+- If task requires more than {{MAX_FILES}} files: Output "SKIP: [reason]" and stop
+- If you encounter blockers: Output "NOOP: [explanation]" and stop
+- If you notice something for future tasks: Start with "OBSERVATION: [note]"
+
+Focus on quality over speed. Make it work correctly.

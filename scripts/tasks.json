@@ -1,0 +1,82 @@
+{
+  "tasks": [
+    {
+      "id": "1",
+      "description": "Add hover states to ProjectCard component",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "2",
+      "description": "Improve error messages in auth forms",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "3",
+      "description": "Add aria-labels to navigation buttons",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "4",
+      "description": "Add loading skeleton to projects list",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "5",
+      "description": "Improve mobile touch targets in MilestoneList",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "6",
+      "description": "Add keyboard shortcuts to common actions",
+      "risk": "medium",
+      "status": "pending",
+      "maxFiles": 5
+    },
+    {
+      "id": "7",
+      "description": "Add toast notifications for success/error states",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "8",
+      "description": "Improve empty states with helpful CTAs",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "9",
+      "description": "Add input validation to project creation form",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    },
+    {
+      "id": "10",
+      "description": "Add character counters to text inputs",
+      "risk": "low",
+      "status": "pending",
+      "maxFiles": 3
+    }
+  ],
+  "config": {
+    "riskLevel": "low",
+    "allowSchemaChanges": false,
+    "allowDependencyChanges": false,
+    "maxFilesPerTask": 3,
+    "maxConsecutiveFailures": 3,
+    "maxConsecutiveNoOps": 3
+  }
+}

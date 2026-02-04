@@ -159,7 +159,7 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
                     setInput(prompt)
                     inputRef.current?.focus()
                   }}
-                  className="w-full text-left px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-sm text-slate-300 hover:bg-slate-700/50 hover:border-teal-500/30 transition-colors"
+                  className="w-full text-left px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-sm text-slate-300 hover:bg-slate-700/50 hover:border-teal-500/30 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-slate-900 active:bg-slate-700 active:border-teal-500/50 active:scale-[0.98] transition-all"
                 >
                   {prompt}
                 </button>
@@ -292,7 +292,8 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="flex-shrink-0 w-12 h-12 rounded-xl bg-teal-500 hover:bg-teal-400 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            aria-label="Send message"
+            className="flex-shrink-0 w-12 h-12 rounded-xl bg-teal-500 hover:bg-teal-400 disabled:bg-slate-700 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-slate-900 active:bg-teal-600 active:scale-95 transition-all flex items-center justify-center"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 text-white animate-spin" />

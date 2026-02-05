@@ -203,8 +203,8 @@ export function MilestoneBottomSheet({
 
   const handleComplete = async () => {
     if (!milestone) return
-    const xp = await onComplete(milestone.id)
-    if (xp > 0) {
+    const result = await onComplete(milestone.id)
+    if (result > 0) {
       setShowSuccess(true)
     }
   }

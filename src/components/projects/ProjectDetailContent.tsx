@@ -37,7 +37,7 @@ export function ProjectDetailContent({
 }: ProjectDetailContentProps) {
   const router = useRouter()
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { user, profile, refreshProfile } = useUser()
+  const { user, profile } = useUser()
   const {
     project,
     milestones,
@@ -231,19 +231,13 @@ export function ProjectDetailContent({
   }
 
   const handleCompleteMilestone = async (milestoneId: string) => {
-    const xp = await completeMilestone(milestoneId)
-    if (xp > 0) {
-      await refreshProfile()
-    }
-    return xp
+    const result = await completeMilestone(milestoneId)
+    return result
   }
 
   const handleUncompleteMilestone = async (milestoneId: string) => {
-    const xp = await uncompleteMilestone(milestoneId)
-    if (xp > 0) {
-      await refreshProfile()
-    }
-    return xp
+    const result = await uncompleteMilestone(milestoneId)
+    return result
   }
 
   const handleAddMilestone = async () => {

@@ -434,7 +434,6 @@ export function useProject(
         title,
         sort_order: sortOrder,
         status: 'idea',
-        xp_reward: 50,
       })
 
     if (error) {

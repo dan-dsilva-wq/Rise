@@ -47,7 +47,7 @@ export function MilestoneList({
 }: MilestoneListProps) {
   const router = useRouter()
   const [completingId, setCompletingId] = useState<string | null>(null)
-  const [recentXp, setRecentXp] = useState<{ id: string; amount: number } | null>(null)
+  const [recentComplete, setRecentComplete] = useState<string | null>(null)
   const [uncompleteConfirm, setUncompleteConfirm] = useState<Milestone | null>(null)
   const [uncompletingId, setUncompletingId] = useState<string | null>(null)
   const [showBacklog, setShowBacklog] = useState(false)
@@ -73,12 +73,10 @@ export function MilestoneList({
     }
 
     setCompletingId(milestone.id)
-    const xp = await onComplete(milestone.id)
+    await onComplete(milestone.id)
 
-    if (xp > 0) {
-      setRecentXp({ id: milestone.id, amount: xp })
-      setTimeout(() => setRecentXp(null), 2000)
-    }
+    setRecentComplete(milestone.id)
+    setTimeout(() => setRecentComplete(null), 2000)
 
     setCompletingId(null)
   }
@@ -89,12 +87,7 @@ export function MilestoneList({
     setUncompletingId(uncompleteConfirm.id)
     setUncompleteConfirm(null)
 
-    const xp = await onUncomplete(uncompleteConfirm.id)
-
-    if (xp > 0) {
-      setRecentXp({ id: uncompleteConfirm.id, amount: -xp })
-      setTimeout(() => setRecentXp(null), 2000)
-    }
+    await onUncomplete(uncompleteConfirm.id)
 
     setUncompletingId(null)
   }
@@ -108,12 +101,10 @@ export function MilestoneList({
   }
 
   const handleBottomSheetComplete = async (id: string) => {
-    const xp = await onComplete(id)
-    if (xp > 0) {
-      setRecentXp({ id, amount: xp })
-      setTimeout(() => setRecentXp(null), 2000)
-    }
-    return xp
+    const result = await onComplete(id)
+    setRecentComplete(id)
+    setTimeout(() => setRecentComplete(null), 2000)
+    return result
   }
 
   const handleSetActive = async (milestone: Milestone) => {
@@ -144,7 +135,7 @@ export function MilestoneList({
     const isCompleting = completingId === milestone.id
     const isUncompleting = uncompletingId === milestone.id
     const isCompleted = milestone.status === 'completed'
-    const showXpGain = recentXp?.id === milestone.id
+    const justCompleted = recentComplete === milestone.id
 
     return (
       <div
@@ -185,16 +176,16 @@ export function MilestoneList({
             </span>
           </div>
 
-          {/* XP animation */}
+          {/* Completion feedback */}
           <AnimatePresence>
-            {showXpGain && (
+            {justCompleted && (
               <motion.span
                 initial={{ opacity: 0, scale: 0.5 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.5 }}
                 className="text-xs text-teal-400 font-medium"
               >
-                {recentXp!.amount > 0 ? '+' : ''}{recentXp!.amount} XP
+                Done!
               </motion.span>
             )}
           </AnimatePresence>
@@ -298,7 +289,7 @@ export function MilestoneList({
                 </p>
                 <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
                   <Sparkles className="w-3 h-3" />
-                  {activeMilestone.xp_reward} XP on completion
+                  Your current focus
                 </p>
               </div>
               <ChevronRight className="w-5 h-5 text-teal-500/50 group-hover:text-teal-400 group-hover:translate-x-0.5 transition-all" />
@@ -553,7 +544,7 @@ export function MilestoneList({
               </div>
 
               <p className="text-slate-400 text-sm mb-2">
-                This will deduct <span className="text-amber-400 font-medium">{uncompleteConfirm.xp_reward} XP</span> from your total.
+                This will move <span className="text-amber-400 font-medium">&ldquo;{uncompleteConfirm.title}&rdquo;</span> back to your active milestones.
               </p>
 
               <div className="flex gap-3 mt-4">

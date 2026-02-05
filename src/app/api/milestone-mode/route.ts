@@ -2,8 +2,7 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer'
-import { weaveMemory } from '@/lib/ai/memoryWeaver'
-import type { InsightType } from '@/lib/supabase/types'
+import { cachedWeaveMemory, cachedSynthesizeUserThread, parseInsightTags, stripInsightTags, fetchDisplayName, buildRisePersonalityCore } from '@/lib/ai/memoryWeaver'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -44,25 +43,6 @@ interface MilestoneContext {
     totalSteps: number
     completedSteps: number
   }
-}
-
-// Helper to parse insight tags from AI response
-function parseInsightTags(message: string): Array<{ type: InsightType; content: string; importance: number }> {
-  const insights: Array<{ type: InsightType; content: string; importance: number }> = []
-  const insightRegex = /\[INSIGHT\]\s*type:\s*(\w+)\s*content:\s*([^\n]+)\s*(?:importance:\s*(\d+)\s*)?\[\/INSIGHT\]/gi
-
-  let match
-  while ((match = insightRegex.exec(message)) !== null) {
-    const type = match[1].toLowerCase() as InsightType
-    const content = match[2].trim()
-    const importance = match[3] ? parseInt(match[3], 10) : 5
-
-    if (['discovery', 'decision', 'blocker', 'preference', 'learning'].includes(type) && content) {
-      insights.push({ type, content, importance })
-    }
-  }
-
-  return insights
 }
 
 // Generate dynamic expert persona based on ALL available context
@@ -125,20 +105,29 @@ export async function POST(request: NextRequest) {
       approach?: 'do-it' | 'guide'
     }
 
-    // Fetch AI context bank and unified memory in parallel
-    const [aiContext, wovenMemory] = await Promise.all([
+    // Fetch AI context bank, unified memory, user thread, AND display name in parallel.
+    // Memory and user thread use TTL-cached versions — during active milestone sessions
+    // these fire per message but the underlying data barely changes. Caching eliminates
+    // ~10 redundant DB queries per message after the first.
+    const [aiContext, wovenMemory, userThread, displayName] = await Promise.all([
       fetchAiContextForApi(
         supabaseClient,
         user.id,
         project.id,
         milestone.id
       ),
-      weaveMemory(supabaseClient, user.id, {
+      cachedWeaveMemory(supabaseClient, user.id, {
         currentSource: 'milestone_mode',
         projectId: project.id,
         maxPerSource: 12,
         lookbackDays: 7,
       }),
+      cachedSynthesizeUserThread(supabaseClient, user.id, {
+        includeWorkPatterns: true,
+        lookbackDays: 14,
+      }),
+      // Fetch display name so AI can address user by name
+      fetchDisplayName(supabaseClient, user.id),
     ])
 
     // Build context about the project and where this milestone fits
@@ -156,6 +145,11 @@ export async function POST(request: NextRequest) {
       ? `\n\n${wovenMemory.contextBlock}`
       : ''
 
+    // Add User Thread (who they are as a person) — shapes tone and approach
+    const userThreadSection = userThread.threadBlock
+      ? `\n\n${userThread.threadBlock}`
+      : ''
+
     const projectOverview = `
 ## Project Overview
 **${project.name}** - ${project.description || 'No description'}
@@ -166,7 +160,7 @@ Progress: ${completedCount}/${totalCount} milestones complete
 ${project.milestones.map((m, i) =>
   `${i + 1}. ${m.title} [${m.status}]${m.id === milestone.id ? ' <-- CURRENT' : ''}`
 ).join('\n')}
-${contextBankSection}${memorySection}`
+${contextBankSection}${memorySection}${userThreadSection}`
 
     // Generate dynamic expertise instructions
     const expertiseInstructions = generateExpertise(
@@ -177,8 +171,17 @@ ${contextBankSection}${memorySection}`
       aiContext.fullContext || ''
     )
 
+    // Build shared personality core (same voice across all Rise surfaces)
+    const personalityCore = buildRisePersonalityCore({
+      displayName,
+      userThreadBlock: userThread.threadBlock || null,
+      memoryBlock: wovenMemory.contextBlock || null,
+    })
+
     // Different system prompts based on approach
-    const doItForMePrompt = `You are Rise - a SPECIALIST who DOES THE WORK for the user. You're not a generalist - you're the exact expert they need for this specific task. You are ONE unified mind that remembers ALL conversations with this user. When past conversations are relevant, weave them in naturally ("I remember you mentioned...", "Building on what we discussed..."). Don't force cross-references - only use them when genuinely helpful.
+    const doItForMePrompt = `${personalityCore}
+
+You are a SPECIALIST who DOES THE WORK. You're not a generalist - you're the exact expert they need for this specific task.
 
 ## Determine Your Expert Identity
 ${expertiseInstructions}
@@ -253,7 +256,9 @@ Examples:
 
 Remember: They chose "Do it for me" because they want results, not guidance.`
 
-    const guideMePrompt = `You are Rise - a SPECIALIST acting as a tactical coach, helping someone complete ONE specific milestone. You're not a generalist - you're the exact expert they need, guiding them like a mentor saying "Here's how the pros do it." You are ONE unified mind that remembers ALL conversations with this user. Reference past conversations naturally when relevant ("Remember when you said...", "This connects to your earlier insight about...").
+    const guideMePrompt = `${personalityCore}
+
+You are a SPECIALIST acting as a tactical coach, helping someone complete ONE specific milestone. You're not a generalist - you're the exact expert they need, guiding them like a mentor saying "Here's how the pros do it."
 
 ## Determine Your Expert Identity
 ${expertiseInstructions}
@@ -334,7 +339,7 @@ Remember: They chose "Guide me" because they want to learn and grow.`
 
     const response = await getAnthropic().messages.create({
       model: 'claude-opus-4-5-20251101',
-      max_tokens: 2000, // Increased for expert-level detailed responses
+      max_tokens: 4096, // Match project chat — "Do it for me" needs room for full code/content
       system: systemPrompt,
       messages: formattedMessages,
     })
@@ -366,9 +371,7 @@ Remember: They chose "Guide me" because they want to learn and grow.`
     }
 
     // Remove insight tags from visible message
-    assistantMessage = assistantMessage
-      .replace(/\[INSIGHT\][\s\S]*?\[\/INSIGHT\]/gi, '')
-      .trim()
+    assistantMessage = stripInsightTags(assistantMessage)
 
     return Response.json({
       message: assistantMessage,

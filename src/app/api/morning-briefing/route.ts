@@ -2,7 +2,91 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi } from '@/lib/hooks/aiContextServer'
-import { weaveMemory, generatePersonalGreeting } from '@/lib/ai/memoryWeaver'
+import { weaveMemory, synthesizeUserThread, generatePersonalGreeting, buildGreetingSignals, resolveCurrentStep, type GreetingMemorySignals } from '@/lib/ai/memoryWeaver'
+
+// Extract momentum data from memory signals for the dashboard
+function extractMomentum(signals: GreetingMemorySignals | undefined) {
+  if (!signals) return null
+  const milestonesThisWeek = signals.milestonesCompletedThisWeek ?? 0
+  const loginStreak = signals.currentLoginStreak ?? 0
+  const daysSinceLastVisit = signals.daysSinceLastVisit ?? 0
+  // Only return if there's meaningful data
+  if (milestonesThisWeek === 0 && loginStreak < 2) return null
+  return { milestonesThisWeek, loginStreak, daysSinceLastVisit }
+}
+
+/**
+ * Fetches all data needed for a personal greeting + momentum in one shot.
+ *
+ * Previously this logic was duplicated across 4 code paths in this route
+ * (cached w/ focus, cached w/o focus, no projects, fresh generation).
+ * Now it's a single function that each path calls.
+ *
+ * @param wovenMemory - optional pre-fetched woven memory (fresh briefing path has it)
+ * @param logCount - hint for `generatePersonalGreeting` (passed as `totalLogs` for new users).
+ *   Use `'auto'` to pass the actual fetched log count (for no-projects path).
+ */
+async function fetchGreetingContext(
+  supabaseClient: ReturnType<typeof createClient> extends Promise<infer T> ? T : never,
+  userId: string,
+  opts?: {
+    wovenMemory?: Parameters<typeof buildGreetingSignals>[2]
+    logCount?: number | 'auto'
+    recentMilestoneTitle?: string | null
+  },
+) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = supabaseClient as any
+
+  const [logsResult, profileResult, completionResult, memorySignals] = await Promise.all([
+    client.from('daily_logs')
+      .select('log_date, morning_mood, morning_energy, evening_mood, evening_energy, day_rating, gratitude_entry')
+      .eq('user_id', userId)
+      .order('log_date', { ascending: false })
+      .limit(5),
+    client.from('profiles')
+      .select('display_name')
+      .eq('id', userId)
+      .single(),
+    // Skip if caller already resolved the milestone title
+    opts?.recentMilestoneTitle !== undefined
+      ? Promise.resolve({ data: null })
+      : client.from('milestones')
+          .select('title, completed_at')
+          .eq('user_id', userId)
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false })
+          .limit(1),
+    buildGreetingSignals(supabaseClient, userId, opts?.wovenMemory ?? undefined),
+  ])
+
+  const logs = (logsResult.data || []) as Array<{
+    log_date: string; morning_mood: number | null; morning_energy: number | null
+    evening_mood: number | null; evening_energy: number | null; day_rating: number | null
+    gratitude_entry: string | null
+  }>
+
+  // Resolve recent milestone title (within last 2 days)
+  let milestoneTitle = opts?.recentMilestoneTitle ?? null
+  if (milestoneTitle === undefined || milestoneTitle === null) {
+    const completion = ((completionResult.data || []) as { title: string; completed_at: string }[])[0]
+    milestoneTitle = completion?.completed_at
+      && (Date.now() - new Date(completion.completed_at).getTime()) < 2 * 24 * 60 * 60 * 1000
+      ? completion.title : null
+  }
+
+  const resolvedLogCount = opts?.logCount === 'auto' ? logs.length : opts?.logCount
+
+  const personalGreeting = generatePersonalGreeting(
+    logs,
+    profileResult.data?.display_name || null,
+    milestoneTitle,
+    resolvedLogCount,
+    memorySignals,
+  )
+
+  return { personalGreeting, momentum: extractMomentum(memorySignals), memorySignals, logs }
+}
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -25,58 +109,6 @@ interface ProjectWithMilestones {
     status: string
     focus_level: string
   }[]
-}
-
-interface CurrentStepInfo {
-  stepId: string
-  stepText: string
-  stepNumber: number
-  totalSteps: number
-  completedSteps: number
-}
-
-// Helper function to fetch current step for a milestone
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchCurrentStep(client: any, milestoneId: string, userId: string): Promise<CurrentStepInfo | null> {
-  try {
-    const { data: steps } = await client
-      .from('milestone_steps')
-      .select('id, text, is_completed, sort_order')
-      .eq('milestone_id', milestoneId)
-      .eq('user_id', userId)
-      .order('sort_order', { ascending: true })
-
-    if (!steps || steps.length === 0) {
-      return null
-    }
-
-    const typedSteps = steps as { id: string; text: string; is_completed: boolean; sort_order: number }[]
-    const completedSteps = typedSteps.filter(s => s.is_completed).length
-    const currentStep = typedSteps.find(s => !s.is_completed)
-
-    if (!currentStep) {
-      // All steps complete
-      return {
-        stepId: typedSteps[typedSteps.length - 1].id,
-        stepText: typedSteps[typedSteps.length - 1].text,
-        stepNumber: typedSteps.length,
-        totalSteps: typedSteps.length,
-        completedSteps,
-      }
-    }
-
-    const stepNumber = typedSteps.findIndex(s => s.id === currentStep.id) + 1
-
-    return {
-      stepId: currentStep.id,
-      stepText: currentStep.text,
-      stepNumber,
-      totalSteps: typedSteps.length,
-      completedSteps,
-    }
-  } catch {
-    return null
-  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -121,61 +153,17 @@ export async function GET(_request: NextRequest) {
 
           // Fall through to generate new briefing
         } else {
-          // Fetch current step + personal greeting for cached briefings
-          const [currentStep, cachedLogsResult, cachedProfileResult, cachedCompletionResult] = await Promise.all([
-            fetchCurrentStep(client, existingBriefing.focus_milestone_id, user.id),
-            client.from('daily_logs')
-              .select('log_date, morning_mood, morning_energy, evening_mood, evening_energy, day_rating, gratitude_entry')
-              .eq('user_id', user.id)
-              .order('log_date', { ascending: false })
-              .limit(5),
-            client.from('profiles')
-              .select('display_name')
-              .eq('id', user.id)
-              .single(),
-            client.from('milestones')
-              .select('title, completed_at')
-              .eq('user_id', user.id)
-              .eq('status', 'completed')
-              .order('completed_at', { ascending: false })
-              .limit(1),
+          // Fetch current step + greeting context in parallel
+          const [currentStep, greetingCtx] = await Promise.all([
+            resolveCurrentStep(supabaseClient, existingBriefing.focus_milestone_id, user.id),
+            fetchGreetingContext(supabaseClient, user.id),
           ])
-          const cachedLogs = (cachedLogsResult.data || []) as Array<{
-            log_date: string; morning_mood: number | null; morning_energy: number | null
-            evening_mood: number | null; evening_energy: number | null; day_rating: number | null
-            gratitude_entry: string | null
-          }>
-          const cachedCompletion = (cachedCompletionResult.data || [])[0] as { title: string; completed_at: string } | undefined
-          const cachedMilestoneTitle = cachedCompletion?.completed_at
-            && (Date.now() - new Date(cachedCompletion.completed_at).getTime()) < 2 * 24 * 60 * 60 * 1000
-            ? cachedCompletion.title : null
-          const cachedGreeting = generatePersonalGreeting(
-            cachedLogs, cachedProfileResult.data?.display_name || null, cachedMilestoneTitle,
-          )
-          return Response.json({ briefing: existingBriefing, cached: true, currentStep, personalGreeting: cachedGreeting })
+          return Response.json({ briefing: existingBriefing, cached: true, currentStep, personalGreeting: greetingCtx.personalGreeting, momentum: greetingCtx.momentum })
         }
       } else {
         // No focus milestone — still generate a greeting
-        const [cachedLogsResult, cachedProfileResult] = await Promise.all([
-          client.from('daily_logs')
-            .select('log_date, morning_mood, morning_energy, evening_mood, evening_energy, day_rating, gratitude_entry')
-            .eq('user_id', user.id)
-            .order('log_date', { ascending: false })
-            .limit(5),
-          client.from('profiles')
-            .select('display_name')
-            .eq('id', user.id)
-            .single(),
-        ])
-        const cachedLogs = (cachedLogsResult.data || []) as Array<{
-          log_date: string; morning_mood: number | null; morning_energy: number | null
-          evening_mood: number | null; evening_energy: number | null; day_rating: number | null
-          gratitude_entry: string | null
-        }>
-        const cachedGreeting = generatePersonalGreeting(
-          cachedLogs, cachedProfileResult.data?.display_name || null,
-        )
-        return Response.json({ briefing: existingBriefing, cached: true, personalGreeting: cachedGreeting })
+        const greetingCtx = await fetchGreetingContext(supabaseClient, user.id)
+        return Response.json({ briefing: existingBriefing, cached: true, personalGreeting: greetingCtx.personalGreeting, momentum: greetingCtx.momentum })
       }
     }
 
@@ -191,21 +179,8 @@ export async function GET(_request: NextRequest) {
     const projects = (projectsData || []) as { id: string; name: string; description: string | null; status: string }[]
 
     if (projects.length === 0) {
-      // No projects - generate a simple greeting and return a default briefing
-      const [noProjectLogsResult, noProjectProfileResult] = await Promise.all([
-        client.from('daily_logs')
-          .select('log_date, morning_mood, morning_energy, evening_mood, evening_energy, day_rating, gratitude_entry')
-          .eq('user_id', user.id).order('log_date', { ascending: false }).limit(5),
-        client.from('profiles').select('display_name').eq('id', user.id).single(),
-      ])
-      const noProjectLogs = (noProjectLogsResult.data || []) as Array<{
-        log_date: string; morning_mood: number | null; morning_energy: number | null
-        evening_mood: number | null; evening_energy: number | null; day_rating: number | null
-        gratitude_entry: string | null
-      }>
-      const noProjectGreeting = generatePersonalGreeting(
-        noProjectLogs, noProjectProfileResult.data?.display_name || null, null, noProjectLogs.length,
-      )
+      // No projects — greeting + default briefing (pass logCount='auto' so greeting can detect brand-new users)
+      const greetingCtx = await fetchGreetingContext(supabaseClient, user.id, { logCount: 'auto' })
       const defaultBriefing = {
         id: 'default',
         user_id: user.id,
@@ -217,28 +192,27 @@ export async function GET(_request: NextRequest) {
         generated_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
       }
-      return Response.json({ briefing: defaultBriefing, cached: false, noProjects: true, personalGreeting: noProjectGreeting })
+      return Response.json({ briefing: defaultBriefing, cached: false, noProjects: true, personalGreeting: greetingCtx.personalGreeting, momentum: greetingCtx.momentum })
     }
 
-    // Get milestones for each project
-    const projectsWithMilestones: ProjectWithMilestones[] = []
-    for (const project of projects) {
-      const { data: milestonesData } = await client
-        .from('milestones')
-        .select('id, title, status, focus_level')
-        .eq('project_id', project.id)
-        .neq('status', 'completed')
-        .neq('status', 'discarded')
-        .neq('status', 'idea')
-        .order('sort_order', { ascending: true })
+    // Get milestones for ALL projects in parallel (was sequential per-project)
+    const milestoneResults = await Promise.all(
+      projects.map(project =>
+        client
+          .from('milestones')
+          .select('id, title, status, focus_level')
+          .eq('project_id', project.id)
+          .neq('status', 'completed')
+          .neq('status', 'discarded')
+          .neq('status', 'idea')
+          .order('sort_order', { ascending: true })
+      )
+    )
 
-      const milestones = (milestonesData || []) as { id: string; title: string; status: string; focus_level: string }[]
-
-      projectsWithMilestones.push({
-        ...project,
-        milestones,
-      })
-    }
+    const projectsWithMilestones: ProjectWithMilestones[] = projects.map((project, i) => ({
+      ...project,
+      milestones: (milestoneResults[i].data || []) as { id: string; title: string; status: string; focus_level: string }[],
+    }))
 
     // Find the active milestone (priority: 'active' focus_level, then first 'next')
     let focusProject: ProjectWithMilestones | null = null
@@ -271,8 +245,10 @@ export async function GET(_request: NextRequest) {
       focusMilestone = projectsWithMilestones[0].milestones[0]
     }
 
-    // Fetch AI context bank, unified memory, and recent daily logs for personalization
-    const [aiContext, wovenMemory, recentLogsResult, recentCompletionResult] = await Promise.all([
+    // Fetch AI context bank, unified memory, user thread, AND greeting data in parallel.
+    // The greeting helper consolidates logs + profile + milestone queries that were
+    // previously duplicated across 4 code paths in this route.
+    const [aiContext, wovenMemory, userThread] = await Promise.all([
       fetchAiContextForApi(
         supabaseClient,
         user.id,
@@ -284,53 +260,16 @@ export async function GET(_request: NextRequest) {
         maxPerSource: 15,
         lookbackDays: 3,
       }),
-      // Recent daily logs for personal greeting
-      client
-        .from('daily_logs')
-        .select('log_date, morning_mood, morning_energy, evening_mood, evening_energy, day_rating, gratitude_entry')
-        .eq('user_id', user.id)
-        .order('log_date', { ascending: false })
-        .limit(5),
-      // Most recently completed milestone for greeting context
-      client
-        .from('milestones')
-        .select('title, completed_at')
-        .eq('user_id', user.id)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false })
-        .limit(1),
+      synthesizeUserThread(supabaseClient, user.id, {
+        includeWorkPatterns: true,
+        lookbackDays: 14,
+      }),
     ])
 
-    const recentLogs = (recentLogsResult.data || []) as Array<{
-      log_date: string
-      morning_mood: number | null
-      morning_energy: number | null
-      evening_mood: number | null
-      evening_energy: number | null
-      day_rating: number | null
-      gratitude_entry: string | null
-    }>
-
-    const recentCompletion = (recentCompletionResult.data || [])[0] as { title: string; completed_at: string } | undefined
-
-    // Check if completion was within the last 2 days
-    const recentMilestoneTitle = recentCompletion?.completed_at
-      && (Date.now() - new Date(recentCompletion.completed_at).getTime()) < 2 * 24 * 60 * 60 * 1000
-      ? recentCompletion.title
-      : null
-
-    // Generate a fast personal greeting from data (no AI needed)
-    const { data: profileData } = await client
-      .from('profiles')
-      .select('display_name')
-      .eq('id', user.id)
-      .single()
-
-    const personalGreeting = generatePersonalGreeting(
-      recentLogs,
-      profileData?.display_name || null,
-      recentMilestoneTitle,
-    )
+    // Fetch greeting context (logs, profile, milestone, signals → greeting + momentum)
+    // Pass wovenMemory so buildGreetingSignals gets richer cross-conversation context
+    const greetingCtx = await fetchGreetingContext(supabaseClient, user.id, { wovenMemory })
+    const { personalGreeting } = greetingCtx
 
     // Build context for AI
     const projectContext = projectsWithMilestones.map(p => {
@@ -355,6 +294,11 @@ export async function GET(_request: NextRequest) {
       ? `\n\n${wovenMemory.contextBlock}`
       : ''
 
+    // Add User Thread — shapes tone, pacing, and emotional awareness of the briefing
+    const userThreadSection = userThread.threadBlock
+      ? `\n\n${userThread.threadBlock}`
+      : ''
+
     // Generate briefing with AI
     if (!process.env.ANTHROPIC_API_KEY) {
       // Fallback if no API key
@@ -377,33 +321,33 @@ export async function GET(_request: NextRequest) {
 
       // Fetch current step info if we have a focus milestone
       const currentStep = focusMilestone?.id
-        ? await fetchCurrentStep(client, focusMilestone.id, user.id)
+        ? await resolveCurrentStep(supabaseClient, focusMilestone.id, user.id)
         : null
 
-      return Response.json({ briefing: savedBriefing, cached: false, currentStep, personalGreeting })
+      return Response.json({ briefing: savedBriefing, cached: false, currentStep, personalGreeting, momentum: greetingCtx.momentum })
     }
 
     const response = await getAnthropic().messages.create({
       model: 'claude-opus-4-5-20251101',
-      max_tokens: 500,
-      system: `You are Rise - a supportive AI cofounder helping someone build their path to freedom. You are ONE mind that remembers all conversations with this user. Generate a morning briefing that's:
-- Specific to their current projects and milestones
-- Encouraging but not cheesy
-- Actionable - tells them exactly what to focus on
-- Personalized using the context we know about them (their goals, constraints, preferences)
-- References recent conversations naturally (e.g. "Yesterday you were working on..." or "You mentioned wanting to...")
-- Acknowledges their emotional state if known
+      max_tokens: 300,
+      system: `You are Rise - a supportive AI cofounder. You are ONE mind that remembers all conversations with this user. Generate a focused morning briefing.
 
-Respond in JSON format:
+Rules:
+- mission_headline: 2-5 word action-oriented summary (e.g. "Build the landing page")
+- mission_detail: One sentence connecting today's task to their bigger picture. Reference recent conversations or decisions if the memory context includes them.
+- nudge: 1-2 sentences of motivation specific to WHERE they are right now. If they've been struggling, be gentle. If they're on a roll, push them. Reference open loops or emotional state if known.
+
+Adapt tone to WHO they are (see User Thread below if present). Be real, not cheesy.
+
+Respond ONLY with JSON:
 {
-  "mission_headline": "2-5 word summary of today's focus (e.g. 'Build the landing page')",
-  "mission_detail": "One sentence with more context about the task - reference recent conversations or decisions if relevant",
-  "nudge": "A motivating thought specific to where they are in their journey (1-2 sentences) - reference their recent conversations, emotional state, or open loops",
-  "personal_greeting": "A warm, personal 1-sentence greeting that acknowledges how they're doing emotionally or references something specific from recent days. This should feel like a friend who's been paying attention — NOT a task manager. Examples: 'You turned yesterday around — I noticed your mood lifted by evening.', 'Three days in a row now. That quiet consistency is building something.', 'I saw your gratitude entry last night — that kind of awareness compounds.'"
+  "mission_headline": "...",
+  "mission_detail": "...",
+  "nudge": "..."
 }`,
       messages: [{
         role: 'user',
-        content: `Here's my current project state:\n\n${projectContext}${contextBankSection}${memorySection}\n\nThe suggested focus for today is: ${focusMilestone ? `"${focusMilestone.title}" from project "${focusProject?.name}"` : 'No specific milestone set'}\n\nGenerate my morning briefing.`
+        content: `Here's my current project state:\n\n${projectContext}${contextBankSection}${memorySection}${userThreadSection}\n\nThe suggested focus for today is: ${focusMilestone ? `"${focusMilestone.title}" from project "${focusProject?.name}"` : 'No specific milestone set'}\n\nGenerate my morning briefing.`
       }],
     })
 
@@ -413,7 +357,7 @@ Respond in JSON format:
       .map(block => (block as Anthropic.TextBlock).text)
       .join('')
 
-    let briefingContent: { mission_headline: string; mission_detail: string; nudge: string; personal_greeting?: string }
+    let briefingContent: { mission_headline: string; mission_detail: string; nudge: string }
     try {
       // Try to parse JSON from response
       const jsonMatch = aiText.match(/\{[\s\S]*\}/)
@@ -423,7 +367,6 @@ Respond in JSON format:
           mission_headline: parsed.mission_headline || parsed.mission_summary || focusMilestone?.title || "Make progress",
           mission_detail: parsed.mission_detail || "",
           nudge: parsed.nudge || "Every day you work on this is a day closer to freedom.",
-          personal_greeting: parsed.personal_greeting || undefined,
         }
       } else {
         throw new Error('No JSON found')
@@ -437,8 +380,9 @@ Respond in JSON format:
       }
     }
 
-    // Use AI-generated greeting if available, otherwise fall back to data-based one
-    const finalGreeting = briefingContent.personal_greeting || personalGreeting
+    // Personal greeting comes from generatePersonalGreeting() (data-based, 8 tiers of context)
+    // — no need for AI to duplicate this work
+    const finalGreeting = personalGreeting
 
     // Save the briefing (store headline|||detail in mission_summary)
     const missionSummary = briefingContent.mission_detail
@@ -460,7 +404,7 @@ Respond in JSON format:
 
     // Fetch current step info if we have a focus milestone
     const currentStep = focusMilestone?.id
-      ? await fetchCurrentStep(client, focusMilestone.id, user.id)
+      ? await resolveCurrentStep(supabaseClient, focusMilestone.id, user.id)
       : null
 
     if (saveError) {
@@ -482,10 +426,11 @@ Respond in JSON format:
         saveError: true,
         currentStep,
         personalGreeting: finalGreeting,
+        momentum: greetingCtx.momentum,
       })
     }
 
-    return Response.json({ briefing: savedBriefing, cached: false, currentStep, personalGreeting: finalGreeting })
+    return Response.json({ briefing: savedBriefing, cached: false, currentStep, personalGreeting: finalGreeting, momentum: greetingCtx.momentum })
 
   } catch (error) {
     console.error('Morning briefing error:', error)

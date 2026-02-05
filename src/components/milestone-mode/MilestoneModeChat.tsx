@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, User, Zap, ArrowLeft, CheckCircle, Target, Circle, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
+import { Send, Loader2, User, Zap, ArrowLeft, CheckCircle, Target, Circle, ChevronDown, ChevronUp, Sparkles, Compass, AlertCircle, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { useMilestoneConversation } from '@/lib/hooks/useMilestoneConversation'
@@ -10,10 +10,13 @@ import { createClient } from '@/lib/supabase/client'
 import { addDebugLog } from '@/components/ui/ConnectionStatus'
 import type { Milestone, Project, MilestoneConversation, MilestoneMessage, MilestoneStep } from '@/lib/supabase/types'
 
+type Approach = 'do-it' | 'guide'
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  isError?: boolean
 }
 
 interface MilestoneWithProject extends Milestone {
@@ -27,6 +30,10 @@ interface MilestoneModeChatProps {
   milestone: MilestoneWithProject
   initialConversation?: MilestoneConversation | null
   initialMessages?: MilestoneMessage[]
+  /** Server-generated contextual opener (memory-aware, replaces static template) */
+  contextualOpener?: string | null
+  /** Context-aware quick prompts (generated alongside opener) */
+  contextualQuickPrompts?: string[] | null
 }
 
 const INITIAL_MESSAGE = (milestoneName: string, currentStep?: string) => {
@@ -48,7 +55,9 @@ export function MilestoneModeChat({
   userId,
   milestone,
   initialConversation,
-  initialMessages
+  initialMessages,
+  contextualOpener,
+  contextualQuickPrompts,
 }: MilestoneModeChatProps) {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,13 +75,16 @@ export function MilestoneModeChat({
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [approach, setApproach] = useState<Approach>('guide')
   const [initialized, setInitialized] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [steps, setSteps] = useState<MilestoneStep[]>(milestone.steps || [])
   const [showSteps, setShowSteps] = useState(true)
   const [celebratingStep, setCelebratingStep] = useState<string | null>(null)
+  const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Calculate step progress
   const completedSteps = steps.filter(s => s.is_completed).length
@@ -144,8 +156,8 @@ export function MilestoneModeChat({
           content: m.content,
         })))
       } else {
-        // New conversation - show initial message with current step context
-        const initialContent = INITIAL_MESSAGE(milestone.title, currentStep?.text)
+        // New conversation - use contextual opener if available, fall back to static template
+        const initialContent = contextualOpener || INITIAL_MESSAGE(milestone.title, currentStep?.text)
         setMessages([{
           id: 'initial',
           role: 'assistant',
@@ -171,8 +183,8 @@ export function MilestoneModeChat({
           content: m.content,
         })))
       } else {
-        // New conversation with current step context
-        const initialContent = INITIAL_MESSAGE(milestone.title, currentStep?.text)
+        // New conversation - use contextual opener if available, fall back to static template
+        const initialContent = contextualOpener || INITIAL_MESSAGE(milestone.title, currentStep?.text)
         setMessages([{
           id: 'initial',
           role: 'assistant',
@@ -182,7 +194,7 @@ export function MilestoneModeChat({
       }
     }
     setInitialized(true)
-  }, [initialized, hasInitialData, initialMessages, initialConversation, convoLoading, currentConversation, milestone.title, currentStep?.text, saveMessage, setCurrentDirect])
+  }, [initialized, hasInitialData, initialMessages, initialConversation, convoLoading, currentConversation, milestone.title, currentStep?.text, contextualOpener, saveMessage, setCurrentDirect])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -192,16 +204,17 @@ export function MilestoneModeChat({
     scrollToBottom()
   }, [messages])
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, overrideInput?: string) => {
     e?.preventDefault()
-    if (!input.trim() || isLoading) return
+    const messageText = (overrideInput ?? input).trim()
+    if (!messageText || isLoading) return
 
-    addDebugLog('info', 'Sending message', input.trim().slice(0, 50))
+    addDebugLog('info', 'Sending message', messageText.slice(0, 50))
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: messageText,
     }
 
     setMessages(prev => [...prev, userMessage])
@@ -273,6 +286,7 @@ export function MilestoneModeChat({
           })),
           milestone: milestoneContext,
           project: projectContext,
+          approach,
         }),
       })
 
@@ -304,12 +318,14 @@ export function MilestoneModeChat({
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       addDebugLog('error', 'Chat failed', errorMsg)
+      setLastFailedMessage(userMessage.content)
       setMessages(prev => [
         ...prev,
         {
           id: `error-${Date.now()}`,
           role: 'assistant',
-          content: `Something went wrong: ${errorMsg}\n\nTap the connection indicator in the top right for debug info.`,
+          content: 'I couldn\'t connect to the server. Check your connection and try again.',
+          isError: true,
         },
       ])
     } finally {
@@ -322,6 +338,17 @@ export function MilestoneModeChat({
       e.preventDefault()
       handleSubmit()
     }
+  }
+
+  const handleRetry = () => {
+    if (!lastFailedMessage || isLoading) return
+    const retryText = lastFailedMessage
+    // Remove error messages
+    setMessages(prev => prev.filter(m => !m.isError))
+    setLastFailedMessage(null)
+    // Pass the message directly — React state updates are async,
+    // so setInput + handleSubmit() would read the stale empty input
+    handleSubmit(undefined, retryText)
   }
 
   const handleMarkComplete = async () => {
@@ -596,10 +623,17 @@ export function MilestoneModeChat({
               <div
                 className={`
                   flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
-                  ${message.role === 'user' ? 'bg-teal-500/20' : 'bg-orange-500/20'}
+                  ${message.isError
+                    ? 'bg-red-500/20'
+                    : message.role === 'user'
+                      ? 'bg-teal-500/20'
+                      : 'bg-orange-500/20'
+                  }
                 `}
               >
-                {message.role === 'user' ? (
+                {message.isError ? (
+                  <AlertCircle className="w-4 h-4 text-red-400" />
+                ) : message.role === 'user' ? (
                   <User className="w-4 h-4 text-teal-400" />
                 ) : (
                   <Zap className="w-4 h-4 text-orange-400" />
@@ -610,13 +644,28 @@ export function MilestoneModeChat({
                 <div
                   className={`
                     rounded-2xl px-4 py-3
-                    ${message.role === 'user'
-                      ? 'bg-teal-500/10 border border-teal-500/20'
-                      : 'bg-slate-800/50 border border-slate-700/50'
+                    ${message.isError
+                      ? 'bg-red-500/10 border border-red-500/30'
+                      : message.role === 'user'
+                        ? 'bg-teal-500/10 border border-teal-500/20'
+                        : 'bg-slate-800/50 border border-slate-700/50'
                     }
                   `}
+                  role={message.isError ? 'alert' : undefined}
                 >
-                  {message.role === 'assistant' ? (
+                  {message.isError ? (
+                    <div className="space-y-3">
+                      <p className="text-red-300 text-sm">{message.content}</p>
+                      <button
+                        onClick={handleRetry}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-red-300 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 hover:border-red-500/50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Retry
+                      </button>
+                    </div>
+                  ) : message.role === 'assistant' ? (
                     <div className="prose prose-invert prose-sm max-w-none">
                       <ReactMarkdown>{message.content}</ReactMarkdown>
                     </div>
@@ -628,6 +677,29 @@ export function MilestoneModeChat({
             </motion.div>
           ))}
         </AnimatePresence>
+
+        {/* Quick Prompts — shown only when conversation is fresh (just the opener) */}
+        {messages.length === 1 && messages[0].role === 'assistant' && !isLoading && contextualQuickPrompts && contextualQuickPrompts.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="space-y-2 max-w-sm mx-auto"
+          >
+            {contextualQuickPrompts.map((prompt, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  setInput(prompt)
+                  inputRef.current?.focus()
+                }}
+                className="w-full text-left px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-sm text-slate-300 hover:bg-slate-700/50 hover:border-orange-500/30 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-slate-900 active:bg-slate-700 active:border-orange-500/50 active:scale-[0.98] transition-all"
+              >
+                {prompt}
+              </button>
+            ))}
+          </motion.div>
+        )}
 
         {isLoading && (
           <motion.div
@@ -652,12 +724,46 @@ export function MilestoneModeChat({
 
       {/* Input */}
       <div className="border-t border-slate-800 p-4 bg-slate-900">
+        {/* Approach Toggle — compact, always accessible */}
+        <div className="flex items-center justify-center gap-1 mb-3">
+          <button
+            onClick={() => setApproach('do-it')}
+            className={`
+              px-3 py-1 rounded-lg text-xs font-medium transition-all
+              ${approach === 'do-it'
+                ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+                : 'text-slate-500 hover:text-slate-400 border border-transparent'
+              }
+            `}
+          >
+            <span className="flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              Do it
+            </span>
+          </button>
+          <button
+            onClick={() => setApproach('guide')}
+            className={`
+              px-3 py-1 rounded-lg text-xs font-medium transition-all
+              ${approach === 'guide'
+                ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+                : 'text-slate-500 hover:text-slate-400 border border-transparent'
+              }
+            `}
+          >
+            <span className="flex items-center gap-1">
+              <Compass className="w-3 h-3" />
+              Guide
+            </span>
+          </button>
+        </div>
         <form onSubmit={handleSubmit} className="flex gap-2">
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="What's your next step?"
+            placeholder={approach === 'do-it' ? "What do you need me to do?" : "What's your next step?"}
             rows={1}
             className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50"
             style={{ minHeight: '48px', maxHeight: '120px' }}

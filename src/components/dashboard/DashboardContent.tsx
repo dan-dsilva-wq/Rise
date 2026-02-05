@@ -54,6 +54,7 @@ export function DashboardContent({
   const [riseInsights, setRiseInsights] = useState<RiseInsight[]>([])
   const [insightsLoading, setInsightsLoading] = useState(false)
   const [dismissedInsights, setDismissedInsights] = useState<Set<number>>(new Set())
+  const [momentum, setMomentum] = useState<{ milestonesThisWeek: number; loginStreak: number; daysSinceLastVisit: number } | null>(null)
 
   const currentProfile = profile || initialProfile
 
@@ -72,6 +73,7 @@ export function DashboardContent({
         setBriefing(data.briefing)
         setCurrentStep(data.currentStep || null)
         if (data.personalGreeting) setPersonalGreeting(data.personalGreeting)
+        if (data.momentum) setMomentum(data.momentum)
       } else {
         setBriefingError('Unable to load your morning briefing')
       }
@@ -93,6 +95,7 @@ export function DashboardContent({
         setBriefing(data.briefing)
         setCurrentStep(data.currentStep || null)
         if (data.personalGreeting) setPersonalGreeting(data.personalGreeting)
+        if (data.momentum) setMomentum(data.momentum)
         setBriefingError(null)
       } else {
         setRegenerateError(true)
@@ -170,29 +173,81 @@ export function DashboardContent({
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* PERSONAL GREETING — The warm "Rise gets me" moment */}
+        {/* PERSONAL GREETING — The warm "Rise remembers you" moment */}
         <AnimatePresence>
-          {personalGreeting && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.4 }}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-800/40 border border-slate-700/40"
-            >
-              <div className="px-5 py-4">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 p-1.5 rounded-full bg-purple-500/15 flex-shrink-0">
-                    <Heart className="w-3.5 h-3.5 text-purple-400" />
+          {personalGreeting && (() => {
+            // Detect if this greeting references specific memory (conversation/project context)
+            const isMemoryAware = /"|working on|pick up|you were|you said|last time|days ago|in a row|this week|keep coming up/i.test(personalGreeting)
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+                className={`relative overflow-hidden rounded-2xl border ${
+                  isMemoryAware
+                    ? 'bg-gradient-to-br from-purple-900/30 via-slate-800/80 to-teal-900/20 border-purple-500/20'
+                    : 'bg-gradient-to-br from-slate-800/80 to-slate-800/40 border-slate-700/40'
+                }`}
+              >
+                {isMemoryAware && (
+                  <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/40 to-transparent" />
+                )}
+                <div className="px-5 py-4">
+                  {isMemoryAware && (
+                    <motion.p
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.3 }}
+                      className="text-[10px] font-semibold uppercase tracking-widest text-purple-400/60 mb-2"
+                    >
+                      Rise remembers
+                    </motion.p>
+                  )}
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-0.5 p-1.5 rounded-full flex-shrink-0 ${
+                      isMemoryAware ? 'bg-purple-500/20' : 'bg-purple-500/15'
+                    }`}>
+                      <Heart className={`w-3.5 h-3.5 ${isMemoryAware ? 'text-purple-300' : 'text-purple-400'}`} />
+                    </div>
+                    <p className={`text-[15px] leading-relaxed ${isMemoryAware ? 'text-slate-200' : 'text-slate-300'}`}>
+                      {personalGreeting}
+                    </p>
                   </div>
-                  <p className="text-slate-300 text-[15px] leading-relaxed">
-                    {personalGreeting}
-                  </p>
                 </div>
-              </div>
-            </motion.div>
-          )}
+              </motion.div>
+            )
+          })()}
         </AnimatePresence>
+        {/* MOMENTUM — Gentle "you're showing up" signal (not gamification, just truth) */}
+        {momentum && !loadingBriefing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.15 }}
+            className="flex items-center gap-3 px-1"
+          >
+            {momentum.loginStreak >= 2 && (
+              <div className="flex items-center gap-1.5 text-sm text-slate-400">
+                <span className="text-teal-400/70 text-xs">&#9679;</span>
+                <span>
+                  {momentum.loginStreak >= 7
+                    ? `${momentum.loginStreak} days in a row`
+                    : `Day ${momentum.loginStreak}`}
+                </span>
+              </div>
+            )}
+            {momentum.milestonesThisWeek > 0 && (
+              <div className="flex items-center gap-1.5 text-sm text-slate-400">
+                <span className="text-emerald-400/70 text-xs">&#9679;</span>
+                <span>
+                  {momentum.milestonesThisWeek} milestone{momentum.milestonesThisWeek !== 1 ? 's' : ''} this week
+                </span>
+              </div>
+            )}
+          </motion.div>
+        )}
+
         {/* MORNING BRIEFING - Only show when user has projects */}
         {projects.length > 0 && (
         <motion.div
@@ -343,7 +398,14 @@ export function DashboardContent({
                 {/* Action Buttons */}
                 <div className="flex gap-3">
                   {focusProject ? (
-                    <Link href={`/projects/${focusProject.id}`} className="flex-1">
+                    <Link
+                      href={
+                        briefing?.focus_milestone_id
+                          ? `/projects/${focusProject.id}/milestone/${briefing.focus_milestone_id}`
+                          : `/projects/${focusProject.id}`
+                      }
+                      className="flex-1"
+                    >
                       <button className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold text-lg hover:shadow-lg hover:shadow-teal-500/25 transition-all flex items-center justify-center gap-2">
                         Let&apos;s Work
                         <ChevronRight className="w-5 h-5" />

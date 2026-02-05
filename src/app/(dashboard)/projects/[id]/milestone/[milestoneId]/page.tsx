@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { MilestoneModeChat } from '@/components/milestone-mode/MilestoneModeChat'
+import { generateMilestoneOpener, type MilestoneOpenerSignals } from '@/lib/ai/memoryWeaver'
 import type { Milestone, Project, MilestoneConversation, MilestoneMessage, MilestoneStep } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
@@ -125,12 +126,99 @@ export default async function MilestoneModePage({
     steps,
   }
 
+  // ─── Build contextual opener + quick prompts for new/empty conversations ───
+  // Only generate if conversation has no messages (first visit or fresh convo)
+  let contextualOpener: string | null = null
+  let contextualQuickPrompts: string[] | null = null
+  if (messages.length === 0) {
+    try {
+      // Fetch signals needed for a memory-aware opener in parallel
+      const currentStep = steps.find(s => !s.is_completed)
+      const completedSteps = steps.filter(s => s.is_completed).length
+
+      // First, get all conversation IDs for this milestone (needed for the message query)
+      const { data: convIds } = await client
+        .from('milestone_conversations')
+        .select('id')
+        .eq('milestone_id', milestoneId)
+        .eq('user_id', user.id)
+
+      const conversationIds = (convIds || []).map((c: { id: string }) => c.id)
+
+      // Now fetch the opener signals in parallel
+      const [lastMilestoneMsg, todayLogResult, profileResult] = await Promise.all([
+        // Last user message in this milestone's conversation(s)
+        conversationIds.length > 0
+          ? client
+              .from('milestone_messages')
+              .select('content, created_at')
+              .eq('user_id', user.id)
+              .eq('role', 'user')
+              .in('conversation_id', conversationIds)
+              .order('created_at', { ascending: false })
+              .limit(1)
+          : Promise.resolve({ data: [] }),
+        // Today's daily log for mood/energy
+        client
+          .from('daily_logs')
+          .select('morning_mood, morning_energy, evening_mood, evening_energy')
+          .eq('user_id', user.id)
+          .order('log_date', { ascending: false })
+          .limit(1),
+        // Display name
+        client
+          .from('profiles')
+          .select('display_name')
+          .eq('id', user.id)
+          .single(),
+      ])
+
+      const lastMsg = lastMilestoneMsg.data?.[0] as { content: string; created_at: string } | undefined
+      const todayLog = todayLogResult.data?.[0] as {
+        morning_mood: number | null; morning_energy: number | null
+        evening_mood: number | null; evening_energy: number | null
+      } | undefined
+
+      // Build the opener signals
+      const openerSignals: MilestoneOpenerSignals = {
+        milestoneTitle: (milestone as Milestone).title,
+        projectName: (project as Project).name,
+        currentStepText: currentStep?.text || null,
+        completedSteps,
+        totalSteps: steps.length,
+        displayName: profileResult.data?.display_name || null,
+      }
+
+      // Add last message context if available
+      if (lastMsg) {
+        const hoursAgo = (Date.now() - new Date(lastMsg.created_at).getTime()) / (1000 * 60 * 60)
+        openerSignals.lastMilestoneMessage = lastMsg.content
+        openerSignals.lastMilestoneMessageHoursAgo = Math.round(hoursAgo)
+      }
+
+      // Add mood/energy if available (prefer evening readings, fall back to morning)
+      if (todayLog) {
+        openerSignals.currentMood = todayLog.evening_mood ?? todayLog.morning_mood ?? null
+        openerSignals.currentEnergy = todayLog.evening_energy ?? todayLog.morning_energy ?? null
+      }
+
+      const openerResult = generateMilestoneOpener(openerSignals)
+      contextualOpener = openerResult.opener
+      contextualQuickPrompts = openerResult.quickPrompts
+    } catch (err) {
+      console.error('Error building milestone opener:', err)
+      // Falls back to null — MilestoneModeChat will use its default
+    }
+  }
+
   return (
     <MilestoneModeChat
       userId={user.id}
       milestone={milestoneWithProject}
       initialConversation={conversation}
       initialMessages={messages}
+      contextualOpener={contextualOpener}
+      contextualQuickPrompts={contextualQuickPrompts}
     />
   )
 }

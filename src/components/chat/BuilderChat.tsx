@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, Bot, User, Sparkles, Copy, Check, AlertCircle, RotateCcw } from 'lucide-react'
+import { Send, Loader2, Bot, User, Sparkles, Copy, Check, AlertCircle, RotateCcw, Zap, Compass, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { Project, Milestone, ProjectLog } from '@/lib/supabase/types'
 
@@ -14,13 +14,26 @@ interface Message {
   isError?: boolean
 }
 
+type Approach = 'do-it' | 'guide'
+
+interface ReturnContext {
+  message: string
+  milestone: string | null
+}
+
 interface BuilderChatProps {
   project: Project
   milestones: Milestone[]
   initialMessages?: ProjectLog[]
+  /** Server-generated contextual opener (memory-aware, replaces static empty state) */
+  contextualOpener?: string | null
+  /** Context-aware quick prompts (generated alongside opener) */
+  contextualQuickPrompts?: string[] | null
+  /** For returning users with chat history — a continuity message acknowledging where they left off */
+  returnContext?: ReturnContext | null
 }
 
-export function BuilderChat({ project, milestones, initialMessages = [] }: BuilderChatProps) {
+export function BuilderChat({ project, milestones, initialMessages = [], contextualOpener, contextualQuickPrompts, returnContext }: BuilderChatProps) {
   const [messages, setMessages] = useState<Message[]>(() =>
     initialMessages.map(log => ({
       id: log.id,
@@ -33,6 +46,8 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
   const [isLoading, setIsLoading] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
+  const [approach, setApproach] = useState<Approach>('guide')
+  const [returnBannerDismissed, setReturnBannerDismissed] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -44,15 +59,16 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
     scrollToBottom()
   }, [messages])
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, overrideInput?: string) => {
     e?.preventDefault()
 
-    if (!input.trim() || isLoading) return
+    const messageText = (overrideInput ?? input).trim()
+    if (!messageText || isLoading) return
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: messageText,
       timestamp: new Date(),
     }
 
@@ -70,6 +86,7 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
             content: m.content,
           })),
           projectId: project.id,
+          approach,
           projectContext: {
             name: project.name,
             description: project.description,
@@ -135,20 +152,19 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
   const handleRetry = () => {
     if (!lastFailedMessage || isLoading) return
 
+    const retryText = lastFailedMessage
+
     // Remove the last error message
     setMessages(prev => prev.filter(m => !m.isError))
     setLastFailedMessage(null)
 
-    // Set input and trigger submit
-    setInput(lastFailedMessage)
-    // Use setTimeout to ensure state is updated before submit
-    setTimeout(() => {
-      handleSubmit()
-    }, 0)
+    // Pass the message directly — React state updates are async,
+    // so setInput + handleSubmit() would read the stale empty input
+    handleSubmit(undefined, retryText)
   }
 
-  // Quick prompts for empty state
-  const quickPrompts = [
+  // Quick prompts for empty state — use contextual prompts if available
+  const quickPrompts = contextualQuickPrompts || [
     "What should I work on first?",
     "Help me break down this milestone",
     "I'm stuck - what's the smallest next step?",
@@ -160,18 +176,82 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 ? (
-          // Empty State
-          <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-teal-500/10 mb-4">
-              <Sparkles className="w-8 h-8 text-teal-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-2">AI Builder Ready</h3>
-            <p className="text-sm text-slate-400 mb-6 max-w-sm mx-auto">
-              I&apos;m here to help you build <strong className="text-white">{project.name}</strong>.
-              Ask me anything about your project.
-            </p>
+          // Empty State — contextual opener or fallback
+          <div className="py-8 px-2">
+            {contextualOpener ? (
+              // Memory-aware opener: shows like a first assistant message
+              <div className="flex gap-3 mb-6">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                </div>
+                <div className="flex-1 max-w-[85%] rounded-2xl px-4 py-3 bg-slate-800/50 border border-slate-700/50">
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown>{contextualOpener}</ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Fallback generic state
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-teal-500/10 mb-4">
+                  <Sparkles className="w-8 h-8 text-teal-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">AI Builder Ready</h3>
+                <p className="text-sm text-slate-400 max-w-sm mx-auto">
+                  I&apos;m here to help you build <strong className="text-white">{project.name}</strong>.
+                  Ask me anything about your project.
+                </p>
+              </div>
+            )}
 
-            {/* Quick Prompts */}
+            {/* Approach Selector — How should Rise help? */}
+            <div className="mb-6 max-w-sm mx-auto">
+              <p className="text-xs text-slate-500 text-center mb-3 uppercase tracking-wide font-medium">How should I help?</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setApproach('do-it')}
+                  className={`
+                    relative p-3 rounded-xl border text-left transition-all
+                    ${approach === 'do-it'
+                      ? 'bg-teal-500/15 border-teal-500/40 ring-1 ring-teal-500/30'
+                      : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600'
+                    }
+                  `}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Zap className={`w-4 h-4 ${approach === 'do-it' ? 'text-teal-400' : 'text-slate-500'}`} />
+                    <span className={`text-sm font-medium ${approach === 'do-it' ? 'text-teal-300' : 'text-slate-300'}`}>
+                      Do it for me
+                    </span>
+                  </div>
+                  <p className={`text-xs ${approach === 'do-it' ? 'text-teal-400/70' : 'text-slate-500'}`}>
+                    Write code, content, plans
+                  </p>
+                </button>
+                <button
+                  onClick={() => setApproach('guide')}
+                  className={`
+                    relative p-3 rounded-xl border text-left transition-all
+                    ${approach === 'guide'
+                      ? 'bg-purple-500/15 border-purple-500/40 ring-1 ring-purple-500/30'
+                      : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600'
+                    }
+                  `}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Compass className={`w-4 h-4 ${approach === 'guide' ? 'text-purple-400' : 'text-slate-500'}`} />
+                    <span className={`text-sm font-medium ${approach === 'guide' ? 'text-purple-300' : 'text-slate-300'}`}>
+                      Guide me
+                    </span>
+                  </div>
+                  <p className={`text-xs ${approach === 'guide' ? 'text-purple-400/70' : 'text-slate-500'}`}>
+                    Think together, learn
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Prompts — contextual or default */}
             <div className="space-y-2 max-w-sm mx-auto">
               {quickPrompts.map((prompt, index) => (
                 <button
@@ -188,7 +268,43 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
             </div>
           </div>
         ) : (
-          // Messages
+          // Messages (with optional return-context banner for returning users)
+          <>
+          {/* Continuity Banner — "Rise remembers where you left off" */}
+          {returnContext && !returnBannerDismissed && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-3 relative overflow-hidden rounded-xl bg-gradient-to-r from-purple-900/20 via-slate-800/60 to-teal-900/20 border border-purple-500/15"
+            >
+              <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" />
+              <div className="px-4 py-3 flex items-start gap-3">
+                <div className="mt-0.5 p-1 rounded-full bg-purple-500/20 flex-shrink-0">
+                  <Sparkles className="w-3 h-3 text-purple-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-purple-400/50 mb-1">
+                    Rise remembers
+                  </p>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    {returnContext.message.split('**').map((part, i) =>
+                      i % 2 === 1
+                        ? <strong key={i} className="text-white font-medium">{part}</strong>
+                        : <span key={i}>{part}</span>
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setReturnBannerDismissed(true)}
+                  className="p-1 text-slate-600 hover:text-slate-400 transition-colors flex-shrink-0"
+                  aria-label="Dismiss"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </motion.div>
+          )}
           <AnimatePresence initial={false}>
             {messages.map((message) => (
               <motion.div
@@ -287,6 +403,7 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
               </motion.div>
             ))}
           </AnimatePresence>
+          </>
         )}
 
         {/* Typing Indicator */}
@@ -328,6 +445,39 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
 
       {/* Input Area */}
       <div className="border-t border-slate-800 p-4">
+        {/* Approach Toggle — compact, always accessible */}
+        <div className="flex items-center justify-center gap-1 mb-3">
+          <button
+            onClick={() => setApproach('do-it')}
+            className={`
+              px-3 py-1 rounded-lg text-xs font-medium transition-all
+              ${approach === 'do-it'
+                ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                : 'text-slate-500 hover:text-slate-400 border border-transparent'
+              }
+            `}
+          >
+            <span className="flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              Do it
+            </span>
+          </button>
+          <button
+            onClick={() => setApproach('guide')}
+            className={`
+              px-3 py-1 rounded-lg text-xs font-medium transition-all
+              ${approach === 'guide'
+                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                : 'text-slate-500 hover:text-slate-400 border border-transparent'
+              }
+            `}
+          >
+            <span className="flex items-center gap-1">
+              <Compass className="w-3 h-3" />
+              Guide
+            </span>
+          </button>
+        </div>
         <form onSubmit={handleSubmit} className="flex gap-2">
           <div className="flex-1 relative">
             <textarea
@@ -335,7 +485,7 @@ export function BuilderChat({ project, milestones, initialMessages = [] }: Build
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask anything about your project..."
+              placeholder={approach === 'do-it' ? "What do you need me to build?" : "Ask anything about your project..."}
               rows={1}
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 pr-12 text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               style={{

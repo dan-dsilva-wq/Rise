@@ -336,12 +336,6 @@ export function MilestoneModeChat({
 
       if (error) throw error
 
-      // Award XP
-      await client.rpc('increment_xp', {
-        user_id: userId,
-        xp_amount: milestone.xp_reward || 50,
-      })
-
       setShowSuccess(true)
       addDebugLog('success', 'Milestone completed!', milestone.title)
     } catch (err) {
@@ -365,13 +359,18 @@ export function MilestoneModeChat({
     )
   }
 
-  // Success overlay
+  // Success overlay — warm, meaningful celebration
   if (showSuccess) {
+    const remaining = milestone.allMilestones.filter(m => m.status !== 'completed' && m.id !== milestone.id).length
+    const totalDone = milestone.allMilestones.filter(m => m.status === 'completed').length + 1
+    const isProjectComplete = remaining === 0
+
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-120px)] gap-6 px-6">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 15 }}
           className="w-24 h-24 rounded-full bg-green-500/20 flex items-center justify-center"
         >
           <CheckCircle className="w-12 h-12 text-green-400" />
@@ -380,11 +379,20 @@ export function MilestoneModeChat({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="text-center"
+          className="text-center max-w-sm"
         >
-          <h2 className="text-2xl font-bold text-white mb-2">Milestone Complete!</h2>
-          <p className="text-slate-400 mb-2">{milestone.title}</p>
-          <p className="text-green-400 text-sm">+{milestone.xp_reward || 50} XP</p>
+          <h2 className="text-2xl font-bold text-white mb-2">
+            {isProjectComplete ? 'Project Complete!' : 'Milestone Done!'}
+          </h2>
+          <p className="text-slate-300 mb-3">{milestone.title}</p>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            {isProjectComplete
+              ? `All ${totalDone} milestones complete. You built something real — that takes guts.`
+              : remaining === 1
+                ? `${totalDone} down, just 1 to go. You're almost there.`
+                : `${totalDone} of ${totalCount} milestones done. Every step forward counts.`
+            }
+          </p>
         </motion.div>
         <motion.div
           initial={{ opacity: 0 }}
@@ -394,9 +402,9 @@ export function MilestoneModeChat({
         >
           <Link
             href={`/projects/${milestone.project_id}`}
-            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 transition-colors"
+            className="px-6 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 rounded-xl text-white font-medium transition-all"
           >
-            Back to Project
+            {isProjectComplete ? 'See Your Project' : 'Keep Going'}
           </Link>
         </motion.div>
       </div>

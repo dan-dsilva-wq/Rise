@@ -230,8 +230,12 @@ export function MilestoneBottomSheet({
   const currentIndex = allMilestones.findIndex(m => m.id === milestone.id) + 1
   const completedSteps = steps.filter(s => s.is_completed).length
 
-  // Success overlay
+  // Success overlay — warm celebration, no XP
   if (showSuccess) {
+    const remaining = allMilestones.filter(m => m.status !== 'completed' && m.id !== milestone.id).length
+    const totalDone = allMilestones.filter(m => m.status === 'completed').length + 1
+    const isProjectComplete = remaining === 0
+
     return (
       <motion.div
         initial={{ opacity: 0 }}
@@ -250,18 +254,26 @@ export function MilestoneBottomSheet({
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 15 }}
             className="w-20 h-20 mx-auto rounded-full bg-green-500/20 flex items-center justify-center mb-4"
           >
             <CheckCircle className="w-10 h-10 text-green-400" />
           </motion.div>
-          <h2 className="text-xl font-bold text-white mb-2">Milestone Complete!</h2>
-          <p className="text-slate-400 mb-1">{milestone.title}</p>
-          <p className="text-green-400 text-sm">+{milestone.xp_reward || 50} XP</p>
+          <h2 className="text-xl font-bold text-white mb-2">
+            {isProjectComplete ? 'Project Complete!' : 'Milestone Done!'}
+          </h2>
+          <p className="text-slate-300 mb-2">{milestone.title}</p>
+          <p className="text-slate-400 text-sm leading-relaxed max-w-xs mx-auto">
+            {isProjectComplete
+              ? `All ${totalDone} milestones complete. You built something real.`
+              : `${totalDone} of ${allMilestones.length} done. Keep the momentum going.`
+            }
+          </p>
           <button
             onClick={() => { setShowSuccess(false); onClose() }}
-            className="mt-6 px-6 py-3 bg-slate-800 rounded-xl text-slate-300"
+            className="mt-6 px-6 py-3 bg-gradient-to-r from-teal-500 to-emerald-500 rounded-xl text-white font-medium"
           >
-            Continue
+            {isProjectComplete ? 'Nice.' : 'Keep Going'}
           </button>
         </motion.div>
       </motion.div>

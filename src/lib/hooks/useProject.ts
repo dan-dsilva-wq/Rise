@@ -280,9 +280,6 @@ export function useProject(
       return 0
     }
 
-    // Award XP
-    await client.rpc('increment_xp', { user_id: userId, xp_amount: milestone.xp_reward })
-
     // Auto-promote: If completed milestone was active, promote first "next" to "active"
     if (milestone.focus_level === 'active') {
       const nextUp = milestones
@@ -300,7 +297,7 @@ export function useProject(
     // Refresh data
     await fetchProject()
 
-    return milestone.xp_reward
+    return 1 // Signal success (non-zero)
   }
 
   const uncompleteMilestone = async (milestoneId: string): Promise<number> => {
@@ -323,13 +320,10 @@ export function useProject(
       return 0
     }
 
-    // Deduct XP (negative increment)
-    await client.rpc('increment_xp', { user_id: userId, xp_amount: -milestone.xp_reward })
-
     // Refresh data
     await fetchProject()
 
-    return milestone.xp_reward
+    return 1 // Signal success (non-zero)
   }
 
   const deleteMilestone = async (milestoneId: string): Promise<boolean> => {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Target, Eye, X, Moon } from 'lucide-react'
+import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Target, Eye, X, Moon, Heart } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { useUser } from '@/lib/hooks/useUser'
@@ -46,6 +46,7 @@ export function DashboardContent({
   const { profile } = useUser()
   const [briefing, setBriefing] = useState<MorningBriefing | null>(null)
   const [currentStep, setCurrentStep] = useState<CurrentStepInfo | null>(null)
+  const [personalGreeting, setPersonalGreeting] = useState<string | null>(null)
   const [loadingBriefing, setLoadingBriefing] = useState(true)
   const [briefingError, setBriefingError] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
@@ -70,6 +71,7 @@ export function DashboardContent({
         const data = await response.json()
         setBriefing(data.briefing)
         setCurrentStep(data.currentStep || null)
+        if (data.personalGreeting) setPersonalGreeting(data.personalGreeting)
       } else {
         setBriefingError('Unable to load your morning briefing')
       }
@@ -90,6 +92,7 @@ export function DashboardContent({
         const data = await response.json()
         setBriefing(data.briefing)
         setCurrentStep(data.currentStep || null)
+        if (data.personalGreeting) setPersonalGreeting(data.personalGreeting)
         setBriefingError(null)
       } else {
         setRegenerateError(true)
@@ -167,6 +170,29 @@ export function DashboardContent({
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
+        {/* PERSONAL GREETING — The warm "Rise gets me" moment */}
+        <AnimatePresence>
+          {personalGreeting && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.4 }}
+              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-800/40 border border-slate-700/40"
+            >
+              <div className="px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 p-1.5 rounded-full bg-purple-500/15 flex-shrink-0">
+                    <Heart className="w-3.5 h-3.5 text-purple-400" />
+                  </div>
+                  <p className="text-slate-300 text-[15px] leading-relaxed">
+                    {personalGreeting}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* MORNING BRIEFING - Only show when user has projects */}
         {projects.length > 0 && (
         <motion.div

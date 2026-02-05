@@ -40,6 +40,105 @@ interface WovenMemory {
 }
 
 /**
+ * Generates a warm, context-aware personal greeting based on recent data.
+ * This runs client-side without an AI call — pure data synthesis.
+ * Used when the AI briefing hasn't loaded yet or as a fast fallback.
+ */
+export function generatePersonalGreeting(
+  dailyLogs: Array<{
+    log_date: string
+    morning_mood: number | null
+    morning_energy: number | null
+    evening_mood: number | null
+    evening_energy: number | null
+    day_rating: number | null
+    gratitude_entry: string | null
+  }>,
+  displayName: string | null,
+  recentMilestoneCompleted?: string | null,
+  daysActive?: number,
+): string {
+  const name = displayName || 'there'
+  const hour = new Date().getHours()
+
+  // Yesterday's evening data (most recent log)
+  const yesterday = dailyLogs[0]
+  const dayBefore = dailyLogs[1]
+
+  // If they had a tough evening yesterday
+  if (yesterday?.evening_mood && yesterday.evening_mood <= 3) {
+    if (hour < 12) {
+      return `Yesterday was rough, ${name}. But you're here this morning — that counts for something. Let's make today a little better.`
+    }
+    return `I know yesterday wasn't easy. Glad you're back, ${name}.`
+  }
+
+  // If they had a great day yesterday
+  if (yesterday?.day_rating && yesterday.day_rating >= 8) {
+    return `You had a great day yesterday, ${name}. Let's keep that energy going.`
+  }
+
+  // If mood has been trending down over last few days
+  if (dailyLogs.length >= 3) {
+    const recentMoods = dailyLogs.slice(0, 3)
+      .filter(l => l.evening_mood != null)
+      .map(l => l.evening_mood!)
+    if (recentMoods.length >= 2 && recentMoods.every(m => m <= 4)) {
+      return `I've noticed things have been heavy lately, ${name}. No pressure today — just show up for yourself. That's enough.`
+    }
+  }
+
+  // If mood improved from morning to evening yesterday (they rallied)
+  if (yesterday?.morning_mood && yesterday?.evening_mood &&
+      yesterday.evening_mood > yesterday.morning_mood + 2) {
+    return `You turned yesterday around — started low but ended strong. That resilience is worth noticing, ${name}.`
+  }
+
+  // If they completed a milestone recently
+  if (recentMilestoneCompleted) {
+    return `You finished "${recentMilestoneCompleted}" — that's real progress, ${name}. What's next?`
+  }
+
+  // If they had gratitude yesterday, reflect it back
+  if (yesterday?.gratitude_entry) {
+    const shortGratitude = yesterday.gratitude_entry.length > 60
+      ? yesterday.gratitude_entry.slice(0, 57) + '...'
+      : yesterday.gratitude_entry
+    return `Last night you were grateful for: "${shortGratitude}" — I love that you noticed that, ${name}.`
+  }
+
+  // If energy was low yesterday evening
+  if (yesterday?.evening_energy && yesterday.evening_energy <= 3) {
+    if (hour < 12) {
+      return `You were pretty drained last night. Hope you got some rest, ${name}. We'll take it easy today.`
+    }
+  }
+
+  // Day-before-yesterday comparison: mood improvement
+  if (yesterday?.evening_mood && dayBefore?.evening_mood &&
+      yesterday.evening_mood > dayBefore.evening_mood + 1) {
+    return `Your mood has been climbing, ${name}. Something's shifting in a good direction.`
+  }
+
+  // First time or very new user
+  if (!dailyLogs.length || (daysActive && daysActive <= 2)) {
+    if (hour < 12) {
+      return `Good to see you this morning, ${name}. Let's figure out today together.`
+    }
+    return `Hey ${name}. Ready to make some progress?`
+  }
+
+  // Default warmth — varies by time of day
+  if (hour < 12) {
+    return `Morning, ${name}. Let's see what today has in store.`
+  }
+  if (hour < 17) {
+    return `Good to see you, ${name}. Let's make the most of the afternoon.`
+  }
+  return `Evening, ${name}. How's the day been?`
+}
+
+/**
  * Fetches recent conversations from all sources and weaves them into
  * a unified memory context that makes Rise feel like one mind.
  */

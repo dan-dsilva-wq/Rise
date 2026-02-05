@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Compass, FolderKanban, Settings, LucideIcon } from 'lucide-react'
+import { Compass, FolderKanban, Settings, BarChart3, LucideIcon } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface NavItem {
@@ -32,8 +32,9 @@ function HomeIcon({ isActive }: { isActive: boolean }) {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Today', icon: null, isLogo: true },
-  { href: '/path-finder', label: 'Path Finder', icon: Compass },
+  { href: '/path-finder', label: 'Discover', icon: Compass },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
+  { href: '/progress', label: 'Progress', icon: BarChart3 },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -62,7 +63,7 @@ export function BottomNavigation() {
               className="relative"
             >
               <motion.div
-                className={`flex flex-col items-center gap-1 px-3 py-1 ${
+                className={`flex flex-col items-center gap-0.5 px-1.5 py-1 ${
                   isActive
                     ? 'text-teal-400'
                     : 'text-slate-400'
@@ -78,7 +79,7 @@ export function BottomNavigation() {
                     animate={isActive ? { y: [0, -2, 0] } : { y: 0 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <Icon className="w-6 h-6" aria-hidden="true" />
+                    <Icon className="w-5 h-5" aria-hidden="true" />
                   </motion.div>
                 ) : null}
                 <span className="text-xs">{item.label}</span>

@@ -18,7 +18,7 @@
     "branchPrefix": "experimental/overnight"
   },
   "safety": {
-    "maxFilesPerTask": 3,
+    "maxFilesPerTask": 8,
     "maxConsecutiveFailures": 3,
     "maxConsecutiveNoOps": 3,
     "blockedPatterns": [
@@ -31,7 +31,8 @@
       "migrations/",
       "\\.secret",
       "credentials",
-      "node_modules/"
+      "node_modules/",
+      "public/sw\\.js"
     ]
   },
   "timing": {

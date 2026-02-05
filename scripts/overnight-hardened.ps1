@@ -378,6 +378,86 @@ function Get-CommitCount {
     }
 }
 
+function Get-CommitsSince {
+    param([string]$SinceHash)
+    Push-Location $PROJECT_ROOT
+    try {
+        $logs = git log --oneline "${SinceHash}..HEAD" 2>&1
+        if ($logs -and $logs -ne "") {
+            $lines = "$logs" -split "`n" | Where-Object { $_.Trim() -ne "" }
+            return @($lines)
+        }
+        return @()
+    } finally {
+        Pop-Location
+    }
+}
+
+function Get-FilesSince {
+    param([string]$SinceHash)
+    Push-Location $PROJECT_ROOT
+    try {
+        $files = git diff --name-only "${SinceHash}..HEAD" 2>&1
+        if ($files -and $files -ne "") {
+            $lines = "$files" -split "`n" | Where-Object { $_.Trim() -ne "" }
+            return @($lines)
+        }
+        return @()
+    } finally {
+        Pop-Location
+    }
+}
+
+function Write-LoopCompletion {
+    param(
+        [int]$Loop,
+        [array]$Commits,
+        [array]$Files,
+        [string]$Observation,
+        [int]$ElapsedSeconds
+    )
+
+    $elapsed = if ($ElapsedSeconds -ge 60) {
+        "$([math]::Floor($ElapsedSeconds / 60))m $($ElapsedSeconds % 60)s"
+    } else {
+        "${ElapsedSeconds}s"
+    }
+
+    Write-Host ""
+    Write-Host "  ========================================" -ForegroundColor Green
+    Write-Host "  LOOP $Loop COMPLETED ($elapsed)" -ForegroundColor Green
+    Write-Host "  ========================================" -ForegroundColor Green
+
+    # Show what Claude committed
+    if ($Commits.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  Commits:" -ForegroundColor White
+        foreach ($c in $Commits) {
+            if ($c -notmatch "overnight: Progress") {
+                Write-Host "    $c" -ForegroundColor Cyan
+            }
+        }
+    }
+
+    # Show files touched
+    if ($Files.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  Files changed ($($Files.Count)):" -ForegroundColor White
+        foreach ($f in $Files) {
+            Write-Host "    $f" -ForegroundColor DarkGray
+        }
+    }
+
+    # Show observation if captured
+    if ($Observation) {
+        Write-Host ""
+        Write-Host "  Observation:" -ForegroundColor DarkCyan
+        Write-Host "    $Observation" -ForegroundColor DarkCyan
+    }
+
+    Write-Host ""
+}
+
 # =============================================================================
 # PROMPTS
 # =============================================================================
@@ -598,6 +678,12 @@ function Start-OvernightExperiment {
     for ($i = 1; $i -le $MaxLoops; $i++) {
         $state.currentLoop = $i
         Save-State $state
+        $loopStartTime = Get-Date
+
+        # Capture HEAD before this loop for diff summary
+        Push-Location $PROJECT_ROOT
+        $headBefore = git rev-parse HEAD 2>&1
+        Pop-Location
 
         Write-Banner "Loop $i of $MaxLoops"
 
@@ -734,8 +820,22 @@ function Start-OvernightExperiment {
         }
 
         Save-State $state
+
+        # Detailed loop summary
+        $loopElapsed = [math]::Round(((Get-Date) - $loopStartTime).TotalSeconds)
+        $commitsSince = Get-CommitsSince $headBefore
+        $filesSince = Get-FilesSince $headBefore
+
+        $loopObs = ""
+        if ($claudeOutput -match "OBSERVATION:\s*(.+)") {
+            $loopObs = $Matches[1]
+        }
+
+        Write-LoopCompletion -Loop $i -Commits $commitsSince -Files $filesSince -Observation $loopObs -ElapsedSeconds $loopElapsed
+
         $commitCount = Get-CommitCount $config
-        Write-Log "Commits: $commitCount | Completed: $($state.completedTasks.Count)" "Magenta"
+        Write-Host "  Running totals: $commitCount commits | $($state.completedTasks.Count) tasks done" -ForegroundColor DarkGray
+        Write-Host ""
 
         Write-Log "Pausing ${pauseSeconds}s..." "Gray"
         Start-Sleep -Seconds $pauseSeconds

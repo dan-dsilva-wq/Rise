@@ -76,7 +76,7 @@ export function MorningChecklist({
           animate={{ opacity: 1, y: 0 }}
           className="mt-4 p-3 rounded-xl bg-teal-500/10 border border-teal-500/30 text-center"
         >
-          <span className="text-teal-400 font-medium">All done! +35 XP</span>
+          <span className="text-teal-400 font-medium">All done — you&apos;re set for the day</span>
         </motion.div>
       )}
     </div>

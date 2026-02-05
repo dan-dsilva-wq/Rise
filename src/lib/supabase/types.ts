@@ -753,7 +753,7 @@ export interface Database {
           content: string
           importance: number
           source_conversation_id: string | null
-          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection'
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin'
           created_at: string
           expires_at: string | null
           is_active: boolean
@@ -767,7 +767,7 @@ export interface Database {
           content: string
           importance?: number
           source_conversation_id?: string | null
-          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection'
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin'
           created_at?: string
           expires_at?: string | null
           is_active?: boolean
@@ -781,7 +781,7 @@ export interface Database {
           content?: string
           importance?: number
           source_conversation_id?: string | null
-          source_ai?: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection'
+          source_ai?: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin'
           created_at?: string
           expires_at?: string | null
           is_active?: boolean
@@ -897,4 +897,4 @@ export type AiInsight = Database['public']['Tables']['ai_insights']['Row']
 export type AiInsightInsert = Database['public']['Tables']['ai_insights']['Insert']
 export type AiInsightUpdate = Database['public']['Tables']['ai_insights']['Update']
 export type InsightType = 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
-export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection'
+export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin'

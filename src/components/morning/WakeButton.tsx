@@ -107,7 +107,7 @@ export function WakeButton({ onPress, isPressed = false, className = '' }: WakeB
             exit={{ opacity: 0, y: -20 }}
             className="mt-4 text-teal-400 font-medium"
           >
-            +50 XP
+            Let&apos;s go!
           </motion.div>
         )}
       </AnimatePresence>

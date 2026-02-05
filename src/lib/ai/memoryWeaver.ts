@@ -1308,7 +1308,7 @@ export async function weaveMemory(
   userId: string,
   options: {
     /** Which source is asking (so we deprioritize its own messages) */
-    currentSource?: 'path_finder' | 'milestone_mode' | 'project_chat' | 'morning_briefing' | 'evening_reflection'
+    currentSource?: 'path_finder' | 'milestone_mode' | 'project_chat' | 'morning_briefing' | 'evening_reflection' | 'morning_checkin'
     /** Current project ID for relevance weighting */
     projectId?: string
     /** Max messages to fetch per source (default: 20) */

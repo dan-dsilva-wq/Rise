@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ChevronRight, Rocket, Target, Hammer, CheckCircle, PauseCircle } from 'lucide-react'
+import { ChevronRight, Rocket, Target, Hammer, PauseCircle } from 'lucide-react'
 import Link from 'next/link'
 import type { Project } from '@/lib/supabase/types'
 

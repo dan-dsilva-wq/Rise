@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface SliderProps {
@@ -36,12 +36,10 @@ export function Slider({
   // Use controlled touched state if provided, otherwise use internal
   const isTouched = controlledTouched !== undefined ? controlledTouched : internalTouched
 
-  // If value differs from initial default (5), consider it touched
-  useEffect(() => {
-    if (controlledTouched === undefined && value !== 5) {
-      setInternalTouched(true)
-    }
-  }, [value, controlledTouched])
+  // Sync internal touched state when value changes from default
+  if (controlledTouched === undefined && value !== 5 && !internalTouched) {
+    setInternalTouched(true)
+  }
 
   const percentage = ((value - min) / (max - min)) * 100
 

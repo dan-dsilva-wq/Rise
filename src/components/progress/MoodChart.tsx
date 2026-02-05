@@ -25,6 +25,7 @@ interface MoodChartProps {
   className?: string
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function MoodChart({ data, showEvening = false, className = '' }: MoodChartProps) {
   const chartData = useMemo(() => {
     return data

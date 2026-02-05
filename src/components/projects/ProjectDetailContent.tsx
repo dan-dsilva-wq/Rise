@@ -30,15 +30,18 @@ const statusConfig = {
 }
 
 export function ProjectDetailContent({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   profile: initialProfile,
   initialProject,
   initialMilestones,
 }: ProjectDetailContentProps) {
   const router = useRouter()
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { user, profile, refreshProfile } = useUser()
   const {
     project,
     milestones,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     loading,
     updateProject,
     deleteProject,
@@ -46,6 +49,7 @@ export function ProjectDetailContent({
     completeMilestone,
     uncompleteMilestone,
     deleteMilestone,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     reorderMilestones,
     promoteIdea,
     addIdea,
@@ -86,6 +90,7 @@ export function ProjectDetailContent({
     if (currentProject.status !== 'paused' && currentProject.status !== 'launched') count++ // Pause Project
     count++ // Delete Project
     return count
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject?.status])
 
   // Click outside handler to close menu

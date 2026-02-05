@@ -74,6 +74,7 @@ export function MilestoneBottomSheet({
     else if (milestone && project && !generatingSteps) {
       generateSteps()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataLoading, stepsExist, messages.length, milestone, project])
 
   // Generate AI steps
@@ -226,7 +227,6 @@ export function MilestoneBottomSheet({
 
   if (!milestone) return null
 
-  const completedCount = allMilestones.filter(m => m.status === 'completed').length
   const currentIndex = allMilestones.findIndex(m => m.id === milestone.id) + 1
   const completedSteps = steps.filter(s => s.is_completed).length
 

@@ -79,7 +79,8 @@ async function fetchCurrentStep(client: any, milestoneId: string, userId: string
   }
 }
 
-export async function GET(request: NextRequest) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function GET(_request: NextRequest) {
   try {
     const supabaseClient = await createClient()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -228,8 +229,6 @@ export async function GET(request: NextRequest) {
       const next = p.milestones.filter(m => m.focus_level === 'next')
       const backlog = p.milestones.filter(m => m.focus_level === 'backlog' || !m.focus_level)
       const total = p.milestones.length
-      const completed = 0 // We excluded completed above
-
       return `**${p.name}** (${p.status}): ${p.description || 'No description'}
   - Active: ${active ? active.title : 'None'}
   - Up Next: ${next.length > 0 ? next.map(m => m.title).join(', ') : 'None'}

@@ -85,7 +85,8 @@ export function ProjectsContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectIds]) // Only re-run when project IDs actually change
 
-  const currentProfile = profile || initialProfile
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _currentProfile = profile || initialProfile
   const activeProjects = projectsWithMilestones.filter(p => ['discovery', 'planning', 'building'].includes(p.status))
 
   const handleCreateProject = async () => {

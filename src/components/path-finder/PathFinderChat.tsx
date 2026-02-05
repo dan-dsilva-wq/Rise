@@ -1415,7 +1415,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                   </div>
                   <h4 className="text-sm font-medium text-slate-300 mb-2">Your profile is empty</h4>
                   <p className="text-xs text-slate-500 mb-4 max-w-[220px] mx-auto">
-                    As we chat, I'll remember key details about you — like your background, goals, and what you're working on.
+                    As we chat, I&apos;ll remember key details about you — like your background, goals, and what you&apos;re working on.
                   </p>
                   <div className="flex flex-wrap justify-center gap-1.5 mb-4">
                     {(['background', 'skills', 'goals'] as ProfileCategory[]).map((category, index) => (

@@ -64,7 +64,7 @@ Generate 3-4 actionable first steps for this milestone.`
       }
       const parsed = JSON.parse(jsonMatch[0])
       return NextResponse.json(parsed)
-    } catch (parseError) {
+    } catch {
       console.error('Failed to parse AI response:', content.text)
       // Return default steps
       return NextResponse.json({

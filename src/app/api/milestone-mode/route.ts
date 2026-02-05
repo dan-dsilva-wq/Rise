@@ -142,10 +142,6 @@ export async function POST(request: NextRequest) {
     ])
 
     // Build context about the project and where this milestone fits
-    const otherMilestones = project.milestones
-      .filter(m => m.id !== milestone.id)
-      .sort((a, b) => a.sort_order - b.sort_order)
-
     const completedCount = project.milestones.filter(m => m.status === 'completed').length
     const totalCount = project.milestones.length
     const currentIndex = project.milestones.findIndex(m => m.id === milestone.id) + 1

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Target, Eye, X, Moon, Heart } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
+import { MorningCheckIn } from '@/components/morning/MorningCheckIn'
 import { useUser } from '@/lib/hooks/useUser'
 import type { Profile, DailyLog, Project, MorningBriefing } from '@/lib/supabase/types'
 
@@ -55,8 +56,12 @@ export function DashboardContent({
   const [insightsLoading, setInsightsLoading] = useState(false)
   const [dismissedInsights, setDismissedInsights] = useState<Set<number>>(new Set())
   const [momentum, setMomentum] = useState<{ milestonesThisWeek: number; loginStreak: number; daysSinceLastVisit: number } | null>(null)
+  const [checkedIn, setCheckedIn] = useState(false)
 
   const currentProfile = profile || initialProfile
+
+  // Show morning check-in if user hasn't logged morning mood/energy today
+  const needsMorningCheckIn = !checkedIn && (!todayLog || todayLog.morning_mood == null)
 
   // Fetch morning briefing (API auto-checks if focus milestone is still valid)
   useEffect(() => {
@@ -173,6 +178,14 @@ export function DashboardContent({
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
+        {/* MORNING CHECK-IN — Creates today's daily_log, unlocking the full data loop */}
+        {needsMorningCheckIn && (
+          <MorningCheckIn
+            displayName={currentProfile?.display_name || null}
+            onComplete={() => setCheckedIn(true)}
+          />
+        )}
+
         {/* PERSONAL GREETING — The warm "Rise remembers you" moment */}
         <AnimatePresence>
           {personalGreeting && (() => {

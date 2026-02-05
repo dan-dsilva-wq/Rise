@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DashboardContent } from '@/components/dashboard/DashboardContent'
-import type { DailyPrompt, Project } from '@/lib/supabase/types'
+import type { DailyLog, DailyPrompt, Project } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,8 +13,10 @@ export default async function HomePage() {
     redirect('/login')
   }
 
+  const today = new Date().toISOString().split('T')[0]
+
   // Fetch data in parallel for faster loading
-  const [profileResult, promptsResult, projectsResult] = await Promise.all([
+  const [profileResult, promptsResult, projectsResult, todayLogResult] = await Promise.all([
     // Get user profile
     supabase
       .from('profiles')
@@ -35,11 +37,20 @@ export default async function HomePage() {
       .eq('user_id', user.id)
       .in('status', ['discovery', 'planning', 'building'])
       .order('updated_at', { ascending: false }),
+
+    // Get today's daily log (needed for evening nudge + morning check-in state)
+    supabase
+      .from('daily_logs')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('log_date', today)
+      .single(),
   ])
 
   const profile = profileResult.data
   const prompts = promptsResult.data as DailyPrompt[] | null
   const projects = (projectsResult.data || []) as Project[]
+  const todayLog = (todayLogResult.data as DailyLog | null) ?? null
 
   let dailyPrompt = { prompt_text: 'Today is a new opportunity.', author: null as string | null }
   if (prompts && prompts.length > 0) {
@@ -54,7 +65,7 @@ export default async function HomePage() {
   return (
     <DashboardContent
       profile={profile}
-      todayLog={null}
+      todayLog={todayLog}
       dailyPrompt={dailyPrompt}
       projects={projects}
     />

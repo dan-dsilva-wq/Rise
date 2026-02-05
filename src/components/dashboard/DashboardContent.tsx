@@ -2,11 +2,20 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Target, Eye, X } from 'lucide-react'
+import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Target, Eye, X, Moon } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { useUser } from '@/lib/hooks/useUser'
 import type { Profile, DailyLog, Project, MorningBriefing } from '@/lib/supabase/types'
+
+// Check if it's evening (6pm+) and the user hasn't done their evening reflection yet
+function shouldShowEveningNudge(todayLog: DailyLog | null): boolean {
+  const hour = new Date().getHours()
+  if (hour < 18) return false // Only show after 6pm
+  if (!todayLog) return false // Need a daily log to exist
+  if (todayLog.evening_mood || todayLog.evening_energy) return false // Already reflected
+  return true
+}
 
 interface CurrentStepInfo {
   stepId: string
@@ -31,6 +40,7 @@ interface DashboardContentProps {
 
 export function DashboardContent({
   profile: initialProfile,
+  todayLog = null,
   projects = [],
 }: DashboardContentProps) {
   const { profile } = useUser()
@@ -423,6 +433,35 @@ export function DashboardContent({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* EVENING REFLECTION NUDGE — Appears after 6pm if user hasn't reflected */}
+        {shouldShowEveningNudge(todayLog) && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            <Link href="/evening">
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-900/30 via-slate-800 to-purple-900/30 border border-indigo-500/20 hover:border-indigo-400/40 transition-all p-5 group cursor-pointer">
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-40" />
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-full bg-indigo-500/15 flex-shrink-0">
+                    <Moon className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-white group-hover:text-indigo-300 transition-colors">
+                      How was your day?
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-0.5">
+                      Take a moment to reflect before bed
+                    </p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-indigo-400/50 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                </div>
+              </div>
+            </Link>
+          </motion.div>
+        )}
 
         {/* Projects List - Secondary */}
         {projects.length > 0 && (

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Moon, Lock, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, Moon, Heart, X } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { Slider } from '@/components/ui/Slider'
@@ -16,6 +16,60 @@ interface EveningContentProps {
   todayLog: DailyLog | null
 }
 
+/**
+ * Generate a warm, personalized closing message based on the user's day.
+ * No AI call needed — we use their own data to reflect back what they shared.
+ */
+function generateClosingMessage(
+  eveningMood: number,
+  eveningEnergy: number,
+  dayRating: number,
+  morningMood: number | null,
+  morningEnergy: number | null,
+  gratitude: string,
+  displayName: string | null
+): string {
+  const name = displayName || 'there'
+
+  // Mood improved through the day
+  if (morningMood && eveningMood > morningMood + 2) {
+    return `Your mood really lifted today, ${name}. Whatever you did — keep that thread. Days like this build on each other.`
+  }
+
+  // Tough day but they still showed up to reflect
+  if (dayRating <= 3) {
+    if (gratitude.trim()) {
+      return `Rough day, but you still found something to be grateful for. That takes real strength, ${name}. Tomorrow is a clean slate.`
+    }
+    return `Not every day will be easy, ${name}. But you showed up tonight to check in with yourself — that matters more than you think. Rest well.`
+  }
+
+  // Energy crashed through the day
+  if (morningEnergy && eveningEnergy < morningEnergy - 3) {
+    return `Sounds like today took a lot out of you. That's okay — it usually means you gave it real effort. Let yourself recharge tonight, ${name}.`
+  }
+
+  // Great day
+  if (dayRating >= 8 && eveningMood >= 7) {
+    return `What a day, ${name}. Hold onto this feeling — this is what momentum looks like. See you tomorrow.`
+  }
+
+  // Good day
+  if (dayRating >= 6) {
+    if (gratitude.trim()) {
+      return `A solid day, and you took a moment to appreciate it. That's the kind of awareness that compounds over time, ${name}. Rest well.`
+    }
+    return `Good day, ${name}. Every day you reflect like this, you're building a clearer picture of what works for you. Sleep well.`
+  }
+
+  // Average/neutral day
+  if (gratitude.trim()) {
+    return `Even on a quiet day, you found something worth appreciating. That's a good sign, ${name}. See you in the morning.`
+  }
+
+  return `Thanks for checking in tonight, ${name}. The fact that you're here, reflecting — that's how clarity builds, one day at a time. Rest well.`
+}
+
 export function EveningContent({ profile, todayLog }: EveningContentProps) {
   const [eveningEnergy, setEveningEnergy] = useState(todayLog?.evening_energy || 5)
   const [eveningMood, setEveningMood] = useState(todayLog?.evening_mood || 5)
@@ -23,7 +77,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
   const [gratitude, setGratitude] = useState(todayLog?.gratitude_entry || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [earnedXP, setEarnedXP] = useState(0)
+  const [closingMessage, setClosingMessage] = useState('')
   const [errorToast, setErrorToast] = useState<string | null>(null)
 
   // Track which sliders have been intentionally touched
@@ -42,15 +96,11 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
 
   const gratitudeCharacterInfo = useMemo(() => {
     const remaining = MAX_GRATITUDE_LENGTH - gratitudeLength
-    if (gratitudeLength === 0) return { text: 'Start writing to earn +30 XP', color: 'text-slate-500' }
+    if (gratitudeLength === 0) return { text: '', color: 'text-slate-500' }
     if (isAtLimit) return { text: 'Character limit reached', color: 'text-amber-400' }
     if (isNearLimit) return { text: `${remaining} characters left`, color: 'text-amber-400' }
     return { text: `${remaining} characters left`, color: 'text-slate-500' }
   }, [gratitudeLength, isAtLimit, isNearLimit])
-  const tier = profile?.unlock_tier || 1
-
-  // Tier 3+ unlocks evening reflection
-  const isUnlocked = tier >= 3
 
   const handleSave = async () => {
     if (!todayLog) return
@@ -58,19 +108,6 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
     setSaving(true)
     setErrorToast(null)
     try {
-      let xpBonus = 0
-
-      // Check if first submission
-      if (!todayLog.evening_energy && !todayLog.evening_mood) {
-        xpBonus = 25 // Evening check-in XP
-      }
-      if (!todayLog.gratitude_entry && gratitude.trim()) {
-        xpBonus += 30 // Gratitude XP
-      }
-      if (!todayLog.day_rating) {
-        xpBonus += 10 // Day rating XP
-      }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: updateError } = await (supabase as any)
         .from('daily_logs')
@@ -79,7 +116,6 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
           evening_mood: eveningMood,
           day_rating: dayRating,
           gratitude_entry: gratitude.trim() || null,
-          xp_earned: todayLog.xp_earned + xpBonus,
         })
         .eq('id', todayLog.id)
 
@@ -87,23 +123,18 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
         throw new Error('Failed to save reflection')
       }
 
-      if (xpBonus > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: xpError } = await (supabase as any).rpc('increment_xp', {
-          user_id: profile?.id,
-          xp_amount: xpBonus,
-        })
-        if (xpError) {
-          throw new Error('Failed to award XP')
-        }
-      }
-
-      setEarnedXP(xpBonus)
+      // Generate a warm closing message based on what they shared
+      const message = generateClosingMessage(
+        eveningMood,
+        eveningEnergy,
+        dayRating,
+        todayLog.morning_mood,
+        todayLog.morning_energy,
+        gratitude,
+        profile?.display_name || null
+      )
+      setClosingMessage(message)
       setSaved(true)
-      setTimeout(() => {
-        setSaved(false)
-        setEarnedXP(0)
-      }, 4000)
     } catch {
       setErrorToast('Failed to save. Please try again.')
       setTimeout(() => setErrorToast(null), 5000)
@@ -112,44 +143,13 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
     }
   }
 
-  if (!isUnlocked) {
-    return (
-      <div className="min-h-screen bg-slate-900 pb-24">
-        {/* Header */}
-        <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-lg border-b border-slate-800">
-          <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-4">
-            <Link
-              href="/"
-              className="p-2 -ml-2 rounded-full hover:bg-slate-800 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-slate-400" />
-            </Link>
-            <h1 className="text-xl font-bold text-slate-100">Evening Reflection</h1>
-          </div>
-        </header>
-
-        <main className="max-w-lg mx-auto px-4 py-6">
-          <Card className="text-center py-12">
-            <Lock className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-            <h2 className="text-xl font-semibold text-slate-200 mb-2">
-              Locked Feature
-            </h2>
-            <p className="text-slate-400 mb-4">
-              Evening reflection unlocks at Tier 3 (1,500 XP)
-            </p>
-            <p className="text-sm text-slate-500">
-              Current: {profile?.total_xp?.toLocaleString() || 0} XP
-            </p>
-          </Card>
-        </main>
-
-        {/* Bottom nav */}
-        <div className="fixed bottom-0 left-0 right-0">
-          <BottomNavigation />
-        </div>
-      </div>
-    )
-  }
+  // Determine time-aware greeting
+  const hour = new Date().getHours()
+  const timeGreeting = hour >= 21
+    ? 'Winding down?'
+    : hour >= 18
+    ? 'How was your day?'
+    : 'Taking a moment to reflect?'
 
   return (
     <div className="min-h-screen bg-slate-900 pb-24">
@@ -162,34 +162,84 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
           >
             <ArrowLeft className="w-5 h-5 text-slate-400" />
           </Link>
-          <h1 className="text-xl font-bold text-slate-100">Evening Reflection</h1>
+          <div>
+            <h1 className="text-xl font-bold text-slate-100">Evening Reflection</h1>
+            <p className="text-sm text-slate-500">{timeGreeting}</p>
+          </div>
         </div>
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {!todayLog?.im_up_pressed_at ? (
+        {!todayLog ? (
           <Card className="text-center py-8">
             <Moon className="w-12 h-12 mx-auto mb-4 text-slate-600" />
             <p className="text-slate-400">
-              Complete your morning check-in first to unlock evening reflection.
+              No log for today yet. Start your day first, then come back tonight to reflect.
             </p>
             <Link href="/">
               <Button className="mt-4" variant="secondary">
-                Go to Morning Check-in
+                Go to Today
               </Button>
             </Link>
           </Card>
+        ) : saved ? (
+          /* Post-save: Warm closing message */
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="space-y-6"
+          >
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-900/30 via-slate-800 to-purple-900/30 border border-indigo-500/20 shadow-xl">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-50" />
+
+              <div className="p-8 text-center space-y-6">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+                >
+                  <Moon className="w-12 h-12 mx-auto text-indigo-400" />
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  <h2 className="text-2xl font-bold text-white mb-4">
+                    Reflection saved
+                  </h2>
+                  <p className="text-slate-300 leading-relaxed text-lg">
+                    {closingMessage}
+                  </p>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.8 }}
+                >
+                  <Link href="/">
+                    <Button variant="secondary" className="mt-4">
+                      Back to Today
+                    </Button>
+                  </Link>
+                </motion.div>
+              </div>
+            </div>
+          </motion.div>
         ) : (
           <>
             {/* Evening Mood */}
             <Card>
               <h3 className="text-lg font-semibold text-slate-200 mb-4">
-                How did your day end?
+                How are you feeling right now?
               </h3>
 
               <div className="space-y-6">
                 <Slider
-                  label="Evening Energy"
+                  label="Energy"
                   value={eveningEnergy}
                   onChange={setEveningEnergy}
                   min={1}
@@ -201,7 +251,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                 />
 
                 <Slider
-                  label="Evening Mood"
+                  label="Mood"
                   value={eveningMood}
                   onChange={setEveningMood}
                   min={1}
@@ -217,10 +267,10 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
             {/* Day Rating */}
             <Card>
               <h3 className="text-lg font-semibold text-slate-200 mb-4">
-                Rate your day
+                How would you rate today?
               </h3>
               <Slider
-                label="Day Rating"
+                label="Overall"
                 value={dayRating}
                 onChange={setDayRating}
                 min={1}
@@ -234,11 +284,14 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
 
             {/* Gratitude */}
             <Card>
-              <h3 className="text-lg font-semibold text-slate-200 mb-2">
-                One thing you&apos;re grateful for
-              </h3>
-              <p className="text-sm text-slate-400 mb-4">
-                Even small things count. +30 XP
+              <div className="flex items-center gap-2 mb-2">
+                <Heart className="w-4 h-4 text-pink-400" />
+                <h3 className="text-lg font-semibold text-slate-200">
+                  One thing you&apos;re grateful for
+                </h3>
+              </div>
+              <p className="text-sm text-slate-500 mb-4">
+                Even something small. It shifts your perspective.
               </p>
               <div className="relative">
                 <textarea
@@ -249,22 +302,24 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
                     }
                   }}
                   placeholder="Today I'm grateful for..."
-                  className={`w-full p-4 bg-slate-800 border rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none transition-colors ${
+                  className={`w-full p-4 bg-slate-800 border rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition-colors ${
                     isAtLimit ? 'border-amber-500/50' : 'border-slate-700'
                   }`}
                   rows={3}
                   maxLength={MAX_GRATITUDE_LENGTH}
                   aria-describedby="gratitude-counter"
                 />
-                <div
-                  id="gratitude-counter"
-                  className={`flex items-center justify-between mt-2 text-xs transition-colors ${gratitudeCharacterInfo.color}`}
-                >
-                  <span>{gratitudeCharacterInfo.text}</span>
-                  <span className={`tabular-nums ${isNearLimit ? 'font-medium' : ''}`}>
-                    {gratitudeLength}/{MAX_GRATITUDE_LENGTH}
-                  </span>
-                </div>
+                {gratitudeLength > 0 && (
+                  <div
+                    id="gratitude-counter"
+                    className={`flex items-center justify-between mt-2 text-xs transition-colors ${gratitudeCharacterInfo.color}`}
+                  >
+                    <span>{gratitudeCharacterInfo.text}</span>
+                    <span className={`tabular-nums ${isNearLimit ? 'font-medium' : ''}`}>
+                      {gratitudeLength}/{MAX_GRATITUDE_LENGTH}
+                    </span>
+                  </div>
+                )}
               </div>
             </Card>
 
@@ -275,58 +330,32 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
               className="w-full"
               size="lg"
             >
-              Save Evening Reflection
+              Save Reflection
             </Button>
-
-            <AnimatePresence>
-              {saved && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="flex flex-col items-center gap-2"
-                >
-                  <p className="text-center text-teal-400 font-medium">
-                    Saved! Rest well tonight.
-                  </p>
-                  {earnedXP > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.2 }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500/10 border border-teal-500/20 rounded-full"
-                    >
-                      <Sparkles className="w-4 h-4 text-teal-400" />
-                      <span className="text-sm font-semibold text-teal-300">+{earnedXP} XP</span>
-                    </motion.div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Error Toast */}
-            <AnimatePresence>
-              {errorToast && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  className="fixed bottom-28 left-4 right-4 max-w-lg mx-auto px-4 py-3 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-2"
-                >
-                  <X className="w-4 h-4 text-red-400 flex-shrink-0" />
-                  <span className="text-sm text-red-400 flex-1">{errorToast}</span>
-                  <button
-                    onClick={() => setErrorToast(null)}
-                    className="text-red-400 hover:text-red-300"
-                    aria-label="Dismiss error"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </>
         )}
+
+        {/* Error Toast */}
+        <AnimatePresence>
+          {errorToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed bottom-28 left-4 right-4 max-w-lg mx-auto px-4 py-3 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-2"
+            >
+              <X className="w-4 h-4 text-red-400 flex-shrink-0" />
+              <span className="text-sm text-red-400 flex-1">{errorToast}</span>
+              <button
+                onClick={() => setErrorToast(null)}
+                className="text-red-400 hover:text-red-300"
+                aria-label="Dismiss error"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
       {/* Bottom nav */}

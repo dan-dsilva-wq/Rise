@@ -164,22 +164,46 @@ Keep the conversation short — 3-5 exchanges total. This is a wind-down, not a 
     assistantMessage = assistantMessage.replace(/\[COMPLETE\]/g, '').trim()
 
     // If we got evening data, save it to daily_logs
-    if (eveningData) {
-      const today = new Date().toISOString().split('T')[0]
-      const updateData: Record<string, unknown> = {
-        evening_mood: eveningData.mood,
-        evening_energy: eveningData.energy,
-        day_rating: eveningData.rating,
-      }
-      if (eveningData.gratitude) {
-        updateData.gratitude_entry = eveningData.gratitude
+    // Also save the conversation's key user messages as reflection_notes —
+    // this is the MEMORY BRIDGE that lets tomorrow's morning briefing and
+    // greeting reference what the user said tonight. Without this, the
+    // evening reflection is a dead end: Rise forgets what you opened up about.
+    const today = new Date().toISOString().split('T')[0]
+
+    if (eveningData || isComplete) {
+      const updateData: Record<string, unknown> = {}
+
+      if (eveningData) {
+        updateData.evening_mood = eveningData.mood
+        updateData.evening_energy = eveningData.energy
+        updateData.day_rating = eveningData.rating
+        if (eveningData.gratitude) {
+          updateData.gratitude_entry = eveningData.gratitude
+        }
       }
 
-      await supabase
-        .from('daily_logs')
-        .update(updateData)
-        .eq('user_id', user.id)
-        .eq('log_date', today)
+      // Extract user messages (skip the synthetic opener trigger) and save as reflection notes.
+      // This makes the evening conversation visible to weaveMemory's emotional arc builder,
+      // the morning greeting generator, and any future surface that reads daily_logs.
+      const userMessages = messages
+        .filter(m => m.role === 'user' && m.content !== '[user opened evening reflection]')
+        .map(m => m.content)
+      if (userMessages.length > 0) {
+        // Format: concise digest of what the user shared, max ~500 chars to stay lean
+        const reflectionDigest = userMessages
+          .map(msg => msg.length > 200 ? msg.slice(0, 197) + '...' : msg)
+          .join(' | ')
+          .slice(0, 500)
+        updateData.reflection_notes = reflectionDigest
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await supabase
+          .from('daily_logs')
+          .update(updateData)
+          .eq('user_id', user.id)
+          .eq('log_date', today)
+      }
     }
 
     return Response.json({

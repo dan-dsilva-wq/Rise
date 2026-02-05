@@ -753,7 +753,7 @@ export interface Database {
           content: string
           importance: number
           source_conversation_id: string | null
-          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat'
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection'
           created_at: string
           expires_at: string | null
           is_active: boolean
@@ -767,7 +767,7 @@ export interface Database {
           content: string
           importance?: number
           source_conversation_id?: string | null
-          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat'
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection'
           created_at?: string
           expires_at?: string | null
           is_active?: boolean
@@ -781,7 +781,7 @@ export interface Database {
           content?: string
           importance?: number
           source_conversation_id?: string | null
-          source_ai?: 'path_finder' | 'milestone_mode' | 'project_chat'
+          source_ai?: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection'
           created_at?: string
           expires_at?: string | null
           is_active?: boolean

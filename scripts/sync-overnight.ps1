@@ -7,43 +7,47 @@
 
 $SCRIPT_DIR = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }
 
-$canonical = "$SCRIPT_DIR\overnight-v3.ps1"
+$scripts = @("overnight-v3.ps1", "overnight-v3.1.ps1")
 
-$targets = @(
-    "C:\Users\dan-d\Projects\Website\daniel-huaiyao\scripts\overnight-v3.ps1",
-    "C:\Users\dan-d\Projects\Website\mathgraph\scripts\overnight-v3.ps1"
+$projectDirs = @(
+    "C:\Users\dan-d\Projects\Website\daniel-huaiyao\scripts",
+    "C:\Users\dan-d\Projects\Website\mathgraph\scripts"
 )
 
-if (-not (Test-Path $canonical)) {
-    Write-Host "ERROR: Canonical file not found: $canonical" -ForegroundColor Red
-    exit 1
-}
-
-foreach ($target in $targets) {
-    $targetDir = Split-Path -Parent $target
-    if (-not (Test-Path $targetDir)) {
-        Write-Host "SKIP: Directory not found: $targetDir" -ForegroundColor Yellow
+foreach ($scriptName in $scripts) {
+    $canonical = "$SCRIPT_DIR\$scriptName"
+    if (-not (Test-Path $canonical)) {
+        Write-Host "SKIP: Canonical file not found: $canonical" -ForegroundColor Yellow
         continue
     }
 
-    # Check if already linked (same content = same hash)
-    if (Test-Path $target) {
-        $canonHash = (Get-FileHash $canonical -Algorithm MD5).Hash
-        $targetHash = (Get-FileHash $target -Algorithm MD5).Hash
-        if ($canonHash -eq $targetHash) {
-            Write-Host "OK: $target (already in sync)" -ForegroundColor Green
+    foreach ($projDir in $projectDirs) {
+        if (-not (Test-Path $projDir)) {
+            Write-Host "SKIP: Directory not found: $projDir" -ForegroundColor Yellow
             continue
         }
-        Remove-Item $target -Force
-    }
 
-    cmd /c "mklink /H `"$target`" `"$canonical`""
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "LINKED: $target" -ForegroundColor Green
-    } else {
-        # Fallback: copy if hard link fails
-        Copy-Item $canonical $target -Force
-        Write-Host "COPIED: $target (hard link failed, used copy)" -ForegroundColor Yellow
+        $target = "$projDir\$scriptName"
+
+        # Check if already linked (same content = same hash)
+        if (Test-Path $target) {
+            $canonHash = (Get-FileHash $canonical -Algorithm MD5).Hash
+            $targetHash = (Get-FileHash $target -Algorithm MD5).Hash
+            if ($canonHash -eq $targetHash) {
+                Write-Host "OK: $target (already in sync)" -ForegroundColor Green
+                continue
+            }
+            Remove-Item $target -Force
+        }
+
+        cmd /c "mklink /H `"$target`" `"$canonical`""
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "LINKED: $target" -ForegroundColor Green
+        } else {
+            # Fallback: copy if hard link fails
+            Copy-Item $canonical $target -Force
+            Write-Host "COPIED: $target (hard link failed, used copy)" -ForegroundColor Yellow
+        }
     }
 }
 

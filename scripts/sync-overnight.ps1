@@ -7,7 +7,7 @@
 
 $SCRIPT_DIR = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }
 
-$scripts = @("overnight-v3.ps1", "overnight-v3.1.ps1")
+$scripts = @("overnight-v3.ps1", "overnight-v3.1.ps1", "overnight-v4.ps1")
 
 $projectDirs = @(
     "C:\Users\dan-d\Projects\Website\daniel-huaiyao\scripts",

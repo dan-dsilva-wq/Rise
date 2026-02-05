@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi } from '@/lib/hooks/aiContextServer'
+import { weaveMemory } from '@/lib/ai/memoryWeaver'
 
 // Lazy initialize to avoid build-time errors
 let openai: OpenAI | null = null
@@ -48,20 +49,33 @@ export async function POST(request: NextRequest) {
       return new Response('Messages required', { status: 400 })
     }
 
-    // Fetch AI context bank data for this project
-    const aiContext = await fetchAiContextForApi(
-      supabaseClient,
-      user.id,
-      projectId || undefined
-    )
+    // Fetch AI context bank and unified memory in parallel
+    const [aiContext, wovenMemory] = await Promise.all([
+      fetchAiContextForApi(
+        supabaseClient,
+        user.id,
+        projectId || undefined
+      ),
+      weaveMemory(supabaseClient, user.id, {
+        currentSource: 'project_chat',
+        projectId: projectId || undefined,
+        maxPerSource: 12,
+        lookbackDays: 7,
+      }),
+    ])
 
     // Build context bank section if we have data
     const contextBankSection = aiContext.fullContext
       ? `\n\n## What We Already Know (Context Bank)\n${aiContext.fullContext}\n\nUse this context to provide personalized, relevant help. Don't ask about things we already know.`
       : ''
 
+    // Add unified memory for cross-conversation awareness
+    const memorySection = wovenMemory.contextBlock
+      ? `\n\n${wovenMemory.contextBlock}`
+      : ''
+
     // Build system prompt with project context
-    let systemPrompt = `You are an AI building partner helping a user build their project. You're supportive, practical, and focused on helping them make progress.
+    let systemPrompt = `You are Rise - an AI building partner helping a user build their project. You are ONE unified mind that remembers ALL conversations with this user across Path Finder, Milestone Mode, and Project Chat. You're supportive, practical, and focused on helping them make progress.
 
 Key principles:
 - Be concise but thorough
@@ -71,6 +85,7 @@ Key principles:
 - Celebrate wins, no matter how small
 - When they're stuck, help them find the next smallest step
 - USE THE CONTEXT BANK below - leverage what we know about the user and project
+- When past conversations are relevant, reference them naturally ("I remember you mentioned...", "Building on what we discussed...")
 
 You can help with:
 - Brainstorming and ideation
@@ -92,8 +107,9 @@ You can help with:
 ${projectContext.milestones.map((m, i) => `${i + 1}. [${m.status}] ${m.title}${m.description ? ` - ${m.description}` : ''}`).join('\n')}`
     }
 
-    // Add context bank to system prompt
+    // Add context bank and unified memory to system prompt
     systemPrompt += contextBankSection
+    systemPrompt += memorySection
 
     // Format messages for OpenAI API
     const formattedMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [

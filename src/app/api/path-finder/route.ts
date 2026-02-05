@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { saveProjectContext, saveAiInsight } from '@/lib/hooks/aiContextServer'
+import { weaveMemory } from '@/lib/ai/memoryWeaver'
 import type { ProjectContextType, InsightType } from '@/lib/supabase/types'
 
 let anthropic: Anthropic | null = null
@@ -137,8 +138,19 @@ export async function POST(request: NextRequest) {
       existingProjects?: ExistingProject[]
     }
 
+    // Weave in cross-conversation memory for unified intelligence
+    const wovenMemory = await weaveMemory(supabaseClient, user.id, {
+      currentSource: 'path_finder',
+      maxPerSource: 15,
+      lookbackDays: 7,
+    })
+
     const profileSection = profileContext
       ? `\n\n## What You Already Know About This User\n${profileContext}\n\nUse this information to personalize your responses and avoid asking questions you already know the answer to.`
+      : ''
+
+    const memorySection = wovenMemory.contextBlock
+      ? `\n\n${wovenMemory.contextBlock}`
       : ''
 
     const projectsSection = existingProjects && existingProjects.length > 0
@@ -163,8 +175,14 @@ export async function POST(request: NextRequest) {
         }).join('\n\n')}\n\nManage focus with SET_FOCUS. Only 1 active, max 3 up next.`
       : '\n\n## User\'s Current Projects\nNo projects yet. Once you understand what they want to build, create one for them!'
 
-    const systemPrompt = `You are an expert life coach and business advisor helping someone discover what they should build to achieve freedom. Your goal is to have a deep, thoughtful conversation AND help them make tangible progress by creating/updating projects.
-${profileSection}${projectsSection}
+    const systemPrompt = `You are Rise - an expert life coach and business advisor helping someone discover what they should build to achieve freedom. You are ONE unified mind - you remember everything from all conversations with this user. Your goal is to have a deep, thoughtful conversation AND help them make tangible progress by creating/updating projects.
+
+When you have cross-conversation context, weave it in naturally:
+- "I remember when we were working on that milestone, you mentioned..."
+- "This connects to something you said earlier about..."
+- "I noticed you've been thinking about pricing a lot lately..."
+Don't force references - only mention past conversations when genuinely relevant.
+${profileSection}${memorySection}${projectsSection}
 
 ## Your Approach
 1. **Listen deeply** - Understand their situation

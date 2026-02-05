@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi } from '@/lib/hooks/aiContextServer'
+import { weaveMemory } from '@/lib/ai/memoryWeaver'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -206,12 +207,20 @@ export async function GET(request: NextRequest) {
       focusMilestone = projectsWithMilestones[0].milestones[0]
     }
 
-    // Fetch AI context bank for personalization
-    const aiContext = await fetchAiContextForApi(
-      supabaseClient,
-      user.id,
-      focusProject?.id
-    )
+    // Fetch AI context bank and unified memory for personalization
+    const [aiContext, wovenMemory] = await Promise.all([
+      fetchAiContextForApi(
+        supabaseClient,
+        user.id,
+        focusProject?.id
+      ),
+      weaveMemory(supabaseClient, user.id, {
+        currentSource: 'morning_briefing',
+        projectId: focusProject?.id,
+        maxPerSource: 15,
+        lookbackDays: 3,
+      }),
+    ])
 
     // Build context for AI
     const projectContext = projectsWithMilestones.map(p => {
@@ -231,6 +240,11 @@ export async function GET(request: NextRequest) {
     // Add context bank insights for more personalized briefings
     const contextBankSection = aiContext.fullContext
       ? `\n\n## What We Know About This User\n${aiContext.fullContext}`
+      : ''
+
+    // Add unified memory for cross-conversation awareness
+    const memorySection = wovenMemory.contextBlock
+      ? `\n\n${wovenMemory.contextBlock}`
       : ''
 
     // Generate briefing with AI
@@ -264,21 +278,23 @@ export async function GET(request: NextRequest) {
     const response = await getAnthropic().messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 500,
-      system: `You are a supportive AI cofounder helping someone build their path to freedom. Generate a morning briefing that's:
+      system: `You are Rise - a supportive AI cofounder helping someone build their path to freedom. You are ONE mind that remembers all conversations with this user. Generate a morning briefing that's:
 - Specific to their current projects and milestones
 - Encouraging but not cheesy
 - Actionable - tells them exactly what to focus on
 - Personalized using the context we know about them (their goals, constraints, preferences)
+- References recent conversations naturally (e.g. "Yesterday you were working on..." or "You mentioned wanting to...")
+- Acknowledges their emotional state if known
 
 Respond in JSON format:
 {
   "mission_headline": "2-5 word summary of today's focus (e.g. 'Build the landing page')",
-  "mission_detail": "One sentence with more context about the task",
-  "nudge": "A motivating thought specific to where they are in their journey (1-2 sentences) - reference their goals or situation if known"
+  "mission_detail": "One sentence with more context about the task - reference recent conversations or decisions if relevant",
+  "nudge": "A motivating thought specific to where they are in their journey (1-2 sentences) - reference their recent conversations, emotional state, or open loops"
 }`,
       messages: [{
         role: 'user',
-        content: `Here's my current project state:\n\n${projectContext}${contextBankSection}\n\nThe suggested focus for today is: ${focusMilestone ? `"${focusMilestone.title}" from project "${focusProject?.name}"` : 'No specific milestone set'}\n\nGenerate my morning briefing.`
+        content: `Here's my current project state:\n\n${projectContext}${contextBankSection}${memorySection}\n\nThe suggested focus for today is: ${focusMilestone ? `"${focusMilestone.title}" from project "${focusProject?.name}"` : 'No specific milestone set'}\n\nGenerate my morning briefing.`
       }],
     })
 

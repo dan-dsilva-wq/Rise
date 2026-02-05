@@ -538,10 +538,10 @@ export function DashboardContent({
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-white group-hover:text-indigo-300 transition-colors">
-                      How was your day?
+                      Wind down with Rise
                     </h3>
                     <p className="text-sm text-slate-400 mt-0.5">
-                      Take a moment to reflect before bed
+                      A quick chat to close out the day
                     </p>
                   </div>
                   <ChevronRight className="w-5 h-5 text-indigo-400/50 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all flex-shrink-0" />

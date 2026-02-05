@@ -897,4 +897,4 @@ export type AiInsight = Database['public']['Tables']['ai_insights']['Row']
 export type AiInsightInsert = Database['public']['Tables']['ai_insights']['Insert']
 export type AiInsightUpdate = Database['public']['Tables']['ai_insights']['Update']
 export type InsightType = 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
-export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat'
+export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection'

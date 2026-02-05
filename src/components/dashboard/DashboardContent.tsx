@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Target } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Target, Eye, X } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { useUser } from '@/lib/hooks/useUser'
@@ -14,6 +14,12 @@ interface CurrentStepInfo {
   stepNumber: number
   totalSteps: number
   completedSteps: number
+}
+
+interface RiseInsight {
+  text: string
+  type: 'pattern' | 'connection' | 'shift' | 'question'
+  warmth: 'encouraging' | 'curious' | 'gentle' | 'celebratory'
 }
 
 interface DashboardContentProps {
@@ -34,6 +40,9 @@ export function DashboardContent({
   const [briefingError, setBriefingError] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateError, setRegenerateError] = useState(false)
+  const [riseInsights, setRiseInsights] = useState<RiseInsight[]>([])
+  const [insightsLoading, setInsightsLoading] = useState(false)
+  const [dismissedInsights, setDismissedInsights] = useState<Set<number>>(new Set())
 
   const currentProfile = profile || initialProfile
 
@@ -85,6 +94,39 @@ export function DashboardContent({
       setRegenerating(false)
     }
   }
+
+  // Fetch proactive insights (after briefing loads, for returning users)
+  useEffect(() => {
+    if (projects.length === 0) return // Only for users with projects
+    if (insightsLoading || riseInsights.length > 0) return
+
+    const fetchInsights = async () => {
+      setInsightsLoading(true)
+      try {
+        const response = await fetch('/api/rise-insights')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.insights && data.insights.length > 0) {
+            setRiseInsights(data.insights)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch insights:', error)
+      } finally {
+        setInsightsLoading(false)
+      }
+    }
+
+    // Slight delay so it doesn't compete with briefing load
+    const timer = setTimeout(fetchInsights, 1500)
+    return () => clearTimeout(timer)
+  }, [projects.length, insightsLoading, riseInsights.length])
+
+  const dismissInsight = (index: number) => {
+    setDismissedInsights(prev => new Set(prev).add(index))
+  }
+
+  const visibleInsights = riseInsights.filter((_, i) => !dismissedInsights.has(i))
 
   // Determine time of day for greeting
   const hour = new Date().getHours()
@@ -313,6 +355,74 @@ export function DashboardContent({
           </div>
         </motion.div>
         )}
+
+        {/* RISE NOTICED — Proactive AI Insights */}
+        <AnimatePresence>
+          {visibleInsights.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              transition={{ delay: 0.3 }}
+              className="space-y-3"
+            >
+              {visibleInsights.map((insight, idx) => {
+                const originalIndex = riseInsights.indexOf(insight)
+                const warmthStyles = {
+                  encouraging: 'from-teal-500/10 to-emerald-500/10 border-teal-500/25',
+                  curious: 'from-purple-500/10 to-blue-500/10 border-purple-500/25',
+                  gentle: 'from-slate-500/10 to-blue-500/10 border-slate-500/25',
+                  celebratory: 'from-amber-500/10 to-orange-500/10 border-amber-500/25',
+                }
+                const warmthIconColor = {
+                  encouraging: 'text-teal-400',
+                  curious: 'text-purple-400',
+                  gentle: 'text-blue-400',
+                  celebratory: 'text-amber-400',
+                }
+                const warmthGlow = {
+                  encouraging: 'bg-teal-500/20',
+                  curious: 'bg-purple-500/20',
+                  gentle: 'bg-blue-500/20',
+                  celebratory: 'bg-amber-500/20',
+                }
+
+                return (
+                  <motion.div
+                    key={`insight-${originalIndex}`}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20, height: 0 }}
+                    transition={{ delay: idx * 0.15 }}
+                    className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${warmthStyles[insight.warmth]} border p-4`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-full ${warmthGlow[insight.warmth]} flex-shrink-0`}>
+                        <Eye className={`w-4 h-4 ${warmthIconColor[insight.warmth]}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        {idx === 0 && (
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                            Rise noticed
+                          </p>
+                        )}
+                        <p className="text-sm text-slate-200 leading-relaxed">
+                          {insight.text}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => dismissInsight(originalIndex)}
+                        className="p-1 text-slate-600 hover:text-slate-400 transition-colors flex-shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Projects List - Secondary */}
         {projects.length > 0 && (

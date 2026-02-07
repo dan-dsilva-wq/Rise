@@ -2,13 +2,14 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, User, Zap, ArrowLeft, CheckCircle, Target, Circle, ChevronDown, ChevronUp, Sparkles, Compass, AlertCircle, RotateCcw } from 'lucide-react'
+import { Send, Loader2, User, Zap, ArrowLeft, CheckCircle, Target, Circle, ChevronDown, ChevronUp, Sparkles, Compass, AlertCircle, RotateCcw, Copy } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { useMilestoneConversation } from '@/lib/hooks/useMilestoneConversation'
 import { createClient } from '@/lib/supabase/client'
 import { addDebugLog } from '@/components/ui/ConnectionStatus'
 import type { Milestone, Project, MilestoneConversation, MilestoneMessage, MilestoneStep } from '@/lib/supabase/types'
+import type { OrchestrationDispatchRecord, OrchestrationDispatchStatus } from '@/types/orchestration'
 
 type Approach = 'do-it' | 'guide'
 
@@ -79,6 +80,10 @@ export function MilestoneModeChat({
   const [initialized, setInitialized] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [dispatchNotice, setDispatchNotice] = useState<string | null>(null)
+  const [dispatching, setDispatching] = useState(false)
+  const [dispatchHistoryOpen, setDispatchHistoryOpen] = useState(false)
+  const [dispatches, setDispatches] = useState<OrchestrationDispatchRecord[]>([])
   const [steps, setSteps] = useState<MilestoneStep[]>(milestone.steps || [])
   const [showSteps, setShowSteps] = useState(true)
   const [celebratingStep, setCelebratingStep] = useState<string | null>(null)
@@ -91,6 +96,7 @@ export function MilestoneModeChat({
   const totalSteps = steps.length
   const currentStep = steps.find(s => !s.is_completed)
   const stepsProgress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0
+  const pendingDispatchCount = dispatches.filter(dispatch => dispatch.status === 'pending').length
 
   // Toggle step completion
   const toggleStep = async (stepId: string) => {
@@ -203,6 +209,116 @@ export function MilestoneModeChat({
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    const fetchDispatches = async () => {
+      try {
+        const params = new URLSearchParams({
+          projectId: milestone.project_id,
+          milestoneId: milestone.id,
+        })
+        const response = await fetch(`/api/orchestration/dispatch?${params.toString()}`)
+        if (!response.ok) return
+        const data = await response.json() as { dispatches?: OrchestrationDispatchRecord[] }
+        setDispatches(data.dispatches || [])
+      } catch (error) {
+        console.error('Failed to fetch dispatch history:', error)
+      }
+    }
+
+    void fetchDispatches()
+  }, [milestone.project_id, milestone.id])
+
+  const handleCopyDispatchPrompt = async (prompt: string) => {
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setDispatchNotice('Dispatch prompt copied to clipboard.')
+      setTimeout(() => setDispatchNotice(null), 3500)
+    } catch (error) {
+      console.error('Failed to copy dispatch prompt:', error)
+      setSaveError('Failed to copy prompt')
+      setTimeout(() => setSaveError(null), 3000)
+    }
+  }
+
+  const handleDispatchToClaude = async () => {
+    if (dispatching) return
+
+    setDispatching(true)
+    setDispatchNotice(null)
+
+    const currentStepIndex = currentStep ? steps.findIndex(step => step.id === currentStep.id) : 0
+
+    try {
+      const response = await fetch('/api/orchestration/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: milestone.project_id,
+          milestoneId: milestone.id,
+          stepIndex: currentStepIndex >= 0 ? currentStepIndex : 0,
+        }),
+      })
+
+      const data = await response.json() as {
+        error?: string
+        prompt?: string
+        dispatch?: OrchestrationDispatchRecord
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to dispatch (${response.status})`)
+      }
+
+      if (!data.prompt) {
+        throw new Error('Dispatch generated no prompt')
+      }
+
+      await navigator.clipboard.writeText(data.prompt)
+      setDispatchNotice('Claude Code prompt copied. Paste it into Claude Code to execute.')
+      setTimeout(() => setDispatchNotice(null), 4500)
+
+      if (data.dispatch) {
+        const createdDispatch = data.dispatch
+        setDispatches(prev => [createdDispatch, ...prev])
+      }
+    } catch (error) {
+      console.error('Failed to dispatch orchestration task:', error)
+      setSaveError(error instanceof Error ? error.message : 'Failed to dispatch task')
+      setTimeout(() => setSaveError(null), 3500)
+    } finally {
+      setDispatching(false)
+    }
+  }
+
+  const handleDispatchStatusChange = async (dispatchId: string, status: OrchestrationDispatchStatus) => {
+    try {
+      const response = await fetch('/api/orchestration/dispatch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: milestone.project_id,
+          dispatchId,
+          status,
+        }),
+      })
+
+      const data = await response.json() as { error?: string; dispatch?: OrchestrationDispatchRecord }
+
+      if (!response.ok || !data.dispatch) {
+        throw new Error(data.error || `Failed to update dispatch (${response.status})`)
+      }
+
+      const updatedDispatch = data.dispatch
+      setDispatches(prev =>
+        prev.map(dispatch => (dispatch.id === dispatchId ? updatedDispatch : dispatch))
+      )
+    } catch (error) {
+      console.error('Failed to update dispatch status:', error)
+      setSaveError(error instanceof Error ? error.message : 'Failed to update dispatch status')
+      setTimeout(() => setSaveError(null), 3000)
+    }
+  }
 
   const handleSubmit = async (e?: React.FormEvent, overrideInput?: string) => {
     e?.preventDefault()
@@ -456,13 +572,27 @@ export function MilestoneModeChat({
             </div>
             <h1 className="text-white font-medium truncate">{milestone.title}</h1>
           </div>
-          <button
-            onClick={handleMarkComplete}
-            className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-400 text-sm font-medium transition-colors flex items-center gap-1.5"
-          >
-            <CheckCircle className="w-4 h-4" />
-            Done
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDispatchToClaude}
+              disabled={dispatching}
+              className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 disabled:opacity-60 disabled:cursor-not-allowed border border-purple-500/30 rounded-lg text-purple-300 text-sm font-medium transition-colors flex items-center gap-1.5"
+            >
+              {dispatching ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+              Dispatch
+            </button>
+            <button
+              onClick={handleMarkComplete}
+              className="px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-400 text-sm font-medium transition-colors flex items-center gap-1.5"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Done
+            </button>
+          </div>
         </div>
         <div className="px-4 pb-3">
           <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -596,6 +726,83 @@ export function MilestoneModeChat({
         </div>
       )}
 
+      {/* Claude Dispatch History */}
+      {dispatches.length > 0 && (
+        <div className="border-b border-slate-800 bg-slate-900/35">
+          <button
+            onClick={() => setDispatchHistoryOpen(!dispatchHistoryOpen)}
+            className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-slate-800/30 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Copy className="w-4 h-4 text-purple-400" />
+              <span className="text-sm text-slate-300">Claude Dispatches</span>
+              <span className="text-xs text-slate-500">
+                {dispatches.length} total
+                {pendingDispatchCount > 0 ? ` • ${pendingDispatchCount} pending` : ''}
+              </span>
+            </div>
+            {dispatchHistoryOpen ? (
+              <ChevronUp className="w-4 h-4 text-slate-500" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-500" />
+            )}
+          </button>
+          <AnimatePresence>
+            {dispatchHistoryOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="px-4 pb-3 space-y-2">
+                  {dispatches.slice(0, 8).map(dispatch => (
+                    <div
+                      key={dispatch.id}
+                      className="rounded-lg border border-slate-700/60 bg-slate-800/45 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm text-slate-200 truncate">{dispatch.stepText}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {new Date(dispatch.sentAt).toLocaleString()}
+                          </p>
+                        </div>
+                        <span
+                          className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                            dispatch.status === 'done'
+                              ? 'bg-green-500/15 border-green-500/30 text-green-300'
+                              : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                          }`}
+                        >
+                          {dispatch.status}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={() => handleCopyDispatchPrompt(dispatch.prompt)}
+                          className="px-2.5 py-1 text-xs rounded border border-purple-500/30 bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 transition-colors"
+                        >
+                          Copy Prompt
+                        </button>
+                        {dispatch.status === 'pending' && (
+                          <button
+                            onClick={() => handleDispatchStatusChange(dispatch.id, 'done')}
+                            className="px-2.5 py-1 text-xs rounded border border-green-500/30 bg-green-500/15 text-green-300 hover:bg-green-500/25 transition-colors"
+                          >
+                            Mark Done
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
       {/* Error Toast */}
       <AnimatePresence>
         {saveError && (
@@ -606,6 +813,19 @@ export function MilestoneModeChat({
             className="mx-4 my-2 px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-sm text-red-400"
           >
             {saveError}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {dispatchNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mx-4 my-2 px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm text-purple-200"
+          >
+            {dispatchNotice}
           </motion.div>
         )}
       </AnimatePresence>

@@ -5,7 +5,14 @@ import type { Profile, PathFinderConversation, PathFinderMessage, UserProfileFac
 
 export const dynamic = 'force-dynamic'
 
-export default async function PathFinderPage() {
+interface PathFinderPageProps {
+  searchParams?: Promise<{
+    starter?: string
+    autosend?: string
+  }>
+}
+
+export default async function PathFinderPage({ searchParams }: PathFinderPageProps) {
   const supabase = await createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
@@ -80,6 +87,12 @@ export default async function PathFinderPage() {
     messages = (messagesData || []) as PathFinderMessage[]
   }
 
+  const resolvedSearchParams = await searchParams
+  const starter = typeof resolvedSearchParams?.starter === 'string'
+    ? resolvedSearchParams.starter
+    : null
+  const autoSendStarter = resolvedSearchParams?.autosend === '1'
+
   return (
     <PathFinderContent
       userId={user.id}
@@ -87,6 +100,8 @@ export default async function PathFinderPage() {
       initialConversations={allConversations}
       initialMessages={messages}
       initialFacts={facts}
+      initialStarter={starter}
+      autoSendStarter={autoSendStarter}
     />
   )
 }

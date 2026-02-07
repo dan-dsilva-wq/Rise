@@ -17,15 +17,13 @@ function HomeIcon({ isActive }: { isActive: boolean }) {
   return (
     <motion.div
       className={`w-6 h-6 rounded-full flex items-center justify-center ${
-        isActive ? 'bg-teal-500/20' : 'bg-slate-700'
+        isActive ? 'bg-orange-200 text-orange-700' : 'bg-[#efe3d1] text-[#6a5841]'
       }`}
       aria-hidden="true"
       animate={isActive ? { scale: [1, 1.1, 1] } : { scale: 1 }}
       transition={{ duration: 0.3 }}
     >
-      <span className={`text-xs font-bold ${
-        isActive ? 'text-teal-400' : 'text-slate-300'
-      }`}>R</span>
+      <span className="text-xs font-bold">R</span>
     </motion.div>
   )
 }
@@ -43,7 +41,7 @@ export function BottomNavigation() {
 
   return (
     <nav
-      className="bg-slate-900/90 backdrop-blur-lg border-t border-slate-800 safe-bottom"
+      className="safe-bottom border-t border-[#dacdb9] bg-[#fff7ea]/92 backdrop-blur-lg"
       role="navigation"
       aria-label="Main navigation"
     >
@@ -65,8 +63,8 @@ export function BottomNavigation() {
               <motion.div
                 className={`flex flex-col items-center gap-0.5 px-1.5 py-1 ${
                   isActive
-                    ? 'text-teal-400'
-                    : 'text-slate-400'
+                    ? 'text-[#0f766e]'
+                    : 'text-[#73624b]'
                 }`}
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
@@ -87,7 +85,7 @@ export function BottomNavigation() {
                 {/* Animated underline indicator */}
                 {isActive && (
                   <motion.div
-                    className="absolute -bottom-1 left-1/2 h-0.5 bg-teal-400 rounded-full"
+                    className="absolute -bottom-1 left-1/2 h-0.5 rounded-full bg-[#0f766e]"
                     layoutId="nav-indicator"
                     initial={{ width: 0, x: '-50%' }}
                     animate={{ width: 16, x: '-50%' }}

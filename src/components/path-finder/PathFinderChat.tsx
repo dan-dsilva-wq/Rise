@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, User, Sparkles, UserCircle, Plus, X, Check, Edit2, Trash2, MessageSquare, Clock, FolderPlus, CheckCircle, Rocket, Copy, Download, ChevronDown } from 'lucide-react'
+import { Send, Loader2, User, Sparkles, UserCircle, Plus, X, Check, Edit2, Trash2, MessageSquare, Clock, FolderPlus, CheckCircle, Rocket, Copy, Download, ChevronDown, Route, CircleDashed, Goal, Zap } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { useProfileFacts } from '@/lib/hooks/useProfileFacts'
@@ -71,6 +71,8 @@ interface PathFinderChatProps {
   initialConversations?: PathFinderConversation[]
   initialMessages?: PathFinderMessage[]
   initialFacts?: UserProfileFact[]
+  initialStarter?: string | null
+  autoSendStarter?: boolean
 }
 
 // Import the types we need for initial data
@@ -108,6 +110,15 @@ Let's start simple: **What does "freedom" mean to you?** Is it about money, time
   freshStart: `Fresh start! I still have your profile saved, so I know your background. **What would you like to explore today?**`,
 }
 
+const QUICK_STARTERS = [
+  'I feel stuck. Help me choose one direction for this week.',
+  'I have 2 hours a day. What should I build first?',
+  'I need a low-risk way to make my first $1,000 online.',
+  'I have too many ideas. Help me pick one and ignore the rest.',
+]
+
+type SessionStage = 'understood' | 'possibilities' | 'first_step'
+
 // Helper to parse action results embedded in message content
 const ACTION_RESULTS_PATTERN = /\n\n<!-- ACTION_RESULTS:(.*?) -->/
 function parseMessageWithActions(content: string): { content: string; actionResults?: ActionResult[] } {
@@ -136,7 +147,15 @@ function transformMessage(m: { id: string; role: 'user' | 'assistant'; content: 
   }
 }
 
-export function PathFinderChat({ userId, initialConversation, initialConversations, initialMessages, initialFacts }: PathFinderChatProps) {
+export function PathFinderChat({
+  userId,
+  initialConversation,
+  initialConversations,
+  initialMessages,
+  initialFacts,
+  initialStarter = null,
+  autoSendStarter = false,
+}: PathFinderChatProps) {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
@@ -178,6 +197,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
   const [existingProjects, setExistingProjects] = useState<ExistingProject[]>([])
   const [actionFeedback, setActionFeedback] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [starterConsumed, setStarterConsumed] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -234,7 +254,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
   }, [userId, client])
 
   // Execute project actions from AI
-  const executeProjectActions = async (actions: ProjectAction[]): Promise<ActionResult[]> => {
+  const executeProjectActions = useCallback(async (actions: ProjectAction[]): Promise<ActionResult[]> => {
     if (!userId) {
       addDebugLog('error', 'No userId for actions')
       return []
@@ -837,7 +857,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     await fetchProjects()
     addDebugLog('success', 'Actions complete', `${results.length} results`)
     return results
-  }
+  }, [userId, client, fetchProjects])
 
   // Initialize: use server-provided data if available, otherwise load from hooks
   useEffect(() => {
@@ -955,12 +975,13 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     scrollToBottom()
   }, [messages])
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e?: React.FormEvent, overrideInput?: string) => {
     e?.preventDefault()
 
-    if (!input.trim() || isLoading) return
+    const messageText = (overrideInput ?? input).trim()
+    if (!messageText || isLoading) return
 
-    addDebugLog('info', 'Sending message', input.trim().slice(0, 50))
+    addDebugLog('info', 'Sending message', messageText.slice(0, 50))
 
     let canSaveToCloud = !!currentConversation
 
@@ -984,7 +1005,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: messageText,
     }
 
     setMessages(prev => [...prev, userMessage])
@@ -1112,7 +1133,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       // Auto-title the conversation if untitled (after first exchange)
       if (currentConversation && !currentConversation.title && messages.length <= 2) {
         // Generate title from user's first message
-        const userFirstMsg = messages.find(m => m.role === 'user')?.content || input
+        const userFirstMsg = messages.find(m => m.role === 'user')?.content || messageText
         if (userFirstMsg) {
           // Take first ~40 chars, truncate at word boundary
           let title = userFirstMsg.slice(0, 50)
@@ -1144,7 +1165,42 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [
+    input,
+    isLoading,
+    currentConversation,
+    createConversation,
+    saveMessage,
+    messages,
+    getProfileSummary,
+    fetchProjects,
+    existingProjects,
+    executeProjectActions,
+    addFact,
+    updateTitle,
+  ])
+
+  useEffect(() => {
+    if (!initialized || starterConsumed || !initialStarter) return
+    const starter = initialStarter.trim()
+    if (!starter) return
+
+    const hasUserMessages = messages.some(message => message.role === 'user')
+    if (hasUserMessages) {
+      setStarterConsumed(true)
+      return
+    }
+
+    if (autoSendStarter) {
+      setStarterConsumed(true)
+      void handleSubmit(undefined, starter)
+      return
+    }
+
+    setInput(starter)
+    setStarterConsumed(true)
+    inputRef.current?.focus()
+  }, [autoSendStarter, handleSubmit, initialStarter, initialized, messages, starterConsumed])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1227,6 +1283,34 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     return acc
   }, {} as Record<ProfileCategory, UserProfileFact[]>)
 
+  const userMessageCount = messages.filter(message => message.role === 'user').length
+  const sessionStage: SessionStage = userMessageCount >= 3
+    ? 'first_step'
+    : userMessageCount >= 1
+      ? 'possibilities'
+      : 'understood'
+  const stageOrder: SessionStage[] = ['understood', 'possibilities', 'first_step']
+  const currentStageIndex = stageOrder.indexOf(sessionStage)
+  const showQuickStarters = !isLoading && userMessageCount === 0 && messages.length <= 2
+
+  const stageCopy: Record<SessionStage, { label: string; hint: string; icon: typeof CircleDashed }> = {
+    understood: {
+      label: 'Feel Understood',
+      hint: 'Share where you are right now. Rise listens first.',
+      icon: CircleDashed,
+    },
+    possibilities: {
+      label: 'Pick A Direction',
+      hint: 'Narrow to one practical path you can commit to.',
+      icon: Route,
+    },
+    first_step: {
+      label: 'Lock First Step',
+      hint: 'Leave with one clear action for today.',
+      icon: Goal,
+    },
+  }
+
   // Debug panel state - toggle with triple tap on loading spinner
   const [showDebug, setShowDebug] = useState(false)
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
@@ -1296,10 +1380,10 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-180px)] gap-4">
         <div onClick={handleDebugTap}>
-          <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
+          <Loader2 className="w-8 h-8 text-[#0f766e] animate-spin" />
         </div>
         {/* Debug info - always visible during loading */}
-        <div className="text-xs text-slate-500 text-center px-4 space-y-1">
+        <div className="text-xs text-[#6f6959] text-center px-4 space-y-1">
           <p>hasInitialData: {hasInitialData ? 'YES' : 'NO'}</p>
           <p>initialMessages: {initialMessages?.length ?? 'undefined'}</p>
           <p>initialConvo: {initialConversation?.id ? 'YES' : 'NO'}</p>
@@ -1311,10 +1395,10 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-180px)]">
+    <div className="flex flex-col h-[calc(100vh-200px)] md:h-[calc(100vh-190px)] pb-20">
       {/* Debug indicator - tap 3x on Profile button to toggle full debug */}
       {showDebug && (
-        <div className="px-4 py-2 bg-yellow-500/20 border-b border-yellow-500/30 text-xs text-yellow-400 space-y-1">
+        <div className="px-4 py-2 bg-yellow-100/90 border-b border-yellow-300 text-xs text-yellow-800 space-y-1">
           <p>DEBUG MODE</p>
           <p>hasInitialData: {hasInitialData ? 'YES' : 'NO'}</p>
           <p>initialMessages: {initialMessages?.length ?? 'undefined'}</p>
@@ -1326,7 +1410,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       )}
 
       {/* Profile & History Toggle Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/50">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#dbcdb8] bg-white/55 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -1336,14 +1420,14 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             }}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
               showProfile
-                ? 'bg-teal-500/20 text-teal-400'
-                : 'bg-slate-800 text-slate-400 hover:text-slate-300'
+                ? 'bg-teal-100 text-teal-700'
+                : 'bg-[#f4ecdf] text-[#6f6048] hover:text-[#3f4c4f]'
             }`}
           >
             <UserCircle className="w-4 h-4" />
             <span>Profile</span>
             {facts.length > 0 && (
-              <span className="bg-slate-700 text-slate-300 text-xs px-1.5 py-0.5 rounded-full">
+              <span className="bg-[#e8dcc8] text-[#5c4d37] text-xs px-1.5 py-0.5 rounded-full">
                 {facts.length}
               </span>
             )}
@@ -1352,14 +1436,14 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             onClick={() => { setShowHistory(!showHistory); setShowProfile(false) }}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
               showHistory
-                ? 'bg-purple-500/20 text-purple-400'
-                : 'bg-slate-800 text-slate-400 hover:text-slate-300'
+                ? 'bg-orange-100 text-orange-700'
+                : 'bg-[#f4ecdf] text-[#6f6048] hover:text-[#3f4c4f]'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
             <span>History</span>
             {conversations.length > 0 && (
-              <span className="bg-slate-700 text-slate-300 text-xs px-1.5 py-0.5 rounded-full">
+              <span className="bg-[#e8dcc8] text-[#5c4d37] text-xs px-1.5 py-0.5 rounded-full">
                 {conversations.length}
               </span>
             )}
@@ -1367,7 +1451,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         </div>
         <button
           onClick={handleNewChat}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-[#0f766e]/10 text-[#0f766e] hover:bg-[#0f766e]/20 transition-colors"
         >
           <Plus className="w-4 h-4" />
           New Chat
@@ -1381,13 +1465,46 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="flex items-center justify-center gap-2 py-2 text-xs text-slate-500 bg-slate-800/30 border-b border-slate-800"
+            className="flex items-center justify-center gap-2 py-2 text-xs text-[#6a6d69] bg-[#f6eee1]/60 border-b border-[#e3d8c6]"
           >
             <ChevronDown className="w-3 h-3 animate-bounce" />
             <span>Tap Profile or History to expand</span>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Session Compass */}
+      <div className="px-4 py-3 border-b border-[#e1d3bf] bg-[#fffaf2]/80">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-[#6a6f6d]">Session Compass</p>
+          <p className="text-xs text-[#5f6e6f] flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-[#0f766e]" />
+            {stageCopy[sessionStage].label}
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {stageOrder.map((stage, index) => {
+            const isActive = index <= currentStageIndex
+            const StageIcon = stageCopy[stage].icon
+            return (
+              <div
+                key={stage}
+                className={`rounded-xl border px-2.5 py-2 text-xs ${
+                  isActive
+                    ? 'border-[#0f766e]/40 bg-[#0f766e]/10 text-[#0f766e]'
+                    : 'border-[#deceba] bg-white/55 text-[#7d725f]'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-medium">
+                  <StageIcon className="w-4 h-4" />
+                  <span>{stageCopy[stage].label}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <p className="mt-2 text-xs text-[#6d706a]">{stageCopy[sessionStage].hint}</p>
+      </div>
 
       {/* Profile Panel (Collapsible) */}
       <AnimatePresence>
@@ -1396,12 +1513,12 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-b border-slate-800 overflow-hidden"
+            className="border-b border-[#e1d3bf] overflow-hidden"
           >
-            <div className="p-4 bg-slate-900/30 max-h-[300px] overflow-y-auto">
+            <div className="p-4 bg-[#fff8ec]/70 max-h-[300px] overflow-y-auto">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-slate-300">What I know about you</h3>
-                <p className="text-xs text-slate-500">Click to edit or remove</p>
+                <h3 className="text-sm font-medium text-[#2e3d40]">What I know about you</h3>
+                <p className="text-xs text-[#7a725f]">Click to edit or remove</p>
               </div>
 
               {facts.length === 0 ? (
@@ -1413,8 +1530,8 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                   <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/30 flex items-center justify-center">
                     <UserCircle className="w-6 h-6 text-purple-400" />
                   </div>
-                  <h4 className="text-sm font-medium text-slate-300 mb-2">Your profile is empty</h4>
-                  <p className="text-xs text-slate-500 mb-4 max-w-[220px] mx-auto">
+                  <h4 className="text-sm font-medium text-[#2e3d40] mb-2">Your profile is empty</h4>
+                  <p className="text-xs text-[#7a725f] mb-4 max-w-[220px] mx-auto">
                     As we chat, I&apos;ll remember key details about you — like your background, goals, and what you&apos;re working on.
                   </p>
                   <div className="flex flex-wrap justify-center gap-1.5 mb-4">
@@ -1430,7 +1547,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                       </motion.span>
                     ))}
                   </div>
-                  <p className="text-[10px] text-slate-600 flex items-center justify-center gap-1">
+                  <p className="text-[10px] text-[#7c725f] flex items-center justify-center gap-1">
                     <Sparkles className="w-3 h-3" />
                     Start chatting to build your profile
                   </p>
@@ -1465,7 +1582,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                                     type="text"
                                     value={editText}
                                     onChange={e => setEditText(e.target.value)}
-                                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                                    className="flex-1 bg-white border border-[#d9ccb8] rounded px-2 py-1 text-sm text-[#2e3d40]"
                                     autoFocus
                                   />
                                   <button
@@ -1476,21 +1593,21 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                                   </button>
                                   <button
                                     onClick={() => setEditingFact(null)}
-                                    className="p-1 text-slate-400 hover:text-slate-300"
+                                    className="p-1 text-[#7f755f] hover:text-[#4d625f]"
                                   >
                                     <X className="w-4 h-4" />
                                   </button>
                                 </div>
                               ) : (
                                 <>
-                                  <span className="text-sm text-slate-300 flex-1">{fact.fact}</span>
+                                  <span className="text-sm text-[#334142] flex-1">{fact.fact}</span>
                                   <div className="opacity-0 group-hover:opacity-100 flex gap-1">
                                     <button
                                       onClick={() => {
                                         setEditingFact(fact.id)
                                         setEditText(fact.fact)
                                       }}
-                                      className="p-1 text-slate-500 hover:text-slate-300"
+                                      className="p-1 text-[#7f755f] hover:text-[#355355]"
                                     >
                                       <Edit2 className="w-3 h-3" />
                                     </button>
@@ -1512,7 +1629,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                                 value={newFactText}
                                 onChange={e => setNewFactText(e.target.value)}
                                 placeholder={`Add ${CATEGORY_LABELS[category].toLowerCase()}...`}
-                                className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white placeholder-slate-500"
+                                className="flex-1 bg-white border border-[#d9ccb8] rounded px-2 py-1 text-sm text-[#2e3d40] placeholder-[#95876f]"
                                 autoFocus
                                 onKeyDown={e => e.key === 'Enter' && handleAddFact()}
                               />
@@ -1527,7 +1644,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                                   setAddingFact(null)
                                   setNewFactText('')
                                 }}
-                                className="p-1 text-slate-400 hover:text-slate-300"
+                                className="p-1 text-[#7f755f] hover:text-[#355355]"
                               >
                                 <X className="w-4 h-4" />
                               </button>
@@ -1542,7 +1659,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
               {/* Quick add buttons for empty categories */}
               {facts.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t border-slate-800">
+                <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t border-[#e4d7c3]">
                   {(Object.keys(CATEGORY_LABELS) as ProfileCategory[])
                     .filter(cat => !groupedFacts[cat]?.length)
                     .map(category => (
@@ -1568,27 +1685,27 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-b border-slate-800 overflow-hidden"
+            className="border-b border-[#e1d3bf] overflow-hidden"
           >
-            <div className="p-4 bg-slate-900/30 max-h-[300px] overflow-y-auto">
+            <div className="p-4 bg-[#fff8ec]/70 max-h-[300px] overflow-y-auto">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-slate-300">Conversation History</h3>
+                <h3 className="text-sm font-medium text-[#2e3d40]">Conversation History</h3>
                 <div className="flex items-center gap-2">
                   {messages.length > 0 && (
                     <button
                       onClick={handleExportConversation}
-                      className="text-xs text-slate-500 hover:text-teal-400 flex items-center gap-1"
+                      className="text-xs text-[#7a725f] hover:text-[#0f766e] flex items-center gap-1"
                     >
                       <Download className="w-3 h-3" />
                       Export
                     </button>
                   )}
-                  <p className="text-xs text-slate-500">Tap to load</p>
+                  <p className="text-xs text-[#7a725f]">Tap to load</p>
                 </div>
               </div>
 
               {conversations.length === 0 ? (
-                <p className="text-sm text-slate-500 italic">No previous conversations</p>
+                <p className="text-sm text-[#8a7b64] italic">No previous conversations</p>
               ) : (
                 <div className="space-y-2">
                   {conversations.map(convo => (
@@ -1596,16 +1713,16 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                       key={convo.id}
                       className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
                         currentConversation?.id === convo.id
-                          ? 'bg-purple-500/20 border border-purple-500/30'
-                          : 'bg-slate-800/50 hover:bg-slate-800'
+                          ? 'bg-orange-100 border border-orange-300'
+                          : 'bg-white/70 border border-[#e3d6c2] hover:bg-white'
                       }`}
                       onClick={() => handleLoadConversation(convo.id)}
                     >
                       <div className="flex-1 min-w-0 pr-3">
-                        <p className="text-sm text-slate-200 truncate">
+                        <p className="text-sm text-[#2e3d40] truncate">
                           {convo.title || 'Untitled conversation'}
                         </p>
-                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                        <p className="text-xs text-[#807661] flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3" />
                           {formatDistanceToNow(new Date(convo.updated_at), { addSuffix: true })}
                         </p>
@@ -1617,7 +1734,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                             handleArchiveConversation(convo.id)
                           }
                         }}
-                        className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                        className="p-2 text-[#8a7b64] hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1637,10 +1754,10 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="mx-4 my-2 px-4 py-2 bg-teal-500/20 border border-teal-500/30 rounded-lg flex items-center gap-2"
+            className="mx-4 my-2 px-4 py-2 bg-teal-50 border border-teal-200 rounded-lg flex items-center gap-2"
           >
-            <CheckCircle className="w-4 h-4 text-teal-400" />
-            <span className="text-sm text-teal-400">{actionFeedback}</span>
+            <CheckCircle className="w-4 h-4 text-teal-700" />
+            <span className="text-sm text-teal-700">{actionFeedback}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1652,10 +1769,10 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="mx-4 my-2 px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-2"
+            className="mx-4 my-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2"
           >
-            <X className="w-4 h-4 text-red-400" />
-            <span className="text-sm text-red-400">{saveError}</span>
+            <X className="w-4 h-4 text-red-700" />
+            <span className="text-sm text-red-700">{saveError}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1665,7 +1782,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         <div className="mx-4 mb-2">
           <Link
             href="/projects"
-            className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 hover:bg-slate-800 rounded-lg text-sm text-slate-400 hover:text-slate-200 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-[#dfd1bd] bg-white/65 hover:bg-white text-[#665b47] hover:text-[#304040] transition-colors"
           >
             <FolderPlus className="w-4 h-4" />
             <span>View {existingProjects.length} project{existingProjects.length !== 1 ? 's' : ''}</span>
@@ -1674,7 +1791,31 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       )}
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-2 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+        {showQuickStarters && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mx-1 mb-2 rounded-2xl border border-[#e0d2bf] bg-white/70 p-3"
+          >
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#7b735f] mb-2">Need a starting line?</p>
+            <div className="grid gap-2">
+              {QUICK_STARTERS.map((starter) => (
+                <button
+                  key={starter}
+                  onClick={() => {
+                    setInput(starter)
+                    inputRef.current?.focus()
+                  }}
+                  className="text-left rounded-xl border border-[#dfd0bb] bg-[#fff9ef] px-3 py-2.5 text-sm text-[#364344] hover:border-[#0f766e]/40 hover:bg-[#f1f8f4] transition-colors"
+                >
+                  {starter}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         <AnimatePresence initial={false}>
           {messages.map((message) => (
             <motion.div
@@ -1688,15 +1829,15 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                 className={`
                   flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
                   ${message.role === 'user'
-                    ? 'bg-teal-500/20'
-                    : 'bg-purple-500/20'
+                    ? 'bg-teal-100'
+                    : 'bg-orange-100'
                   }
                 `}
               >
                 {message.role === 'user' ? (
-                  <User className="w-4 h-4 text-teal-400" />
+                  <User className="w-4 h-4 text-teal-700" />
                 ) : (
-                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  <Sparkles className="w-4 h-4 text-orange-700" />
                 )}
               </div>
 
@@ -1707,17 +1848,17 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                     className={`
                       rounded-2xl px-4 py-3
                       ${message.role === 'user'
-                        ? 'bg-teal-500/10 border border-teal-500/20'
-                        : 'bg-slate-800/50 border border-slate-700/50'
+                        ? 'bg-teal-50 border border-teal-200'
+                        : 'bg-white/85 border border-[#e1d2be]'
                       }
                     `}
                   >
                     {message.role === 'assistant' ? (
-                      <div className="prose prose-invert prose-sm max-w-none">
+                      <div className="prose prose-sm max-w-none prose-p:text-[#2f3c3d] prose-headings:text-[#263334] prose-strong:text-[#1f2d2e] prose-li:text-[#2f3c3d]">
                         <ReactMarkdown>{message.content}</ReactMarkdown>
                       </div>
                     ) : (
-                      <p className="text-white whitespace-pre-wrap">{message.content}</p>
+                      <p className="text-[#1f3435] whitespace-pre-wrap">{message.content}</p>
                     )}
                   </div>
                   {/* Copy button - always visible on mobile, hover on desktop */}
@@ -1725,8 +1866,8 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                     onClick={() => handleCopyMessage(message.id, message.content)}
                     className={`absolute -bottom-2 right-2 p-1.5 rounded-lg text-xs transition-all
                       ${copiedMessageId === message.id
-                        ? 'bg-green-500/20 text-green-400 opacity-100'
-                        : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white md:opacity-0 md:group-hover:opacity-100'
+                        ? 'bg-green-100 text-green-700 opacity-100'
+                        : 'bg-white border border-[#decebb] text-[#7f745f] hover:text-[#1f3435] md:opacity-0 md:group-hover:opacity-100'
                       }`}
                   >
                     {copiedMessageId === message.id ? (
@@ -1756,29 +1897,29 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
                           className={`
                             bg-gradient-to-br rounded-xl p-3
                             ${result.isIdea
-                              ? 'from-amber-500/20 to-orange-500/20 border border-amber-500/30'
-                              : 'from-teal-500/20 to-purple-500/20 border border-teal-500/30'}
-                            ${linkHref ? 'cursor-pointer hover:border-teal-400/50 transition-colors' : ''}
+                              ? 'from-amber-100/90 to-orange-100/85 border border-amber-300'
+                              : 'from-teal-100/90 to-emerald-100/85 border border-teal-300'}
+                            ${linkHref ? 'cursor-pointer hover:border-teal-500/60 transition-colors' : ''}
                           `}
                         >
                           <div className="flex items-center gap-2">
                             {result.type === 'create_project' ? (
-                              <Rocket className="w-4 h-4 text-purple-400" />
+                              <Rocket className="w-4 h-4 text-teal-700" />
                             ) : result.isIdea ? (
-                              <Sparkles className="w-4 h-4 text-amber-400" />
+                              <Sparkles className="w-4 h-4 text-amber-700" />
                             ) : result.type === 'complete_milestone' ? (
-                              <CheckCircle className="w-4 h-4 text-green-400" />
+                              <CheckCircle className="w-4 h-4 text-green-700" />
                             ) : (
-                              <FolderPlus className="w-4 h-4 text-teal-400" />
+                              <FolderPlus className="w-4 h-4 text-teal-700" />
                             )}
                             <span className={`text-sm font-medium ${
-                              result.isIdea ? 'text-amber-400' : 'text-teal-400'
+                              result.isIdea ? 'text-amber-700' : 'text-teal-700'
                             }`}>
                               {result.text}
                             </span>
                           </div>
                           {linkHref && (
-                            <p className="text-xs text-slate-500 mt-1 ml-6">Tap to view</p>
+                            <p className="text-xs text-[#736851] mt-1 ml-6">Tap to view</p>
                           )}
                         </motion.div>
                       )
@@ -1805,11 +1946,11 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             animate={{ opacity: 1 }}
             className="flex gap-3"
           >
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-purple-400" />
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-orange-700" />
             </div>
-            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2 text-slate-400">
+            <div className="bg-white/90 border border-[#e0d2bf] rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-2 text-[#5f6d6e]">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span className="text-sm">Thinking...</span>
               </div>
@@ -1821,7 +1962,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-slate-800 p-4 bg-slate-900">
+      <div className="border-t border-[#dccdb8] p-4 bg-[#fff7ea]/90 backdrop-blur-sm">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <div className="flex-1 relative">
             <textarea
@@ -1829,9 +1970,9 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Share your thoughts..."
+              placeholder={showQuickStarters ? 'Tap a starter above or write your own...' : 'Share what is on your mind...'}
               rows={1}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 pr-12 text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500/50"
+              className="w-full bg-white border border-[#ddcfbb] rounded-xl px-4 py-3 pr-12 text-[#2a3b3d] placeholder-[#94866f] resize-none focus:outline-none focus:ring-2 focus:ring-[#0f766e]/40 focus:border-[#0f766e]/45"
               style={{
                 minHeight: '48px',
                 maxHeight: '120px',
@@ -1841,7 +1982,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           <button
             type="submit"
             disabled={!input.trim() || isLoading}
-            className="flex-shrink-0 w-12 h-12 rounded-xl bg-teal-500 hover:bg-teal-400 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            className="flex-shrink-0 w-12 h-12 rounded-xl bg-[#0f766e] hover:bg-[#0b5b55] disabled:bg-[#b7ad9c] disabled:cursor-not-allowed transition-colors flex items-center justify-center"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 text-white animate-spin" />
@@ -1850,7 +1991,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             )}
           </button>
         </form>
-        <p className="text-xs text-slate-500 mt-2">
+        <p className="text-xs text-[#7a725f] mt-2">
           Press Enter to send • Conversations auto-save
         </p>
       </div>

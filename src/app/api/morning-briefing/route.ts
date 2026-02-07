@@ -15,6 +15,16 @@ function extractMomentum(signals: GreetingMemorySignals | undefined) {
   return { milestonesThisWeek, loginStreak, daysSinceLastVisit }
 }
 
+function getDateInTimezone(timezone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  return formatter.format(new Date())
+}
+
 /**
  * Fetches all data needed for a personal greeting + momentum in one shot.
  *
@@ -123,8 +133,14 @@ export async function GET(_request: NextRequest) {
       return Response.json({ error: 'Not logged in' }, { status: 401 })
     }
 
-    // Get today's date in user's timezone (default UTC)
-    const today = new Date().toISOString().split('T')[0]
+    const { data: profileRow } = await client
+      .from('profiles')
+      .select('timezone')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    const timezone = profileRow?.timezone || 'UTC'
+    const today = getDateInTimezone(timezone)
 
     // Check if we already have a briefing for today
     const { data: existingBriefing } = await client
@@ -453,7 +469,14 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Not logged in' }, { status: 401 })
     }
 
-    const today = new Date().toISOString().split('T')[0]
+    const { data: profileRow } = await client
+      .from('profiles')
+      .select('timezone')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    const timezone = profileRow?.timezone || 'UTC'
+    const today = getDateInTimezone(timezone)
 
     // Delete today's briefing if it exists
     await client

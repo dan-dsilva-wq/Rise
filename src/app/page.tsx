@@ -1,9 +1,19 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DashboardContent } from '@/components/dashboard/DashboardContent'
-import type { DailyLog, DailyPrompt, Project } from '@/lib/supabase/types'
+import type { DailyLog, DailyPrompt, Profile, Project } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
+
+function getDateInTimezone(timezone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  return formatter.format(new Date())
+}
 
 export default async function HomePage() {
   const supabase = await createClient()
@@ -13,24 +23,23 @@ export default async function HomePage() {
     redirect('/login')
   }
 
-  const today = new Date().toISOString().split('T')[0]
+  const profileResult = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
 
-  // Fetch data in parallel for faster loading
-  const [profileResult, promptsResult, projectsResult, todayLogResult] = await Promise.all([
-    // Get user profile
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single(),
+  const profile = profileResult.data as Profile | null
+  const timezone = profile?.timezone || 'UTC'
+  const today = getDateInTimezone(timezone)
 
-    // Get daily prompts
+  // Fetch remaining data in parallel
+  const [promptsResult, projectsResult, todayLogResult] = await Promise.all([
     supabase
       .from('daily_prompts')
       .select('*')
       .eq('is_active', true),
 
-    // Get user's active projects
     supabase
       .from('projects')
       .select('*')
@@ -38,7 +47,6 @@ export default async function HomePage() {
       .in('status', ['discovery', 'planning', 'building'])
       .order('updated_at', { ascending: false }),
 
-    // Get today's daily log (needed for evening nudge + morning check-in state)
     supabase
       .from('daily_logs')
       .select('*')
@@ -47,7 +55,6 @@ export default async function HomePage() {
       .single(),
   ])
 
-  const profile = profileResult.data
   const prompts = promptsResult.data as DailyPrompt[] | null
   const projects = (projectsResult.data || []) as Project[]
   const todayLog = (todayLogResult.data as DailyLog | null) ?? null

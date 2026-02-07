@@ -1,20 +1,33 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sparkles, Compass, Rocket, RefreshCw, ChevronRight, AlertCircle, Target, Eye, X, Moon, Heart } from 'lucide-react'
+import {
+  Sparkles,
+  Compass,
+  Rocket,
+  RefreshCw,
+  ChevronRight,
+  AlertCircle,
+  Target,
+  Eye,
+  X,
+  Moon,
+  Heart,
+  Flame,
+  Sunrise,
+} from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { MorningCheckIn } from '@/components/morning/MorningCheckIn'
 import { useUser } from '@/lib/hooks/useUser'
 import type { Profile, DailyLog, Project, MorningBriefing } from '@/lib/supabase/types'
 
-// Check if it's evening (6pm+) and the user hasn't done their evening reflection yet
 function shouldShowEveningNudge(todayLog: DailyLog | null): boolean {
   const hour = new Date().getHours()
-  if (hour < 18) return false // Only show after 6pm
-  if (!todayLog) return false // Need a daily log to exist
-  if (todayLog.evening_mood || todayLog.evening_energy) return false // Already reflected
+  if (hour < 18) return false
+  if (!todayLog) return false
+  if (todayLog.evening_mood || todayLog.evening_energy) return false
   return true
 }
 
@@ -39,9 +52,24 @@ interface DashboardContentProps {
   projects?: Project[]
 }
 
+function parseMissionSummary(summary: string | null | undefined) {
+  if (!summary) return { headline: 'Find your next move', detail: '' }
+  const [headline, detail] = summary.split('|||')
+  return {
+    headline: headline?.trim() || 'Find your next move',
+    detail: detail?.trim() || '',
+  }
+}
+
+function createStarterHref(starter: string, autoSend = false) {
+  const query = `starter=${encodeURIComponent(starter)}`
+  return `/path-finder?${query}${autoSend ? '&autosend=1' : ''}`
+}
+
 export function DashboardContent({
   profile: initialProfile,
   todayLog = null,
+  dailyPrompt,
   projects = [],
 }: DashboardContentProps) {
   const { profile } = useUser()
@@ -57,15 +85,34 @@ export function DashboardContent({
   const [dismissedInsights, setDismissedInsights] = useState<Set<number>>(new Set())
   const [momentum, setMomentum] = useState<{ milestonesThisWeek: number; loginStreak: number; daysSinceLastVisit: number } | null>(null)
   const [checkedIn, setCheckedIn] = useState(false)
+  const [checkInData, setCheckInData] = useState<{ mood: number; energy: number } | null>(null)
 
   const currentProfile = profile || initialProfile
-
-  // Show morning check-in if user hasn't logged morning mood/energy today
   const needsMorningCheckIn = !checkedIn && (!todayLog || todayLog.morning_mood == null)
+  const visibleInsights = riseInsights.filter((_, i) => !dismissedInsights.has(i))
 
-  // Fetch morning briefing (API auto-checks if focus milestone is still valid)
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const displayName = currentProfile?.display_name || 'friend'
+
+  const focusProject = briefing?.focus_project_id
+    ? projects.find(p => p.id === briefing.focus_project_id)
+    : projects[0]
+
+  const mission = parseMissionSummary(briefing?.mission_summary)
+
+  const primaryLink = useMemo(() => {
+    if (!focusProject) {
+      return createStarterHref('I feel stuck this morning. Help me find one clear direction.')
+    }
+    if (briefing?.focus_milestone_id) {
+      return `/projects/${focusProject.id}/milestone/${briefing.focus_milestone_id}`
+    }
+    return `/projects/${focusProject.id}`
+  }, [briefing?.focus_milestone_id, focusProject])
+
   useEffect(() => {
-    fetchBriefing()
+    void fetchBriefing()
   }, [])
 
   const fetchBriefing = async () => {
@@ -80,11 +127,11 @@ export function DashboardContent({
         if (data.personalGreeting) setPersonalGreeting(data.personalGreeting)
         if (data.momentum) setMomentum(data.momentum)
       } else {
-        setBriefingError('Unable to load your morning briefing')
+        setBriefingError('Unable to load your mission right now')
       }
     } catch (error) {
       console.error('Failed to fetch briefing:', error)
-      setBriefingError('Connection error. Please check your network.')
+      setBriefingError('Connection issue while loading your mission')
     } finally {
       setLoadingBriefing(false)
     }
@@ -95,18 +142,17 @@ export function DashboardContent({
     setRegenerateError(false)
     try {
       const response = await fetch('/api/morning-briefing', { method: 'POST' })
-      if (response.ok) {
-        const data = await response.json()
-        setBriefing(data.briefing)
-        setCurrentStep(data.currentStep || null)
-        if (data.personalGreeting) setPersonalGreeting(data.personalGreeting)
-        if (data.momentum) setMomentum(data.momentum)
-        setBriefingError(null)
-      } else {
+      if (!response.ok) {
         setRegenerateError(true)
-        // Auto-clear error after 3 seconds
         setTimeout(() => setRegenerateError(false), 3000)
+        return
       }
+      const data = await response.json()
+      setBriefing(data.briefing)
+      setCurrentStep(data.currentStep || null)
+      if (data.personalGreeting) setPersonalGreeting(data.personalGreeting)
+      if (data.momentum) setMomentum(data.momentum)
+      setBriefingError(null)
     } catch (error) {
       console.error('Failed to regenerate briefing:', error)
       setRegenerateError(true)
@@ -116,20 +162,18 @@ export function DashboardContent({
     }
   }
 
-  // Fetch proactive insights (after briefing loads, for returning users)
   useEffect(() => {
-    if (projects.length === 0) return // Only for users with projects
+    if (projects.length === 0) return
     if (insightsLoading || riseInsights.length > 0) return
 
     const fetchInsights = async () => {
       setInsightsLoading(true)
       try {
         const response = await fetch('/api/rise-insights')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.insights && data.insights.length > 0) {
-            setRiseInsights(data.insights)
-          }
+        if (!response.ok) return
+        const data = await response.json()
+        if (data.insights && data.insights.length > 0) {
+          setRiseInsights(data.insights)
         }
       } catch (error) {
         console.error('Failed to fetch insights:', error)
@@ -138,8 +182,7 @@ export function DashboardContent({
       }
     }
 
-    // Slight delay so it doesn't compete with briefing load
-    const timer = setTimeout(fetchInsights, 1500)
+    const timer = setTimeout(fetchInsights, 900)
     return () => clearTimeout(timer)
   }, [projects.length, insightsLoading, riseInsights.length])
 
@@ -147,588 +190,359 @@ export function DashboardContent({
     setDismissedInsights(prev => new Set(prev).add(index))
   }
 
-  const visibleInsights = riseInsights.filter((_, i) => !dismissedInsights.has(i))
+  const warmUpLink = createStarterHref('I have low energy today. Help me pick one tiny win I can do in 20 minutes.')
+  const momentumLink = createStarterHref('I feel focused today. Help me choose the highest-impact move for this session.')
 
-  // Determine time of day for greeting
-  const hour = new Date().getHours()
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-  const displayName = currentProfile?.display_name || 'there'
-
-  // Find the focus project for the "Let's Work" button
-  const focusProject = briefing?.focus_project_id
-    ? projects.find(p => p.id === briefing.focus_project_id)
-    : projects[0]
+  const quickPaths = [
+    {
+      title: 'I feel stuck',
+      subtitle: 'Get direction in one conversation',
+      href: createStarterHref('I feel stuck and overwhelmed. Help me choose one realistic path this week.'),
+      icon: Compass,
+      tone: 'from-orange-100 to-amber-50 border-orange-200',
+    },
+    {
+      title: 'I need quick money',
+      subtitle: 'Explore practical low-risk options',
+      href: createStarterHref('I need a low-risk way to make my first $1,000 online. What should I build?'),
+      icon: Flame,
+      tone: 'from-teal-100 to-emerald-50 border-teal-200',
+    },
+    {
+      title: 'I have too many ideas',
+      subtitle: 'Narrow to one path and first step',
+      href: createStarterHref('I have too many ideas. Help me pick one and define the first milestone.'),
+      icon: Target,
+      tone: 'from-sky-100 to-cyan-50 border-sky-200',
+    },
+  ]
 
   return (
-    <div className="min-h-screen bg-slate-900 pb-24">
-      {/* Header - Minimal */}
-      <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-lg border-b border-slate-800">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-slate-100">
-            {greeting}, {displayName}
-          </h1>
-          <p className="text-sm text-slate-400">
-            {new Date().toLocaleDateString('en-US', {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </p>
-        </div>
-      </header>
-
-      <main className="max-w-lg mx-auto px-4 py-6 space-y-6">
-        {/* MORNING CHECK-IN — Creates today's daily_log, unlocking the full data loop */}
-        {needsMorningCheckIn && (
-          <MorningCheckIn
-            displayName={currentProfile?.display_name || null}
-            onComplete={() => setCheckedIn(true)}
-          />
-        )}
-
-        {/* PERSONAL GREETING — The warm "Rise remembers you" moment */}
-        <AnimatePresence>
-          {personalGreeting && (() => {
-            // Detect if this greeting references specific memory (conversation/project context)
-            const isMemoryAware = /"|working on|pick up|you were|you said|last time|days ago|in a row|this week|keep coming up/i.test(personalGreeting)
-            return (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.5, ease: 'easeOut' }}
-                className={`relative overflow-hidden rounded-2xl border ${
-                  isMemoryAware
-                    ? 'bg-gradient-to-br from-purple-900/30 via-slate-800/80 to-teal-900/20 border-purple-500/20'
-                    : 'bg-gradient-to-br from-slate-800/80 to-slate-800/40 border-slate-700/40'
-                }`}
-              >
-                {isMemoryAware && (
-                  <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/40 to-transparent" />
-                )}
-                <div className="px-5 py-4">
-                  {isMemoryAware && (
-                    <motion.p
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.3 }}
-                      className="text-[10px] font-semibold uppercase tracking-widest text-purple-400/60 mb-2"
-                    >
-                      Rise remembers
-                    </motion.p>
-                  )}
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 p-1.5 rounded-full flex-shrink-0 ${
-                      isMemoryAware ? 'bg-purple-500/20' : 'bg-purple-500/15'
-                    }`}>
-                      <Heart className={`w-3.5 h-3.5 ${isMemoryAware ? 'text-purple-300' : 'text-purple-400'}`} />
-                    </div>
-                    <p className={`text-[15px] leading-relaxed ${isMemoryAware ? 'text-slate-200' : 'text-slate-300'}`}>
-                      {personalGreeting}
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-            )
-          })()}
-        </AnimatePresence>
-        {/* MOMENTUM — Gentle "you're showing up" signal (not gamification, just truth) */}
-        {momentum && !loadingBriefing && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.15 }}
-            className="flex items-center gap-3 px-1"
-          >
-            {momentum.loginStreak >= 2 && (
-              <div className="flex items-center gap-1.5 text-sm text-slate-400">
-                <span className="text-teal-400/70 text-xs">&#9679;</span>
-                <span>
-                  {momentum.loginStreak >= 7
-                    ? `${momentum.loginStreak} days in a row`
-                    : `Day ${momentum.loginStreak}`}
-                </span>
-              </div>
-            )}
-            {momentum.milestonesThisWeek > 0 && (
-              <div className="flex items-center gap-1.5 text-sm text-slate-400">
-                <span className="text-emerald-400/70 text-xs">&#9679;</span>
-                <span>
-                  {momentum.milestonesThisWeek} milestone{momentum.milestonesThisWeek !== 1 ? 's' : ''} this week
-                </span>
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {/* MORNING BRIEFING - Only show when user has projects */}
-        {projects.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 border border-slate-700/50 shadow-xl"
-        >
-          {/* Subtle gradient accent */}
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-teal-500 to-emerald-500" />
-
-          <div className="p-6">
-            {loadingBriefing ? (
-              /* Skeleton loading state with shimmer effect */
-              <div>
-                {/* Mission Summary Skeleton */}
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-5 h-5 rounded skeleton-shimmer" />
-                    <div className="h-4 w-28 rounded skeleton-shimmer skeleton-shimmer-delay-1" />
-                  </div>
-                  <div className="h-7 w-3/4 rounded skeleton-shimmer skeleton-shimmer-delay-1 mb-2" />
-                  <div className="h-4 w-full rounded skeleton-shimmer skeleton-shimmer-delay-2" />
-                  <div className="h-4 w-2/3 rounded skeleton-shimmer skeleton-shimmer-delay-3 mt-2" />
-                </div>
-
-                {/* AI Nudge Skeleton */}
-                <div className="mb-6 p-4 rounded-2xl bg-slate-700/30 border border-slate-600/30">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-full bg-slate-700/50 flex-shrink-0">
-                      <div className="w-4 h-4 rounded skeleton-shimmer" />
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 w-full rounded skeleton-shimmer skeleton-shimmer-delay-1" />
-                      <div className="h-4 w-4/5 rounded skeleton-shimmer skeleton-shimmer-delay-2" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons Skeleton */}
-                <div className="flex gap-3">
-                  <div className="flex-1 h-14 rounded-2xl skeleton-shimmer skeleton-shimmer-delay-2" />
-                  <div className="w-14 h-14 rounded-2xl skeleton-shimmer skeleton-shimmer-delay-3" />
-                </div>
-              </div>
-            ) : briefingError ? (
-              /* Error state with retry */
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-8"
-              >
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 mb-4">
-                  <AlertCircle className="w-7 h-7 text-red-400" />
-                </div>
-                <p className="text-slate-300 font-medium mb-1">Something went wrong</p>
-                <p className="text-slate-500 text-sm mb-4">{briefingError}</p>
-                <button
-                  onClick={fetchBriefing}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Try again
-                </button>
-              </motion.div>
-            ) : briefing ? (
-              <>
-                {/* Mission Summary */}
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Rocket className="w-5 h-5 text-teal-400" />
-                    <span className="text-sm font-medium text-teal-400 uppercase tracking-wide">Today&apos;s Mission</span>
-                  </div>
-                  {(() => {
-                    const [headline, detail] = briefing.mission_summary.split('|||')
-                    return (
-                      <>
-                        <h2 className="text-2xl font-bold text-white leading-tight">
-                          {headline}
-                        </h2>
-                        {detail && (
-                          <p className="text-slate-400 mt-2">{detail}</p>
-                        )}
-                      </>
-                    )
-                  })()}
-                </div>
-
-                {/* Current Step - THE KEY "PULL" FACTOR */}
-                {currentStep && briefing.focus_milestone_id && (
-                  <Link href={`/projects/${briefing.focus_project_id}/milestone/${briefing.focus_milestone_id}`}>
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border-2 border-orange-500/30 hover:border-orange-400/50 transition-all cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <Target className="w-4 h-4 text-orange-400" />
-                        <span className="text-xs font-bold text-orange-400 uppercase tracking-wide">Your Next Step</span>
-                        <span className="ml-auto text-xs text-slate-500">
-                          {currentStep.stepNumber}/{currentStep.totalSteps}
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex-shrink-0">
-                          <div className="w-5 h-5 rounded-full border-2 border-orange-400 flex items-center justify-center">
-                            <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-white font-medium group-hover:text-orange-200 transition-colors">
-                            {currentStep.stepText}
-                          </p>
-                          {currentStep.completedSteps > 0 && (
-                            <p className="text-xs text-slate-500 mt-1">
-                              {currentStep.completedSteps} step{currentStep.completedSteps !== 1 ? 's' : ''} completed
-                            </p>
-                          )}
-                        </div>
-                        <ChevronRight className="w-5 h-5 text-orange-400/50 group-hover:text-orange-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
-                      </div>
-                      {/* Progress bar */}
-                      <div className="mt-3 h-1 bg-slate-700/50 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(currentStep.completedSteps / currentStep.totalSteps) * 100}%` }}
-                          transition={{ duration: 0.5, ease: 'easeOut' }}
-                          className="h-full bg-orange-400"
-                        />
-                      </div>
-                    </motion.div>
-                  </Link>
-                )}
-
-                {/* AI Nudge - Only show if no current step, to keep focus */}
-                {!currentStep && (
-                  <div className="mb-6 p-4 rounded-2xl bg-slate-700/30 border border-slate-600/30">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 rounded-full bg-purple-500/20 flex-shrink-0">
-                        <Sparkles className="w-4 h-4 text-purple-400" />
-                      </div>
-                      <p className="text-slate-300 italic leading-relaxed">
-                        &ldquo;{briefing.nudge}&rdquo;
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex gap-3">
-                  {focusProject ? (
-                    <Link
-                      href={
-                        briefing?.focus_milestone_id
-                          ? `/projects/${focusProject.id}/milestone/${briefing.focus_milestone_id}`
-                          : `/projects/${focusProject.id}`
-                      }
-                      className="flex-1"
-                    >
-                      <button className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-bold text-lg hover:shadow-lg hover:shadow-teal-500/25 transition-all flex items-center justify-center gap-2">
-                        Let&apos;s Work
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
-                    </Link>
-                  ) : (
-                    <Link href="/path-finder" className="flex-1">
-                      <button className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-purple-500 to-teal-500 text-white font-bold text-lg hover:shadow-lg hover:shadow-purple-500/25 transition-all flex items-center justify-center gap-2">
-                        Find Your Path
-                        <Compass className="w-5 h-5" />
-                      </button>
-                    </Link>
-                  )}
-
-                  <button
-                    onClick={regenerateBriefing}
-                    disabled={regenerating}
-                    className={`p-4 rounded-2xl transition-colors disabled:opacity-50 ${
-                      regenerateError
-                        ? 'bg-red-500/20 border border-red-500/30'
-                        : 'bg-slate-700/50 hover:bg-slate-700'
-                    }`}
-                    title={regenerateError ? 'Failed to regenerate - tap to retry' : 'Regenerate briefing'}
-                  >
-                    {regenerateError ? (
-                      <AlertCircle className="w-5 h-5 text-red-400" />
-                    ) : (
-                      <RefreshCw className={`w-5 h-5 text-slate-400 ${regenerating ? 'animate-spin' : ''}`} />
-                    )}
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* No briefing - shouldn't happen but fallback */
-              <div className="text-center py-4">
-                <p className="text-slate-400">Couldn&apos;t load your briefing</p>
-                <button
-                  onClick={fetchBriefing}
-                  className="mt-2 text-teal-400 hover:text-teal-300"
-                >
-                  Try again
-                </button>
+    <div className="min-h-screen pb-28 bg-[radial-gradient(circle_at_0%_0%,rgba(255,175,120,0.30),transparent_44%),radial-gradient(circle_at_100%_8%,rgba(86,205,168,0.20),transparent_45%),linear-gradient(180deg,#fff7ea_0%,#f7f2e8_44%,#efe8dc_100%)] text-[#1e2a2e]">
+      <header className="sticky top-0 z-40 border-b border-[#dbcdb8] bg-[#fff7ea]/90 backdrop-blur-lg">
+        <div className="max-w-3xl mx-auto px-4 py-4 md:py-5">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-[#7d6f58] mb-1">Rise</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="font-display text-2xl md:text-3xl leading-tight text-[#2a2f2f]">
+                {greeting}, {displayName}
+              </h1>
+              <p className="text-sm text-[#6f746f]">
+                {new Date().toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </p>
+            </div>
+            {momentum?.loginStreak && momentum.loginStreak >= 2 && (
+              <div className="rounded-full border border-[#d8c9b0] bg-white/70 px-3 py-1 text-xs text-[#576969]">
+                Day {momentum.loginStreak}
               </div>
             )}
           </div>
-        </motion.div>
+        </div>
+      </header>
+
+      <main className="max-w-3xl mx-auto px-4 py-5 md:py-7 space-y-5">
+        {needsMorningCheckIn && (
+          <MorningCheckIn
+            displayName={currentProfile?.display_name || null}
+            onComplete={(data) => {
+              setCheckedIn(true)
+              setCheckInData(data)
+            }}
+          />
         )}
 
-        {/* RISE NOTICED — Proactive AI Insights */}
         <AnimatePresence>
-          {visibleInsights.length > 0 && (
+          {checkedIn && checkInData && (
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-              transition={{ delay: 0.3 }}
-              className="space-y-3"
+              exit={{ opacity: 0, y: -8 }}
+              className={`rounded-2xl border p-4 ${
+                checkInData.mood <= 4 || checkInData.energy <= 4
+                  ? 'border-blue-200 bg-blue-50/80'
+                  : 'border-emerald-200 bg-emerald-50/80'
+              }`}
             >
-              {visibleInsights.map((insight, idx) => {
-                const originalIndex = riseInsights.indexOf(insight)
-                const warmthStyles = {
-                  encouraging: 'from-teal-500/10 to-emerald-500/10 border-teal-500/25',
-                  curious: 'from-purple-500/10 to-blue-500/10 border-purple-500/25',
-                  gentle: 'from-slate-500/10 to-blue-500/10 border-slate-500/25',
-                  celebratory: 'from-amber-500/10 to-orange-500/10 border-amber-500/25',
-                }
-                const warmthIconColor = {
-                  encouraging: 'text-teal-400',
-                  curious: 'text-purple-400',
-                  gentle: 'text-blue-400',
-                  celebratory: 'text-amber-400',
-                }
-                const warmthGlow = {
-                  encouraging: 'bg-teal-500/20',
-                  curious: 'bg-purple-500/20',
-                  gentle: 'bg-blue-500/20',
-                  celebratory: 'bg-amber-500/20',
-                }
-
-                return (
-                  <motion.div
-                    key={`insight-${originalIndex}`}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20, height: 0 }}
-                    transition={{ delay: idx * 0.15 }}
-                    className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${warmthStyles[insight.warmth]} border p-4`}
+              <div className="flex items-start gap-3">
+                <div className="rounded-full p-2 bg-white/70">
+                  {checkInData.mood <= 4 || checkInData.energy <= 4 ? (
+                    <Heart className="w-4 h-4 text-blue-700" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 text-emerald-700" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-[#2f3d40]">
+                    {checkInData.mood <= 4 || checkInData.energy <= 4
+                      ? 'You do not need a perfect day. Pick one tiny win and let Rise carry the structure.'
+                      : 'Good energy today. This is a strong window to move one high-impact step forward.'}
+                  </p>
+                  <Link
+                    href={checkInData.mood <= 4 || checkInData.energy <= 4 ? warmUpLink : momentumLink}
+                    className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-[#0f766e] hover:text-[#0b5f59]"
                   >
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-full ${warmthGlow[insight.warmth]} flex-shrink-0`}>
-                        <Eye className={`w-4 h-4 ${warmthIconColor[insight.warmth]}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        {idx === 0 && (
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                            Rise noticed
-                          </p>
-                        )}
-                        <p className="text-sm text-slate-200 leading-relaxed">
-                          {insight.text}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => dismissInsight(originalIndex)}
-                        className="p-1 text-slate-600 hover:text-slate-400 transition-colors flex-shrink-0"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </motion.div>
-                )
-              })}
+                    Open guided chat
+                    <ChevronRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* EVENING REFLECTION NUDGE — Appears after 6pm if user hasn't reflected */}
-        {shouldShowEveningNudge(todayLog) && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <Link href="/evening">
-              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-900/30 via-slate-800 to-purple-900/30 border border-indigo-500/20 hover:border-indigo-400/40 transition-all p-5 group cursor-pointer">
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-40" />
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-indigo-500/15 flex-shrink-0">
-                    <Moon className="w-5 h-5 text-indigo-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-white group-hover:text-indigo-300 transition-colors">
-                      Wind down with Rise
-                    </h3>
-                    <p className="text-sm text-slate-400 mt-0.5">
-                      A quick chat to close out the day
-                    </p>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-indigo-400/50 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all flex-shrink-0" />
-                </div>
+        <section className="dawn-card rounded-3xl p-5 md:p-6 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-400 via-amber-400 to-teal-500" />
+
+          {loadingBriefing ? (
+            <div className="space-y-3 py-2">
+              <div className="h-4 w-36 rounded skeleton-shimmer" />
+              <div className="h-8 w-3/4 rounded skeleton-shimmer skeleton-shimmer-delay-1" />
+              <div className="h-4 w-full rounded skeleton-shimmer skeleton-shimmer-delay-2" />
+              <div className="h-4 w-2/3 rounded skeleton-shimmer skeleton-shimmer-delay-3" />
+            </div>
+          ) : briefingError ? (
+            <div className="text-center py-5">
+              <div className="inline-flex w-12 h-12 rounded-full items-center justify-center bg-red-50 border border-red-200 mb-3">
+                <AlertCircle className="w-6 h-6 text-red-600" />
               </div>
-            </Link>
+              <p className="text-sm text-[#384343]">{briefingError}</p>
+              <button
+                onClick={fetchBriefing}
+                className="mt-3 px-4 py-2 rounded-xl border border-[#d7cab5] bg-white hover:bg-[#faf4ea] text-sm text-[#334244]"
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-[#7c705b]">Today&apos;s Mission</p>
+                <button
+                  onClick={regenerateBriefing}
+                  disabled={regenerating}
+                  className={`p-2 rounded-xl border transition-colors ${
+                    regenerateError
+                      ? 'border-red-300 bg-red-50 text-red-700'
+                      : 'border-[#d8cab4] bg-white/80 text-[#5f6764] hover:text-[#2f3e40] hover:bg-white'
+                  }`}
+                  title={regenerateError ? 'Failed to regenerate - tap to retry' : 'Regenerate mission'}
+                >
+                  <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              <h2 className="font-display text-3xl leading-tight text-[#232f31]">{mission.headline}</h2>
+              {mission.detail && (
+                <p className="text-sm md:text-base text-[#5e6865] mt-2">{mission.detail}</p>
+              )}
+
+              {currentStep && (
+                <Link href={`/projects/${briefing?.focus_project_id}/milestone/${briefing?.focus_milestone_id}`}>
+                  <div className="mt-4 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 p-4 hover:border-orange-300 transition-colors">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Target className="w-4 h-4 text-orange-700" />
+                      <p className="text-xs uppercase tracking-[0.12em] text-orange-700">Current Step</p>
+                      <span className="ml-auto text-xs text-[#7c705d]">
+                        {currentStep.stepNumber}/{currentStep.totalSteps}
+                      </span>
+                    </div>
+                    <p className="text-sm text-[#2f3b3f]">{currentStep.stepText}</p>
+                    <div className="mt-3 h-1.5 rounded-full bg-orange-100 overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(currentStep.completedSteps / currentStep.totalSteps) * 100}%` }}
+                        transition={{ duration: 0.45, ease: 'easeOut' }}
+                        className="h-full bg-orange-500"
+                      />
+                    </div>
+                  </div>
+                </Link>
+              )}
+
+              <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                <Link href={primaryLink} className="flex-1">
+                  <button className="w-full h-12 rounded-xl bg-[#0f766e] hover:bg-[#0a605a] text-white font-semibold flex items-center justify-center gap-2">
+                    {focusProject ? 'Start Next Step' : 'Find My Path'}
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </Link>
+                <Link href={createStarterHref('I need help deciding my best move today.')} className="sm:w-auto">
+                  <button className="w-full h-12 px-4 rounded-xl border border-[#d7cab5] bg-white/85 hover:bg-white text-[#324244] font-medium flex items-center justify-center gap-2">
+                    Talk with Rise
+                    <Sparkles className="w-4 h-4 text-[#0f766e]" />
+                  </button>
+                </Link>
+              </div>
+            </>
+          )}
+        </section>
+
+        {personalGreeting && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-[#d9ccb8] bg-white/70 p-4"
+          >
+            <p className="text-xs uppercase tracking-[0.15em] text-[#7a705f] mb-1">Rise remembers</p>
+            <p className="text-sm text-[#354244]">{personalGreeting}</p>
           </motion.div>
         )}
 
-        {/* Projects List - Secondary */}
-        {projects.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wide">Your Projects</h3>
-              <Link href="/projects" className="text-sm text-teal-400 hover:text-teal-300">
-                View all
-              </Link>
-            </div>
+        {dailyPrompt?.prompt_text && (
+          <div className="rounded-2xl border border-[#ded1bd] bg-[#fff9ef]/80 p-4">
+            <p className="text-xs uppercase tracking-[0.14em] text-[#7f725d] mb-1">Daily Prompt</p>
+            <p className="text-sm text-[#394547]">“{dailyPrompt.prompt_text}”</p>
+            {dailyPrompt.author && <p className="text-xs text-[#7f725d] mt-1">- {dailyPrompt.author}</p>}
+          </div>
+        )}
 
-            <div className="space-y-2">
-              {projects.slice(0, 3).map((project) => (
-                <Link key={project.id} href={`/projects/${project.id}`}>
-                  <div className="p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30 hover:border-teal-500/30 transition-colors flex items-center justify-between group">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-white truncate group-hover:text-teal-400 transition-colors">
-                        {project.name}
-                      </h4>
-                      <p className="text-sm text-slate-500">{project.status} • {project.progress_percent}%</p>
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-xl text-[#273334]">Need a Jumpstart?</h3>
+            <Link href="/path-finder" className="text-sm text-[#0f766e] hover:text-[#0b5f59]">
+              Open Path Finder
+            </Link>
+          </div>
+          <div className="grid md:grid-cols-3 gap-3">
+            {quickPaths.map((path) => (
+              <Link key={path.title} href={path.href}>
+                <div className={`rounded-2xl border bg-gradient-to-br p-4 h-full hover:shadow-md transition-all ${path.tone}`}>
+                  <div className="inline-flex p-2 rounded-lg bg-white/75 mb-3">
+                    <path.icon className="w-4 h-4 text-[#0f766e]" />
+                  </div>
+                  <h4 className="font-semibold text-[#2d3a3d]">{path.title}</h4>
+                  <p className="text-sm text-[#5f6968] mt-1">{path.subtitle}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <AnimatePresence>
+          {visibleInsights.length > 0 && (
+            <motion.section
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="space-y-2"
+            >
+              <h3 className="font-display text-xl text-[#273334]">Rise Noticed</h3>
+              {visibleInsights.map((insight, idx) => {
+                const originalIndex = riseInsights.indexOf(insight)
+                return (
+                  <div key={`insight-${originalIndex}`} className="rounded-2xl border border-[#ddd0bc] bg-white/72 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-full bg-[#0f766e]/12 p-2 mt-0.5">
+                        <Eye className="w-4 h-4 text-[#0f766e]" />
+                      </div>
+                      <div className="flex-1">
+                        {idx === 0 && (
+                          <p className="text-[11px] uppercase tracking-[0.15em] text-[#7f735f] mb-1">Pattern insight</p>
+                        )}
+                        <p className="text-sm text-[#334143]">{insight.text}</p>
+                      </div>
+                      <button
+                        onClick={() => dismissInsight(originalIndex)}
+                        className="text-[#847963] hover:text-[#3c4a4c]"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-teal-400 transition-colors" />
+                  </div>
+                )
+              })}
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        {projects.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-display text-xl text-[#273334]">Your Projects</h3>
+              <Link href="/projects" className="text-sm text-[#0f766e] hover:text-[#0b5f59]">View all</Link>
+            </div>
+            <div className="grid gap-2">
+              {projects.slice(0, 3).map(project => (
+                <Link key={project.id} href={`/projects/${project.id}`}>
+                  <div className="rounded-2xl border border-[#decfbb] bg-white/75 p-4 hover:bg-white transition-colors">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-[#2e3d3f]">{project.name}</p>
+                        <p className="text-xs text-[#7f735f] mt-0.5">
+                          {project.status} • {project.progress_percent}% complete
+                        </p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-[#7b705c]" />
+                    </div>
                   </div>
                 </Link>
               ))}
             </div>
+          </section>
+        )}
 
-            {/* Path Finder link */}
-            <Link href="/path-finder">
-              <div className="mt-3 p-4 rounded-2xl border border-dashed border-slate-700 hover:border-purple-500/50 transition-colors flex items-center justify-center gap-2 text-slate-500 hover:text-purple-400">
+        {projects.length === 0 && !loadingBriefing && (
+          <section className="dawn-card rounded-3xl p-6">
+            <div className="inline-flex p-2 rounded-xl bg-orange-100 mb-3">
+              <Rocket className="w-5 h-5 text-orange-700" />
+            </div>
+            <h3 className="font-display text-2xl text-[#2a3436]">No project yet. Start with one honest conversation.</h3>
+            <p className="text-sm text-[#606b68] mt-2 mb-4">
+              Tell Rise what you actually want from life right now. It will help you pick one path and break it into doable steps.
+            </p>
+            <Link href={createStarterHref('I am not sure what to build yet. Help me discover one path that fits me.')}>
+              <button className="h-12 px-5 rounded-xl bg-[#0f766e] hover:bg-[#0a605a] text-white font-semibold inline-flex items-center gap-2">
+                Begin Path Finder
                 <Compass className="w-4 h-4" />
-                <span className="text-sm">Start new project</span>
+              </button>
+            </Link>
+          </section>
+        )}
+
+        {shouldShowEveningNudge(todayLog) && (
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <Link href="/evening">
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 hover:bg-indigo-50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-white/75 p-2">
+                    <Moon className="w-4 h-4 text-indigo-700" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-[#2f3d45]">Close your day with Rise</p>
+                    <p className="text-sm text-[#607079]">2 minutes to reset and protect tomorrow&apos;s momentum.</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-indigo-700" />
+                </div>
               </div>
             </Link>
           </motion.div>
         )}
 
-        {/* NEW USER ONBOARDING - Full Experience */}
-        {projects.length === 0 && !loadingBriefing && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="space-y-6"
-          >
-            {/* Hero Card */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-900/40 via-slate-800 to-teal-900/40 border border-purple-500/20 shadow-2xl">
-              {/* Animated gradient border */}
-              <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-500 via-teal-500 to-emerald-500" />
-
-              <div className="p-8 text-center">
-                {/* Icon */}
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                  className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-purple-500/20 to-teal-500/20 border border-purple-500/30 mb-6"
-                >
-                  <Rocket className="w-10 h-10 text-teal-400" />
-                </motion.div>
-
-                {/* Welcome Text */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                >
-                  <h2 className="text-3xl font-bold text-white mb-3">
-                    Welcome to Rise
-                  </h2>
-                  <p className="text-lg text-slate-300 mb-2">
-                    Your AI cofounder for building toward freedom.
-                  </p>
-                  <p className="text-slate-400 max-w-sm mx-auto">
-                    Rise helps you discover what to build, break it into steps, and make progress every day.
-                  </p>
-                </motion.div>
-
-                {/* Big CTA Button */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                  className="mt-8"
-                >
-                  <Link href="/path-finder">
-                    <button className="group relative w-full max-w-xs py-5 px-8 rounded-2xl bg-gradient-to-r from-purple-500 via-teal-500 to-emerald-500 text-white font-bold text-xl shadow-lg shadow-purple-500/25 hover:shadow-xl hover:shadow-teal-500/30 transition-all hover:scale-[1.02]">
-                      <span className="flex items-center justify-center gap-3">
-                        Start Here
-                        <ChevronRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
-                      </span>
-                    </button>
-                  </Link>
-                </motion.div>
-              </div>
+        {momentum && !loadingBriefing && (
+          <div className="rounded-2xl border border-[#dfd1be] bg-white/70 px-4 py-3 flex flex-wrap items-center gap-3 text-sm text-[#5f6a69]">
+            <div className="inline-flex items-center gap-1.5">
+              <Sunrise className="w-4 h-4 text-orange-600" />
+              {momentum.loginStreak >= 7
+                ? `${momentum.loginStreak} days in a row`
+                : `Day ${momentum.loginStreak || 1}`}
             </div>
-
-            {/* How It Works - 3 Steps */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="space-y-3"
-            >
-              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wide text-center mb-4">
-                How It Works
-              </h3>
-
-              {/* Step 1 */}
-              <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30">
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
-                  <span className="text-purple-400 font-bold">1</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-white">Discover Your Path</h4>
-                  <p className="text-sm text-slate-400">Chat with AI to explore what you could build based on your skills and goals.</p>
-                </div>
+            {momentum.milestonesThisWeek > 0 && (
+              <div className="inline-flex items-center gap-1.5">
+                <Target className="w-4 h-4 text-teal-600" />
+                {momentum.milestonesThisWeek} milestone{momentum.milestonesThisWeek !== 1 ? 's' : ''} this week
               </div>
-
-              {/* Step 2 */}
-              <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30">
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-teal-500/20 flex items-center justify-center">
-                  <span className="text-teal-400 font-bold">2</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-white">Build With AI</h4>
-                  <p className="text-sm text-slate-400">Your project gets broken into milestones. AI helps you complete each one.</p>
-                </div>
-              </div>
-
-              {/* Step 3 */}
-              <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-800/30 border border-slate-700/30">
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <span className="text-emerald-400 font-bold">3</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-white">Launch & Grow</h4>
-                  <p className="text-sm text-slate-400">Ship your project and start earning. Rise tracks your progress toward freedom.</p>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Secondary CTA */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.7 }}
-              className="text-center pt-4"
-            >
-              <Link href="/path-finder">
-                <button className="inline-flex items-center gap-2 text-teal-400 hover:text-teal-300 font-medium">
-                  <Compass className="w-5 h-5" />
-                  Let&apos;s discover what you should build
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </Link>
-            </motion.div>
-          </motion.div>
+            )}
+          </div>
         )}
       </main>
 
-      {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0">
         <BottomNavigation />
       </div>

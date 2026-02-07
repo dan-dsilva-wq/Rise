@@ -1,16 +1,23 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Fraunces, Manrope } from 'next/font/google'
 import { ConnectionStatus } from '@/components/ui/ConnectionStatus'
 import './globals.css'
 
-const inter = Inter({
-  variable: '--font-inter',
+const manrope = Manrope({
+  variable: '--font-manrope',
   subsets: ['latin'],
+  display: 'swap',
+})
+
+const fraunces = Fraunces({
+  variable: '--font-fraunces',
+  subsets: ['latin'],
+  display: 'swap',
 })
 
 export const metadata: Metadata = {
-  title: 'Rise - Personal Mission Control',
-  description: 'Find your path to freedom. Build with AI.',
+  title: 'Rise - Your AI Cofounder',
+  description: 'Wake up with clarity. Find your path. Take the next step.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -24,11 +31,11 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#0f172a',
+  themeColor: '#f7f2e8',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   viewportFit: 'cover',
 }
 
@@ -38,13 +45,13 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <head>
         <link rel="apple-touch-icon" href="/icon-192.svg" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
-      <body className={`${inter.variable} font-sans antialiased bg-slate-900 text-slate-100 min-h-screen`}>
+      <body className={`${manrope.variable} ${fraunces.variable} font-sans antialiased min-h-screen`}>
         <ConnectionStatus />
         {children}
       </body>

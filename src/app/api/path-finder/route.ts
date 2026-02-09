@@ -70,7 +70,7 @@ interface ExistingProject {
   name: string
   description: string | null
   status: string
-  milestones: { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string }[]
+  milestones: { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string; completed_at: string | null; completedSteps: number; totalSteps: number }[]
   ideas: { id: string; title: string; notes: string | null }[]
 }
 
@@ -153,25 +153,39 @@ export async function POST(request: NextRequest) {
       ? `\n\n${wovenMemory.contextBlock}`
       : ''
 
+    const now = new Date()
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+    const formatMilestone = (m: ExistingProject['milestones'][number]) => {
+      const stepInfo = m.totalSteps > 0 ? ` (${m.completedSteps}/${m.totalSteps} steps done)` : ''
+      return `${m.title}${stepInfo} [milestone_id: ${m.id}]`
+    }
+
     const projectsSection = existingProjects && existingProjects.length > 0
       ? `\n\n## User's Current Projects\n${existingProjects.map(p => {
           const active = p.milestones.filter(m => m.focus_level === 'active')
           const upNext = p.milestones.filter(m => m.focus_level === 'next')
           const backlog = p.milestones.filter(m => m.focus_level === 'backlog' || !m.focus_level)
+          const recentlyCompleted = p.milestones.filter(m =>
+            m.status === 'completed' && m.completed_at && new Date(m.completed_at) > oneDayAgo
+          )
 
           const activeStr = active.length > 0
-            ? `  🎯 ACTIVE: ${active[0].title} [milestone_id: ${active[0].id}]`
+            ? `  🎯 ACTIVE: ${formatMilestone(active[0])}`
             : '  🎯 ACTIVE: None set'
           const nextStr = upNext.length > 0
-            ? `\n  ⏳ UP NEXT (${upNext.length}/3):\n${upNext.map(m => `    - ${m.title} [milestone_id: ${m.id}]`).join('\n')}`
+            ? `\n  ⏳ UP NEXT (${upNext.length}/3):\n${upNext.map(m => `    - ${formatMilestone(m)}`).join('\n')}`
             : ''
           const backlogStr = backlog.length > 0
-            ? `\n  📋 BACKLOG (${backlog.length}):\n${backlog.map(m => `    - ${m.title} [milestone_id: ${m.id}]`).join('\n')}`
+            ? `\n  📋 BACKLOG (${backlog.length}):\n${backlog.map(m => `    - ${formatMilestone(m)}`).join('\n')}`
+            : ''
+          const recentlyCompletedStr = recentlyCompleted.length > 0
+            ? `\n  🏆 RECENTLY COMPLETED:\n${recentlyCompleted.map(m => `    - ${m.title} [milestone_id: ${m.id}]`).join('\n')}`
             : ''
           const ideasStr = p.ideas && p.ideas.length > 0
             ? `\n  💡 IDEAS (${p.ideas.length}):\n${p.ideas.map(idea => `    - ${idea.title} [idea_id: ${idea.id}]`).join('\n')}`
             : ''
-          return `- **${p.name}** [project_id: ${p.id}] (${p.status}): ${p.description || 'No description'}\n${activeStr}${nextStr}${backlogStr}${ideasStr}`
+          return `- **${p.name}** [project_id: ${p.id}] (${p.status}): ${p.description || 'No description'}\n${activeStr}${nextStr}${backlogStr}${recentlyCompletedStr}${ideasStr}`
         }).join('\n\n')}\n\nManage focus with SET_FOCUS. Only 1 active, max 3 up next.`
       : '\n\n## User\'s Current Projects\nNo projects yet. Once you understand what they want to build, create one for them!'
 

@@ -59,12 +59,12 @@ interface ExistingProject {
   name: string
   description: string | null
   status: string
-  milestones: { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string }[]
+  milestones: { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string; completed_at: string | null; completedSteps: number; totalSteps: number }[]
   ideas: { id: string; title: string; notes: string | null }[]
 }
 
 type ProjectListItem = Pick<ExistingProject, 'id' | 'name' | 'description' | 'status'>
-type MilestoneItem = { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string }
+type MilestoneItem = { id: string; title: string; status: string; sort_order: number; notes: string | null; focus_level: string; completed_at: string | null }
 
 interface PathFinderChatProps {
   userId: string
@@ -205,7 +205,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       const projectsWithMilestones = await Promise.all(projectRows.map(async (project) => {
         const { data: allItems, error: milestonesError } = await client
           .from('milestones')
-          .select('id, title, status, sort_order, notes, focus_level')
+          .select('id, title, status, sort_order, notes, focus_level, completed_at')
           .eq('project_id', project.id)
           .neq('status', 'discarded') // Don't show discarded
           .order('sort_order', { ascending: true })
@@ -219,9 +219,32 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         const milestones = milestoneRows.filter(m => m.status !== 'idea')
         const ideas = milestoneRows.filter(m => m.status === 'idea')
 
+        // Batch-fetch step counts for all milestones in this project
+        const milestoneIds = milestones.map(m => m.id)
+        let stepCountMap: Record<string, { total: number; completed: number }> = {}
+        if (milestoneIds.length > 0) {
+          const { data: stepsData } = await client
+            .from('milestone_steps')
+            .select('milestone_id, completed_at')
+            .in('milestone_id', milestoneIds)
+
+          if (stepsData) {
+            for (const step of stepsData) {
+              const entry = stepCountMap[step.milestone_id] || { total: 0, completed: 0 }
+              entry.total++
+              if (step.completed_at) entry.completed++
+              stepCountMap[step.milestone_id] = entry
+            }
+          }
+        }
+
         return {
           ...project,
-          milestones,
+          milestones: milestones.map(m => ({
+            ...m,
+            completedSteps: stepCountMap[m.id]?.completed ?? 0,
+            totalSteps: stepCountMap[m.id]?.total ?? 0,
+          })),
           ideas,
         }
       }))

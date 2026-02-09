@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bell } from 'lucide-react'
+import { Bell, Loader2 } from 'lucide-react'
 import { usePushNotifications } from '@/lib/hooks/usePushNotifications'
 
 const DISMISSED_KEY = 'rise:notification-banner-dismissed'
 
 export function NotificationBanner() {
-  const { supported, permission, enable } = usePushNotifications()
+  const { supported, permission, syncing, error, setError, enable } = usePushNotifications()
   const [dismissed, setDismissed] = useState(true)
 
   useEffect(() => {
@@ -24,6 +24,7 @@ export function NotificationBanner() {
   }
 
   async function handleEnable() {
+    setError(null)
     await enable()
   }
 
@@ -37,27 +38,42 @@ export function NotificationBanner() {
           transition={{ duration: 0.25 }}
           className="mb-8 overflow-hidden"
         >
-          <div className="rounded-2xl border border-slate-800 bg-slate-800/50 px-5 py-4 flex items-center gap-4">
-            <div className="flex-shrink-0 w-9 h-9 rounded-full bg-teal-500/10 flex items-center justify-center">
-              <Bell className="w-4 h-4 text-teal-300" />
+          <div className="rounded-2xl border border-slate-800 bg-slate-800/50 px-5 py-4">
+            <div className="flex items-center gap-4">
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-teal-500/10 flex items-center justify-center">
+                <Bell className="w-4 h-4 text-teal-300" />
+              </div>
+              <p className="flex-1 text-sm text-slate-300">
+                Get gentle nudges to stay on track.
+              </p>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  disabled={syncing}
+                  onClick={handleEnable}
+                  className="text-sm font-medium text-teal-300 hover:text-teal-200 transition-colors px-3 py-1.5 rounded-lg hover:bg-teal-500/10 disabled:opacity-50"
+                >
+                  {syncing ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Enabling...
+                    </span>
+                  ) : (
+                    'Enable'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismiss}
+                  className="text-sm text-slate-500 hover:text-slate-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-700/50"
+                >
+                  Not now
+                </button>
+              </div>
             </div>
-            <p className="flex-1 text-sm text-slate-300">
-              Get gentle nudges to stay on track.
-            </p>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                onClick={handleEnable}
-                className="text-sm font-medium text-teal-300 hover:text-teal-200 transition-colors px-3 py-1.5 rounded-lg hover:bg-teal-500/10"
-              >
-                Enable
-              </button>
-              <button
-                onClick={handleDismiss}
-                className="text-sm text-slate-500 hover:text-slate-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-700/50"
-              >
-                Not now
-              </button>
-            </div>
+            {error && (
+              <p className="mt-2 text-xs text-red-300 pl-13">{error}</p>
+            )}
           </div>
         </motion.div>
       )}

@@ -77,6 +77,7 @@ export function ProjectDetailContent({
   const [isAddingMilestone, setIsAddingMilestone] = useState(false)
   const [isAddingIdea, setIsAddingIdea] = useState(false)
   const [isReorganizing, setIsReorganizing] = useState(false)
+  const [showWorkspaceTools, setShowWorkspaceTools] = useState(false)
   const [reorganizeSummary, setReorganizeSummary] = useState<string | null>(null)
   const [reorganizeRationale, setReorganizeRationale] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -198,6 +199,15 @@ export function ProjectDetailContent({
   const status = statusConfig[currentProject.status]
   const StatusIcon = status.icon
 
+  const actionableMilestones = currentMilestones.filter(
+    milestone => milestone.status !== 'completed' && milestone.status !== 'discarded' && milestone.status !== 'idea'
+  )
+  const activeCount = actionableMilestones.filter(milestone => milestone.focus_level === 'active').length
+  const nextCount = actionableMilestones.filter(milestone => milestone.focus_level === 'next').length
+  const backlogCount = actionableMilestones.filter(
+    milestone => milestone.focus_level === 'backlog' || !milestone.focus_level
+  ).length
+
   const handleSaveEdit = async () => {
     setIsSaving(true)
     try {
@@ -282,6 +292,18 @@ export function ProjectDetailContent({
       setTimeout(() => setSuccessToast(null), 2000)
     } finally {
       setIsAddingIdea(false)
+    }
+  }
+
+  const setWorkspaceVisibility = (show: boolean) => {
+    setShowWorkspaceTools(show)
+    if (!show) {
+      setShowAddMilestone(false)
+      setShowAddIdea(false)
+      setMilestoneError(null)
+      setIdeaError(null)
+      setNewMilestoneTitle('')
+      setNewIdeaTitle('')
     }
   }
 
@@ -501,146 +523,176 @@ export function ProjectDetailContent({
           </Card>
         </Link>
 
-        {/* Milestones */}
+        {/* Milestones - secondary workspace controls */}
         <Card>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-              Milestones
-            </h2>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                Milestone Workspace
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Secondary view for queue management and structure changes.
+              </p>
+            </div>
             <Button
               size="sm"
               variant="secondary"
-              onClick={handleReorganizeMilestones}
-              isLoading={isReorganizing}
-              loadingText="Organizing..."
+              onClick={() => setWorkspaceVisibility(!showWorkspaceTools)}
             >
-              {isReorganizing ? 'Organizing...' : 'AI Organize'}
+              {showWorkspaceTools ? 'Hide Tools' : 'Show Tools'}
             </Button>
           </div>
 
-          {reorganizeSummary && (
-            <div className="mb-4 rounded-lg border border-teal-500/20 bg-teal-500/10 px-3 py-2">
-              <p className="text-sm text-teal-200">{reorganizeSummary}</p>
-              {reorganizeRationale && (
-                <p className="mt-1 text-xs text-teal-100/80">{reorganizeRationale}</p>
-              )}
+          {!showWorkspaceTools && (
+            <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-4">
+              <p className="text-sm text-slate-300">
+                Queue snapshot: {activeCount} active, {nextCount} up next, {backlogCount} backlog.
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Use these tools when you need to reorganize. Daily work should stay in the single focus flow.
+              </p>
             </div>
           )}
 
-          <MilestoneList
-            milestones={currentMilestones}
-            projectId={currentProject.id}
-            project={currentProject}
-            userId={user?.id}
-            onComplete={handleCompleteMilestone}
-            onUncomplete={handleUncompleteMilestone}
-            onSetFocus={setFocusLevel}
-            onPromote={promoteIdea}
-            onAdd={() => setShowAddMilestone(true)}
-            onAddIdea={() => setShowAddIdea(true)}
-            onDelete={deleteMilestone}
-            showAddButton
-            isEditable
-            useBottomSheet={false}
-          />
+          {showWorkspaceTools && (
+            <>
+              <div className="mb-4 flex items-center justify-end">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleReorganizeMilestones}
+                  isLoading={isReorganizing}
+                  loadingText="Organizing..."
+                >
+                  {isReorganizing ? 'Organizing...' : 'AI Organize'}
+                </Button>
+              </div>
 
-          {/* Add Milestone Form */}
-          <AnimatePresence>
-            {showAddMilestone && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 pt-4 border-t border-slate-700"
-              >
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    value={newMilestoneTitle}
-                    onChange={(e) => {
-                      setNewMilestoneTitle(e.target.value)
-                      if (milestoneError) setMilestoneError(null)
-                    }}
-                    placeholder="Milestone title..."
-                    className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:border-transparent ${
-                      milestoneError
-                        ? 'border-red-500 focus:ring-red-500'
-                        : 'border-slate-700 focus:ring-teal-500'
-                    }`}
-                    autoFocus
-                    aria-invalid={milestoneError ? 'true' : 'false'}
-                    aria-describedby={milestoneError ? 'milestone-error' : undefined}
-                  />
-                  {milestoneError && (
-                    <p id="milestone-error" className="mt-1 text-sm text-red-400" role="alert">
-                      {milestoneError}
-                    </p>
+              {reorganizeSummary && (
+                <div className="mb-4 rounded-lg border border-teal-500/20 bg-teal-500/10 px-3 py-2">
+                  <p className="text-sm text-teal-200">{reorganizeSummary}</p>
+                  {reorganizeRationale && (
+                    <p className="mt-1 text-xs text-teal-100/80">{reorganizeRationale}</p>
                   )}
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setShowAddMilestone(false)
-                    setMilestoneError(null)
-                    setNewMilestoneTitle('')
-                  }} disabled={isAddingMilestone}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" onClick={handleAddMilestone} isLoading={isAddingMilestone} loadingText="Adding milestone...">
-                    {isAddingMilestone ? 'Adding...' : 'Add Milestone'}
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              )}
 
-          {/* Add Idea Form */}
-          <AnimatePresence>
-            {showAddIdea && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 pt-4 border-t border-yellow-700/30"
-              >
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    value={newIdeaTitle}
-                    onChange={(e) => {
-                      setNewIdeaTitle(e.target.value)
-                      if (ideaError) setIdeaError(null)
-                    }}
-                    placeholder="Idea for later..."
-                    className={`w-full bg-yellow-500/5 border rounded-lg px-3 py-2 text-white placeholder-yellow-400/50 focus:outline-none focus:ring-2 focus:border-transparent ${
-                      ideaError
-                        ? 'border-red-500 focus:ring-red-500'
-                        : 'border-yellow-500/30 focus:ring-yellow-500'
-                    }`}
-                    autoFocus
-                    aria-invalid={ideaError ? 'true' : 'false'}
-                    aria-describedby={ideaError ? 'idea-error' : undefined}
-                  />
-                  {ideaError && (
-                    <p id="idea-error" className="mt-1 text-sm text-red-400" role="alert">
-                      {ideaError}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setShowAddIdea(false)
-                    setIdeaError(null)
-                    setNewIdeaTitle('')
-                  }} disabled={isAddingIdea}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" onClick={handleAddIdea} isLoading={isAddingIdea} loadingText="Adding idea..." className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border-yellow-500/30">
-                    {isAddingIdea ? 'Adding...' : 'Add Idea'}
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              <MilestoneList
+                milestones={currentMilestones}
+                projectId={currentProject.id}
+                project={currentProject}
+                userId={user?.id}
+                onComplete={handleCompleteMilestone}
+                onUncomplete={handleUncompleteMilestone}
+                onSetFocus={setFocusLevel}
+                onPromote={promoteIdea}
+                onAdd={() => setShowAddMilestone(true)}
+                onAddIdea={() => setShowAddIdea(true)}
+                onDelete={deleteMilestone}
+                showAddButton
+                isEditable
+                useBottomSheet={false}
+              />
+
+              {/* Add Milestone Form */}
+              <AnimatePresence>
+                {showAddMilestone && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-4 pt-4 border-t border-slate-700"
+                  >
+                    <div className="mb-3">
+                      <input
+                        type="text"
+                        value={newMilestoneTitle}
+                        onChange={(e) => {
+                          setNewMilestoneTitle(e.target.value)
+                          if (milestoneError) setMilestoneError(null)
+                        }}
+                        placeholder="Milestone title..."
+                        className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:border-transparent ${
+                          milestoneError
+                            ? 'border-red-500 focus:ring-red-500'
+                            : 'border-slate-700 focus:ring-teal-500'
+                        }`}
+                        autoFocus
+                        aria-invalid={milestoneError ? 'true' : 'false'}
+                        aria-describedby={milestoneError ? 'milestone-error' : undefined}
+                      />
+                      {milestoneError && (
+                        <p id="milestone-error" className="mt-1 text-sm text-red-400" role="alert">
+                          {milestoneError}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        setShowAddMilestone(false)
+                        setMilestoneError(null)
+                        setNewMilestoneTitle('')
+                      }} disabled={isAddingMilestone}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={handleAddMilestone} isLoading={isAddingMilestone} loadingText="Adding milestone...">
+                        {isAddingMilestone ? 'Adding...' : 'Add Milestone'}
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Add Idea Form */}
+              <AnimatePresence>
+                {showAddIdea && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-4 pt-4 border-t border-yellow-700/30"
+                  >
+                    <div className="mb-3">
+                      <input
+                        type="text"
+                        value={newIdeaTitle}
+                        onChange={(e) => {
+                          setNewIdeaTitle(e.target.value)
+                          if (ideaError) setIdeaError(null)
+                        }}
+                        placeholder="Idea for later..."
+                        className={`w-full bg-yellow-500/5 border rounded-lg px-3 py-2 text-white placeholder-yellow-400/50 focus:outline-none focus:ring-2 focus:border-transparent ${
+                          ideaError
+                            ? 'border-red-500 focus:ring-red-500'
+                            : 'border-yellow-500/30 focus:ring-yellow-500'
+                        }`}
+                        autoFocus
+                        aria-invalid={ideaError ? 'true' : 'false'}
+                        aria-describedby={ideaError ? 'idea-error' : undefined}
+                      />
+                      {ideaError && (
+                        <p id="idea-error" className="mt-1 text-sm text-red-400" role="alert">
+                          {ideaError}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        setShowAddIdea(false)
+                        setIdeaError(null)
+                        setNewIdeaTitle('')
+                      }} disabled={isAddingIdea}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={handleAddIdea} isLoading={isAddingIdea} loadingText="Adding idea..." className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border-yellow-500/30">
+                        {isAddingIdea ? 'Adding...' : 'Add Idea'}
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </>
+          )}
         </Card>
 
         {/* Success Toast */}

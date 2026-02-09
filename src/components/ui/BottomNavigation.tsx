@@ -33,7 +33,7 @@ function HomeIcon({ isActive }: { isActive: boolean }) {
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Today', icon: null, isLogo: true },
   { href: '/path-finder', label: 'Discover', icon: Compass },
-  { href: '/projects', label: 'Projects', icon: FolderKanban },
+  { href: '/projects', label: 'Workspace', icon: FolderKanban },
   { href: '/progress', label: 'Progress', icon: BarChart3 },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]

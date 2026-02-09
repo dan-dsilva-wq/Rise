@@ -1,93 +1,119 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Compass, Plus, ChevronRight, Target, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowRight, Compass, FolderKanban, Loader2, Plus, Target } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
+import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { useProjects } from '@/lib/hooks/useProject'
-import { useUser } from '@/lib/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
-import type { Profile, Project, Milestone } from '@/lib/supabase/types'
+import { useUser } from '@/lib/hooks/useUser'
+import type { Milestone, Profile, Project } from '@/lib/supabase/types'
 
 interface ProjectsContentProps {
   profile: Profile | null
   initialProjects: Project[]
 }
 
-interface ProjectWithMilestone extends Project {
-  activeMilestone?: Milestone | null
+type FocusMilestone = Pick<
+  Milestone,
+  'id' | 'project_id' | 'title' | 'status' | 'focus_level' | 'sort_order'
+>
+
+interface ProjectWithFocus extends Project {
+  focusMilestone: FocusMilestone | null
 }
 
-// Helper to get client - only call after mount (client-side)
+const ACTIONABLE_STATUSES: Milestone['status'][] = ['pending', 'in_progress']
+
+const FOCUS_PRIORITY: Record<Milestone['focus_level'], number> = {
+  active: 0,
+  next: 1,
+  backlog: 2,
+}
+
 function getClient() {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return supabase as any
 }
 
+function compareByFocus(a: FocusMilestone, b: FocusMilestone) {
+  const focusDiff = FOCUS_PRIORITY[a.focus_level] - FOCUS_PRIORITY[b.focus_level]
+  if (focusDiff !== 0) return focusDiff
+  return a.sort_order - b.sort_order
+}
+
 export function ProjectsContent({
-  profile: initialProfile,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  profile: _initialProfile,
   initialProjects,
 }: ProjectsContentProps) {
   const router = useRouter()
-  const { user, profile } = useUser()
-  // Use initialProjects as fallback when user is still loading
+  const { user } = useUser()
   const { projects, loading, createProject } = useProjects(user?.id, initialProjects)
+
   const [isCreating, setIsCreating] = useState(false)
-  const [loadingMilestones, setLoadingMilestones] = useState(true)
-  // Initialize with initialProjects to avoid blank state
-  const [projectsWithMilestones, setProjectsWithMilestones] = useState<ProjectWithMilestone[]>(
-    () => initialProjects.map(p => ({ ...p, activeMilestone: null }))
+  const [isLoadingFocus, setIsLoadingFocus] = useState(true)
+  const [showWorkspace, setShowWorkspace] = useState(false)
+  const [workspaceProjects, setWorkspaceProjects] = useState<ProjectWithFocus[]>(
+    () => initialProjects.map(project => ({ ...project, focusMilestone: null }))
   )
 
-  // Use either hook projects or initialProjects (whichever has data)
   const displayProjects = projects.length > 0 ? projects : initialProjects
+  const projectIds = useMemo(() => displayProjects.map(project => project.id), [displayProjects])
 
-  // Track project IDs to detect real changes (not just reference changes)
-  const projectIds = useMemo(() => displayProjects.map(p => p.id).sort().join(','), [displayProjects])
-
-  // Fetch active milestone for each project
   useEffect(() => {
-    const fetchMilestones = async () => {
-      setLoadingMilestones(true)
-      const client = getClient()
-      const enhanced: ProjectWithMilestone[] = []
-      for (const project of displayProjects) {
-        const { data } = await client
-          .from('milestones')
-          .select('*')
-          .eq('project_id', project.id)
-          .eq('focus_level', 'active')
-          .neq('status', 'completed')
-          .neq('status', 'discarded')
-          .limit(1)
-          .single()
-
-        enhanced.push({
-          ...project,
-          activeMilestone: data as Milestone | null,
-        })
+    const fetchFocusMilestones = async () => {
+      if (displayProjects.length === 0) {
+        setWorkspaceProjects([])
+        setIsLoadingFocus(false)
+        return
       }
-      setProjectsWithMilestones(enhanced)
-      setLoadingMilestones(false)
+
+      setIsLoadingFocus(true)
+      const client = getClient()
+
+      try {
+        const { data: milestoneRows, error } = await client
+          .from('milestones')
+          .select('id, project_id, title, status, focus_level, sort_order')
+          .in('project_id', projectIds)
+          .in('status', ACTIONABLE_STATUSES)
+          .order('sort_order', { ascending: true })
+
+        if (error) {
+          throw error
+        }
+
+        const focusByProject = new Map<string, FocusMilestone>()
+
+        for (const milestone of (milestoneRows || []) as FocusMilestone[]) {
+          const current = focusByProject.get(milestone.project_id)
+          if (!current || compareByFocus(milestone, current) < 0) {
+            focusByProject.set(milestone.project_id, milestone)
+          }
+        }
+
+        const merged = displayProjects.map(project => ({
+          ...project,
+          focusMilestone: focusByProject.get(project.id) || null,
+        }))
+
+        setWorkspaceProjects(merged)
+      } catch (error) {
+        console.error('Failed to fetch project focus milestones:', error)
+        setWorkspaceProjects(displayProjects.map(project => ({ ...project, focusMilestone: null })))
+      } finally {
+        setIsLoadingFocus(false)
+      }
     }
 
-    if (displayProjects.length > 0) {
-      fetchMilestones()
-    } else {
-      setProjectsWithMilestones([])
-      setLoadingMilestones(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectIds]) // Only re-run when project IDs actually change
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _currentProfile = profile || initialProfile
-  const activeProjects = projectsWithMilestones.filter(p => ['discovery', 'planning', 'building'].includes(p.status))
+    fetchFocusMilestones()
+  }, [displayProjects, projectIds])
 
   const handleCreateProject = async () => {
     setIsCreating(true)
@@ -103,184 +129,131 @@ export function ProjectsContent({
     }
   }
 
-  // If only one active project, show it prominently
-  const singleProject = activeProjects.length === 1 ? activeProjects[0] : null
-
   return (
     <div className="min-h-screen bg-slate-900 pb-24">
-      {/* Header - Minimal */}
       <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-lg border-b border-slate-800">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-slate-100">Projects</h1>
+        <div className="max-w-xl mx-auto px-5 py-4">
+          <h1 className="text-xl font-semibold text-slate-100">Workspace</h1>
+          <p className="text-sm text-slate-400">
+            Secondary view for managing project structure.
+          </p>
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-6 space-y-4">
-        {/* Single Project View - Super Direct */}
-        {singleProject && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <Link href={`/projects/${singleProject.id}`} className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
-              <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 overflow-hidden">
-                {/* Project Header */}
-                <div className="p-5 border-b border-slate-700/50">
-                  <h2 className="text-xl font-bold text-white mb-1">{singleProject.name}</h2>
-                  {singleProject.description && (
-                    <p className="text-sm text-slate-400 line-clamp-1">{singleProject.description}</p>
-                  )}
-                </div>
-
-                {/* Active Milestone - THE THING TO DO */}
-                <div className="p-5 bg-teal-500/5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Target className="w-4 h-4 text-teal-400" />
-                    <span className="text-xs font-medium text-teal-400 uppercase tracking-wide">Current Objective</span>
-                  </div>
-
-                  {loadingMilestones ? (
-                    <div className="animate-pulse">
-                      <div className="h-6 bg-slate-700/50 rounded w-3/4"></div>
-                    </div>
-                  ) : singleProject.activeMilestone ? (
-                    <p className="text-lg font-semibold text-white">
-                      {singleProject.activeMilestone.title}
-                    </p>
-                  ) : (
-                    <p className="text-slate-500 italic">No active milestone set</p>
-                  )}
-                </div>
-
-                {/* Action */}
-                <div className="p-4 flex items-center justify-between bg-slate-800/50">
-                  <span className="text-sm text-slate-400">Tap to continue</span>
-                  <ChevronRight className="w-5 h-5 text-teal-400" />
-                </div>
-              </div>
-            </Link>
-
-            {/* Quick action to work with AI */}
-            {loadingMilestones ? (
-              <div className="mt-3 p-4 rounded-xl bg-gradient-to-r from-teal-500/5 to-emerald-500/5 border border-slate-700/50 animate-pulse">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-slate-700/50 w-9 h-9"></div>
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-slate-700/50 rounded w-1/2"></div>
-                    <div className="h-3 bg-slate-700/50 rounded w-3/4"></div>
-                  </div>
-                </div>
-              </div>
-            ) : singleProject.activeMilestone && (
-              <Link href={`/projects/${singleProject.id}/milestone/${singleProject.activeMilestone.id}`} className="block mt-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
-                <div className="p-4 rounded-xl bg-gradient-to-r from-teal-500/10 to-emerald-500/10 border border-teal-500/20 flex items-center gap-3 hover:border-teal-500/40 transition-colors">
-                  <div className="p-2 rounded-lg bg-teal-500/20">
-                    <Sparkles className="w-5 h-5 text-teal-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-white">Work on this with AI</p>
-                    <p className="text-sm text-slate-400">Get help completing your objective</p>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-slate-500" />
-                </div>
-              </Link>
-            )}
-          </motion.div>
-        )}
-
-        {/* Multiple Projects View */}
-        {activeProjects.length > 1 && (
-          <div className="space-y-3">
-            {activeProjects.map((project, index) => (
-              <motion.div
-                key={project.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Link href={`/projects/${project.id}`} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
-                  <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/50 hover:border-teal-500/30 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-white truncate">{project.name}</h3>
-
-                        {/* Show active milestone */}
-                        {loadingMilestones ? (
-                          <div className="mt-2 flex items-center gap-2 animate-pulse">
-                            <div className="w-3 h-3 bg-slate-600/50 rounded flex-shrink-0"></div>
-                            <div className="h-4 bg-slate-600/50 rounded w-32"></div>
-                          </div>
-                        ) : project.activeMilestone ? (
-                          <div className="mt-2 flex items-center gap-2">
-                            <Target className="w-3 h-3 text-teal-400 flex-shrink-0" />
-                            <span className="text-sm text-slate-300 truncate">
-                              {project.activeMilestone.title}
-                            </span>
-                          </div>
-                        ) : (
-                          <p className="mt-1 text-sm text-slate-500">No active objective</p>
-                        )}
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-slate-600 flex-shrink-0 mt-1" />
-                    </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        )}
-
-        {/* Start New Project - subtle */}
-        {projectsWithMilestones.length > 0 && (
-          <div className="pt-4 border-t border-slate-800">
-            <div className="flex gap-2">
-              <Link href="/path-finder" className="flex-1">
-                <button className="w-full px-3 py-3 text-sm text-slate-400 hover:text-slate-200 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-colors flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
-                  <Compass className="w-4 h-4" />
-                  New via Path Finder
-                </button>
-              </Link>
-              <button
-                onClick={handleCreateProject}
-                disabled={isCreating}
-                className="flex-1 px-3 py-3 text-sm text-slate-400 hover:text-slate-200 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-              >
-                {isCreating ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Plus className="w-4 h-4" />
-                )}
-                {isCreating ? 'Creating...' : 'Blank Project'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {projectsWithMilestones.length === 0 && !loading && (
-          <Card className="text-center py-12">
-            <div className="text-4xl mb-4">🚀</div>
-            <h3 className="text-lg font-semibold text-white mb-2">No projects yet</h3>
-            <p className="text-sm text-slate-400 mb-6">
-              Let&apos;s find something to build.
-            </p>
-            <div className="flex flex-col gap-3 max-w-xs mx-auto">
-              <Link href="/path-finder" className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
-                <Button variant="primary" className="w-full" tabIndex={-1}>
-                  <Compass className="w-4 h-4 mr-2" />
-                  Find Your Path
-                </Button>
-              </Link>
-              <Button variant="secondary" onClick={handleCreateProject} isLoading={isCreating} loadingText="Creating project...">
-                <Plus className="w-4 h-4 mr-2" />
-                Blank Project
+      <main className="max-w-xl mx-auto px-5 py-6 space-y-5">
+        <Card className="bg-slate-800/50 border-slate-700/50">
+          <p className="text-sm text-slate-300">
+            Daily execution lives on the <span className="text-teal-300">Today</span> focus card.
+            Open this workspace only when you need to reorganize projects or milestones.
+          </p>
+          <div className="mt-4 flex flex-col sm:flex-row gap-3">
+            <Link href="/" className="sm:flex-1">
+              <Button variant="primary" className="w-full">
+                Back to Focus
+                <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-            </div>
-          </Card>
+            </Link>
+            <Link href="/path-finder" className="sm:flex-1">
+              <Button variant="secondary" className="w-full">
+                <Compass className="w-4 h-4 mr-2" />
+                Path Finder
+              </Button>
+            </Link>
+          </div>
+        </Card>
+
+        <Card className="bg-slate-800/40 border-slate-700/50">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              variant="ghost"
+              className="sm:flex-1"
+              onClick={() => setShowWorkspace(!showWorkspace)}
+            >
+              <FolderKanban className="w-4 h-4 mr-2" />
+              {showWorkspace ? 'Hide Project Workspace' : `Show Project Workspace (${workspaceProjects.length})`}
+            </Button>
+            <Button
+              variant="secondary"
+              className="sm:flex-1"
+              onClick={handleCreateProject}
+              isLoading={isCreating}
+              loadingText="Creating project..."
+            >
+              {isCreating ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4 mr-2" />
+              )}
+              New Project
+            </Button>
+          </div>
+        </Card>
+
+        {showWorkspace && (
+          <motion.section
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-3"
+          >
+            {isLoadingFocus && (
+              <Card className="text-center py-8">
+                <p className="text-slate-400 text-sm">Loading project workspace...</p>
+              </Card>
+            )}
+
+            {!isLoadingFocus && workspaceProjects.length === 0 && !loading && (
+              <Card className="text-center py-10">
+                <p className="text-slate-200">No projects yet.</p>
+                <p className="text-slate-500 text-sm mt-1">Create one here or via Path Finder.</p>
+              </Card>
+            )}
+
+            {!isLoadingFocus && workspaceProjects.map(project => (
+              <Card key={project.id} className="bg-slate-800/60 border-slate-700/60">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-lg text-slate-100 font-medium truncate">{project.name}</h2>
+                    {project.focusMilestone ? (
+                      <p className="mt-2 text-sm text-slate-300 flex items-center gap-2">
+                        <Target className="w-4 h-4 text-teal-300 flex-shrink-0" />
+                        <span className="truncate">{project.focusMilestone.title}</span>
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-sm text-slate-500">No focus milestone selected yet.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                  {project.focusMilestone ? (
+                    <Link
+                      href={`/projects/${project.id}/milestone/${project.focusMilestone.id}`}
+                      className="sm:flex-1"
+                    >
+                      <Button variant="primary" className="w-full">
+                        Open Focus
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Link href="/path-finder" className="sm:flex-1">
+                      <Button variant="primary" className="w-full">
+                        Set Focus in Path Finder
+                      </Button>
+                    </Link>
+                  )}
+
+                  <Link href={`/projects/${project.id}`} className="sm:flex-1">
+                    <Button variant="ghost" className="w-full">
+                      Manage Structure
+                    </Button>
+                  </Link>
+                </div>
+              </Card>
+            ))}
+          </motion.section>
         )}
       </main>
 
-      {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0">
         <BottomNavigation />
       </div>

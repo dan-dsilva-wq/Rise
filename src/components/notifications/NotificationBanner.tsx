@@ -6,6 +6,7 @@ import { Bell, Loader2 } from 'lucide-react'
 import { usePushNotifications } from '@/lib/hooks/usePushNotifications'
 
 const DISMISSED_KEY = 'rise:notification-banner-dismissed'
+const HAS_VAPID_KEY = Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
 
 export function NotificationBanner() {
   const { supported, permission, syncing, error, setError, enable } = usePushNotifications()
@@ -16,7 +17,7 @@ export function NotificationBanner() {
     setDismissed(localStorage.getItem(DISMISSED_KEY) === '1')
   }, [])
 
-  const visible = supported && permission === 'default' && !dismissed
+  const visible = supported && HAS_VAPID_KEY && permission === 'default' && !dismissed
 
   function handleDismiss() {
     localStorage.setItem(DISMISSED_KEY, '1')
@@ -72,7 +73,7 @@ export function NotificationBanner() {
               </div>
             </div>
             {error && (
-              <p className="mt-2 text-xs text-red-300 pl-13">{error}</p>
+              <p className="mt-2 text-xs text-red-300 pl-[3.25rem]">{error}</p>
             )}
           </div>
         </motion.div>

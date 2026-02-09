@@ -6,6 +6,7 @@ import { ArrowRight, CheckCircle2, Compass, Moon, Sparkles, Target } from 'lucid
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { MorningCheckIn } from '@/components/morning/MorningCheckIn'
+import { NotificationBanner } from '@/components/notifications/NotificationBanner'
 import { Button } from '@/components/ui/Button'
 import { useUser } from '@/lib/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
@@ -363,6 +364,8 @@ export function DashboardContent({
             />
           </div>
         )}
+
+        <NotificationBanner />
 
         <section className="min-h-[56vh] flex flex-col justify-center">
           <div className="text-center mb-6">

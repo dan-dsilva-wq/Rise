@@ -221,7 +221,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
         // Batch-fetch step counts for all milestones in this project
         const milestoneIds = milestones.map(m => m.id)
-        let stepCountMap: Record<string, { total: number; completed: number }> = {}
+        const stepCountMap: Record<string, { total: number; completed: number }> = {}
         if (milestoneIds.length > 0) {
           const { data: stepsData } = await client
             .from('milestone_steps')

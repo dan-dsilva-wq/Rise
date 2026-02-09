@@ -13,11 +13,15 @@ interface MilestoneWithProject extends Milestone {
 }
 
 export default async function MilestoneModePage({
-  params
+  params,
+  searchParams,
 }: {
   params: Promise<{ id: string; milestoneId: string }>
+  searchParams: Promise<{ mode?: string }>
 }) {
   const { id: projectId, milestoneId } = await params
+  const resolvedSearchParams = await searchParams
+  const initialApproach = resolvedSearchParams.mode === 'do-it' ? 'do-it' : 'guide'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -217,6 +221,7 @@ export default async function MilestoneModePage({
       milestone={milestoneWithProject}
       initialConversation={conversation}
       initialMessages={messages}
+      initialApproach={initialApproach}
       contextualOpener={contextualOpener}
       contextualQuickPrompts={contextualQuickPrompts}
     />

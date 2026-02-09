@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Loader2, User, Zap, ArrowLeft, CheckCircle, Target, Circle, ChevronDown, ChevronUp, Sparkles, Compass, AlertCircle, RotateCcw, Copy } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { useMilestoneConversation } from '@/lib/hooks/useMilestoneConversation'
 import { createClient } from '@/lib/supabase/client'
 import { addDebugLog } from '@/components/ui/ConnectionStatus'
+import { rebalanceMilestoneFocusPipeline } from '@/lib/milestones/focusPipeline'
 import type { Milestone, Project, MilestoneConversation, MilestoneMessage, MilestoneStep } from '@/lib/supabase/types'
 import type { OrchestrationDispatchRecord, OrchestrationDispatchStatus } from '@/types/orchestration'
 
@@ -18,6 +19,14 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   isError?: boolean
+}
+
+interface MilestoneAction {
+  type: 'complete_step' | 'complete_milestone'
+  milestoneId?: string
+  stepId?: string
+  stepText?: string
+  stepNumber?: number
 }
 
 interface MilestoneWithProject extends Milestone {
@@ -31,11 +40,14 @@ interface MilestoneModeChatProps {
   milestone: MilestoneWithProject
   initialConversation?: MilestoneConversation | null
   initialMessages?: MilestoneMessage[]
+  initialApproach?: Approach
   /** Server-generated contextual opener (memory-aware, replaces static template) */
   contextualOpener?: string | null
   /** Context-aware quick prompts (generated alongside opener) */
   contextualQuickPrompts?: string[] | null
 }
+
+const AUTO_DO_IT_KICKOFF_MARKER = '[AUTO_DO_IT_KICKOFF]'
 
 const INITIAL_MESSAGE = (milestoneName: string, currentStep?: string) => {
   if (currentStep) {
@@ -57,10 +69,11 @@ export function MilestoneModeChat({
   milestone,
   initialConversation,
   initialMessages,
+  initialApproach = 'guide',
   contextualOpener,
   contextualQuickPrompts,
 }: MilestoneModeChatProps) {
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
 
@@ -76,20 +89,24 @@ export function MilestoneModeChat({
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [approach, setApproach] = useState<Approach>('guide')
+  const [approach, setApproach] = useState<Approach>(initialApproach)
   const [initialized, setInitialized] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [dispatchNotice, setDispatchNotice] = useState<string | null>(null)
+  const [actionNotice, setActionNotice] = useState<string | null>(null)
   const [dispatching, setDispatching] = useState(false)
   const [dispatchHistoryOpen, setDispatchHistoryOpen] = useState(false)
   const [dispatches, setDispatches] = useState<OrchestrationDispatchRecord[]>([])
   const [steps, setSteps] = useState<MilestoneStep[]>(milestone.steps || [])
   const [showSteps, setShowSteps] = useState(true)
   const [celebratingStep, setCelebratingStep] = useState<string | null>(null)
+  const [autoFocusedStepId, setAutoFocusedStepId] = useState<string | null>(null)
+  const [doItKickoffTriggered, setDoItKickoffTriggered] = useState(false)
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const stepRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   // Calculate step progress
   const completedSteps = steps.filter(s => s.is_completed).length
@@ -161,16 +178,24 @@ export function MilestoneModeChat({
           role: m.role,
           content: m.content,
         })))
+        if (initialMessages.some(m => m.role === 'user')) {
+          setDoItKickoffTriggered(true)
+        }
       } else {
-        // New conversation - use contextual opener if available, fall back to static template
-        const initialContent = contextualOpener || INITIAL_MESSAGE(milestone.title, currentStep?.text)
-        setMessages([{
-          id: 'initial',
-          role: 'assistant',
-          content: initialContent,
-        }])
-        // Save initial message
-        saveMessage('assistant', initialContent)
+        if (initialApproach === 'do-it') {
+          // Let do-it mode generate the first assistant message proactively.
+          setMessages([])
+        } else {
+          // New conversation - use contextual opener if available, fall back to static template
+          const initialContent = contextualOpener || INITIAL_MESSAGE(milestone.title, currentStep?.text)
+          setMessages([{
+            id: 'initial',
+            role: 'assistant',
+            content: initialContent,
+          }])
+          // Save initial message
+          saveMessage('assistant', initialContent)
+        }
       }
       setCurrentDirect(initialConversation, initialMessages)
       setInitialized(true)
@@ -188,19 +213,27 @@ export function MilestoneModeChat({
           role: m.role,
           content: m.content,
         })))
+        if (currentConversation.messages.some(m => m.role === 'user')) {
+          setDoItKickoffTriggered(true)
+        }
       } else {
-        // New conversation - use contextual opener if available, fall back to static template
-        const initialContent = contextualOpener || INITIAL_MESSAGE(milestone.title, currentStep?.text)
-        setMessages([{
-          id: 'initial',
-          role: 'assistant',
-          content: initialContent,
-        }])
-        saveMessage('assistant', initialContent)
+        if (initialApproach === 'do-it') {
+          // Let do-it mode generate the first assistant message proactively.
+          setMessages([])
+        } else {
+          // New conversation - use contextual opener if available, fall back to static template
+          const initialContent = contextualOpener || INITIAL_MESSAGE(milestone.title, currentStep?.text)
+          setMessages([{
+            id: 'initial',
+            role: 'assistant',
+            content: initialContent,
+          }])
+          saveMessage('assistant', initialContent)
+        }
       }
     }
     setInitialized(true)
-  }, [initialized, hasInitialData, initialMessages, initialConversation, convoLoading, currentConversation, milestone.title, currentStep?.text, contextualOpener, saveMessage, setCurrentDirect])
+  }, [initialized, hasInitialData, initialMessages, initialConversation, convoLoading, currentConversation, milestone.title, currentStep?.text, contextualOpener, saveMessage, setCurrentDirect, initialApproach])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -228,6 +261,257 @@ export function MilestoneModeChat({
 
     void fetchDispatches()
   }, [milestone.project_id, milestone.id])
+
+  const conversationId = currentConversation?.id
+
+  useEffect(() => {
+    if (!conversationId) return
+    client
+      .from('milestone_conversations')
+      .update({ approach, updated_at: new Date().toISOString() })
+      .eq('id', conversationId)
+      .then(() => {})
+  }, [approach, conversationId, client])
+
+  const showTransientNotice = useCallback((text: string, ms = 4500) => {
+    setActionNotice(text)
+    setTimeout(() => setActionNotice(null), ms)
+  }, [])
+
+  const buildProjectContext = useCallback(() => ({
+    name: milestone.project.name,
+    description: milestone.project.description,
+    status: milestone.project.status,
+    milestones: milestone.allMilestones.map(m => ({
+      id: m.id,
+      title: m.title,
+      status: m.status,
+      sort_order: m.sort_order,
+    })),
+  }), [milestone.project.name, milestone.project.description, milestone.project.status, milestone.allMilestones])
+
+  const buildMilestoneContext = useCallback(() => {
+    const context: {
+      id: string
+      title: string
+      description: string | null
+      status: string
+      currentStep?: {
+        text: string
+        stepNumber: number
+        totalSteps: number
+        completedSteps: number
+      }
+    } = {
+      id: milestone.id,
+      title: milestone.title,
+      description: milestone.description,
+      status: milestone.status,
+    }
+
+    if (currentStep && steps.length > 0) {
+      const stepNumber = steps.findIndex(s => s.id === currentStep.id) + 1
+      context.currentStep = {
+        text: currentStep.text,
+        stepNumber,
+        totalSteps: steps.length,
+        completedSteps,
+      }
+    }
+
+    return context
+  }, [milestone.id, milestone.title, milestone.description, milestone.status, currentStep, steps, completedSteps])
+
+  const markMilestoneComplete = useCallback(async () => {
+    const { error } = await client
+      .from('milestones')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', milestone.id)
+
+    if (error) throw error
+
+    await rebalanceMilestoneFocusPipeline(client, milestone.project_id)
+  }, [client, milestone.id, milestone.project_id])
+
+  const applyMilestoneActions = useCallback(async (actions?: MilestoneAction[]) => {
+    if (!actions || actions.length === 0) return
+
+    const now = new Date().toISOString()
+    const nextSteps = [...steps]
+    let completedByTagCount = 0
+    let completedMilestoneByTag = false
+
+    for (const action of actions) {
+      if (action.type === 'complete_step') {
+        const normalizedStepText = action.stepText?.trim().toLowerCase()
+        let targetIndex = -1
+
+        if (action.stepId) {
+          targetIndex = nextSteps.findIndex(step => step.id === action.stepId)
+        }
+
+        if (targetIndex === -1 && action.stepNumber && action.stepNumber > 0) {
+          const index = action.stepNumber - 1
+          if (index >= 0 && index < nextSteps.length) targetIndex = index
+        }
+
+        if (targetIndex === -1 && normalizedStepText) {
+          targetIndex = nextSteps.findIndex(
+            step => step.text.trim().toLowerCase() === normalizedStepText
+          )
+        }
+
+        if (targetIndex === -1 && normalizedStepText) {
+          targetIndex = nextSteps.findIndex(step => step.text.trim().toLowerCase().includes(normalizedStepText))
+        }
+
+        if (targetIndex === -1) {
+          targetIndex = nextSteps.findIndex(step => !step.is_completed)
+        }
+
+        if (targetIndex === -1) continue
+
+        const step = nextSteps[targetIndex]
+        if (step.is_completed) continue
+
+        nextSteps[targetIndex] = {
+          ...step,
+          is_completed: true,
+          completed_at: now,
+          updated_at: now,
+        }
+
+        const { error } = await client
+          .from('milestone_steps')
+          .update({
+            is_completed: true,
+            completed_at: now,
+            updated_at: now,
+          })
+          .eq('id', step.id)
+
+        if (error) {
+          console.error('Failed to complete step from AI action:', error)
+          continue
+        }
+
+        completedByTagCount += 1
+      }
+
+      if (action.type === 'complete_milestone') {
+        const requestedMilestoneId = action.milestoneId || milestone.id
+        if (requestedMilestoneId !== milestone.id) continue
+
+        try {
+          await markMilestoneComplete()
+          completedMilestoneByTag = true
+        } catch (error) {
+          console.error('Failed to complete milestone from AI action:', error)
+        }
+      }
+    }
+
+    if (completedByTagCount > 0) {
+      setSteps(nextSteps)
+      const nextIncomplete = nextSteps.find(step => !step.is_completed)
+
+      if (nextIncomplete) {
+        setAutoFocusedStepId(nextIncomplete.id)
+        setShowSteps(true)
+        setTimeout(() => {
+          stepRefs.current[nextIncomplete.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 150)
+        setTimeout(() => setAutoFocusedStepId(null), 4000)
+        showTransientNotice(`Marked ${completedByTagCount} step${completedByTagCount === 1 ? '' : 's'} complete. Next step is highlighted.`)
+      } else {
+        showTransientNotice(`Marked ${completedByTagCount} step${completedByTagCount === 1 ? '' : 's'} complete.`)
+      }
+    }
+
+    if (completedMilestoneByTag) {
+      addDebugLog('success', 'Milestone completed by AI action', milestone.title)
+      setShowSuccess(true)
+      showTransientNotice('Milestone marked complete and focus pipeline updated.')
+    }
+  }, [steps, milestone.id, milestone.title, client, markMilestoneComplete, showTransientNotice])
+
+  useEffect(() => {
+    const hasUserMessage = messages.some(message => message.role === 'user')
+    if (hasUserMessage) {
+      setDoItKickoffTriggered(true)
+      return
+    }
+
+    if (!initialized || convoLoading || isLoading) return
+    if (approach !== 'do-it') return
+    if (doItKickoffTriggered) return
+
+    setDoItKickoffTriggered(true)
+
+    const kickoff = async () => {
+      setIsLoading(true)
+      try {
+        const response = await fetch('/api/milestone-mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: AUTO_DO_IT_KICKOFF_MARKER }],
+            milestone: buildMilestoneContext(),
+            project: buildProjectContext(),
+            approach: 'do-it',
+          }),
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(errorText || `Kickoff failed (${response.status})`)
+        }
+
+        const data = await response.json() as { message: string; actions?: MilestoneAction[] }
+        const kickoffMessage: Message = {
+          id: `assistant-kickoff-${Date.now()}`,
+          role: 'assistant',
+          content: data.message,
+        }
+
+        setMessages(prev => {
+          if (prev.length === 1 && prev[0].role === 'assistant' && prev[0].id === 'initial') {
+            return [kickoffMessage]
+          }
+          return [...prev, kickoffMessage]
+        })
+
+        if (currentConversation) {
+          await saveMessage('assistant', kickoffMessage.content)
+        }
+
+        await applyMilestoneActions(data.actions)
+      } catch (error) {
+        console.error('Do-it kickoff failed:', error)
+        showTransientNotice('Could not auto-start do-it mode. Send a message to continue.', 5000)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void kickoff()
+  }, [
+    approach,
+    initialized,
+    convoLoading,
+    isLoading,
+    doItKickoffTriggered,
+    messages,
+    currentConversation,
+    saveMessage,
+    applyMilestoneActions,
+    buildMilestoneContext,
+    buildProjectContext,
+    showTransientNotice,
+  ])
 
   const handleCopyDispatchPrompt = async (prompt: string) => {
     try {
@@ -349,48 +633,8 @@ export function MilestoneModeChat({
     try {
       addDebugLog('info', 'Calling milestone-mode API')
 
-      // Build project context for the API
-      const projectContext = {
-        name: milestone.project.name,
-        description: milestone.project.description,
-        status: milestone.project.status,
-        milestones: milestone.allMilestones.map(m => ({
-          id: m.id,
-          title: m.title,
-          status: m.status,
-          sort_order: m.sort_order,
-        })),
-      }
-
-      // Build milestone context with current step info
-      const milestoneContext: {
-        id: string
-        title: string
-        description: string | null
-        status: string
-        currentStep?: {
-          text: string
-          stepNumber: number
-          totalSteps: number
-          completedSteps: number
-        }
-      } = {
-        id: milestone.id,
-        title: milestone.title,
-        description: milestone.description,
-        status: milestone.status,
-      }
-
-      // Add current step context if we have steps
-      if (currentStep && steps.length > 0) {
-        const stepNumber = steps.findIndex(s => s.id === currentStep.id) + 1
-        milestoneContext.currentStep = {
-          text: currentStep.text,
-          stepNumber,
-          totalSteps: steps.length,
-          completedSteps,
-        }
-      }
+      const projectContext = buildProjectContext()
+      const milestoneContext = buildMilestoneContext()
 
       const response = await fetch('/api/milestone-mode', {
         method: 'POST',
@@ -412,7 +656,7 @@ export function MilestoneModeChat({
         throw new Error(`API error: ${response.status}`)
       }
 
-      const data = await response.json()
+      const data = await response.json() as { message: string; actions?: MilestoneAction[] }
       addDebugLog('success', 'AI response received')
 
       const assistantMessage: Message = {
@@ -422,6 +666,7 @@ export function MilestoneModeChat({
       }
 
       setMessages(prev => [...prev, assistantMessage])
+      await applyMilestoneActions(data.actions)
 
       // Save assistant message
       if (currentConversation) {
@@ -469,15 +714,7 @@ export function MilestoneModeChat({
 
   const handleMarkComplete = async () => {
     try {
-      const { error } = await client
-        .from('milestones')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', milestone.id)
-
-      if (error) throw error
+      await markMilestoneComplete()
 
       setShowSuccess(true)
       addDebugLog('success', 'Milestone completed!', milestone.title)
@@ -650,10 +887,12 @@ export function MilestoneModeChat({
                   {steps.map((step, index) => {
                     const isCurrentStep = currentStep?.id === step.id
                     const isCelebrating = celebratingStep === step.id
+                    const isAutoFocused = autoFocusedStepId === step.id
 
                     return (
                       <motion.button
                         key={step.id}
+                        ref={el => { stepRefs.current[step.id] = el }}
                         onClick={() => toggleStep(step.id)}
                         className={`
                           w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all
@@ -663,6 +902,7 @@ export function MilestoneModeChat({
                               ? 'bg-slate-800/30 border border-slate-700/30'
                               : 'bg-slate-800/50 border border-slate-700/50 hover:border-slate-600'
                           }
+                          ${isAutoFocused ? 'ring-2 ring-teal-400/70 ring-offset-2 ring-offset-slate-900' : ''}
                         `}
                         whileTap={{ scale: 0.98 }}
                       >
@@ -826,6 +1066,19 @@ export function MilestoneModeChat({
             className="mx-4 my-2 px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm text-purple-200"
           >
             {dispatchNotice}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {actionNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mx-4 my-2 px-4 py-2 bg-teal-500/15 border border-teal-500/30 rounded-lg text-sm text-teal-200"
+          >
+            {actionNotice}
           </motion.div>
         )}
       </AnimatePresence>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Project, Milestone, ProjectInsert, ProjectUpdate, MilestoneInsert, MilestoneUpdate } from '@/lib/supabase/types'
+import { rebalanceMilestoneFocusPipeline } from '@/lib/milestones/focusPipeline'
 
 // Helper to get client - only call after mount (client-side)
 function getClient() {
@@ -280,18 +281,8 @@ export function useProject(
       return 0
     }
 
-    // Auto-promote: If completed milestone was active, promote first "next" to "active"
-    if (milestone.focus_level === 'active') {
-      const nextUp = milestones
-        .filter(m => m.focus_level === 'next' && m.status !== 'completed' && m.status !== 'discarded')
-        .sort((a, b) => a.sort_order - b.sort_order)
-
-      if (nextUp.length > 0) {
-        await client
-          .from('milestones')
-          .update({ focus_level: 'active' })
-          .eq('id', nextUp[0].id)
-      }
+    if (projectId) {
+      await rebalanceMilestoneFocusPipeline(client, projectId)
     }
 
     // Refresh data
@@ -318,6 +309,10 @@ export function useProject(
     if (error) {
       console.error('Error uncompleting milestone:', error)
       return 0
+    }
+
+    if (projectId) {
+      await rebalanceMilestoneFocusPipeline(client, projectId)
     }
 
     // Refresh data

@@ -19,6 +19,14 @@ interface ChatMessage {
   content: string
 }
 
+interface MilestoneAction {
+  type: 'complete_step' | 'complete_milestone'
+  milestoneId?: string
+  stepId?: string
+  stepText?: string
+  stepNumber?: number
+}
+
 interface ProjectContextInput {
   id: string
   name: string
@@ -43,6 +51,48 @@ interface MilestoneContext {
     totalSteps: number
     completedSteps: number
   }
+}
+
+const AUTO_DO_IT_KICKOFF_MARKER = '[AUTO_DO_IT_KICKOFF]'
+
+function parseTagBlocks(message: string, tag: string): Array<Record<string, string>> {
+  const blocks: Array<Record<string, string>> = []
+  const blockRegex = new RegExp(`\\[${tag}\\]([\\s\\S]*?)\\[\\/${tag}\\]`, 'gi')
+  let blockMatch: RegExpExecArray | null
+
+  while ((blockMatch = blockRegex.exec(message)) !== null) {
+    const fields: Record<string, string> = {}
+    const lines = (blockMatch[1] || '').split('\n')
+    let currentKey: string | null = null
+
+    for (const rawLine of lines) {
+      const line = rawLine
+        .trim()
+        .replace(/^[-*]\s+/, '')
+      if (!line) continue
+
+      const fieldMatch = line.match(/^`?([a-zA-Z0-9_]+)`?\s*[:=]\s*(.*)$/)
+      if (fieldMatch) {
+        currentKey = fieldMatch[1].toLowerCase()
+        fields[currentKey] = fieldMatch[2].trim()
+        continue
+      }
+
+      if (currentKey) {
+        fields[currentKey] = `${fields[currentKey]} ${line}`.trim()
+      }
+    }
+
+    blocks.push(fields)
+  }
+
+  return blocks
+}
+
+function extractUuid(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const uuidMatch = value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+  return uuidMatch?.[0]
 }
 
 // Generate dynamic expert persona based on ALL available context
@@ -104,6 +154,12 @@ export async function POST(request: NextRequest) {
       project: ProjectContextInput
       approach?: 'do-it' | 'guide'
     }
+
+    const sanitizedMessages = messages.filter(
+      msg => !(msg.role === 'user' && msg.content.trim() === AUTO_DO_IT_KICKOFF_MARKER)
+    )
+    const userMessageCount = sanitizedMessages.filter(msg => msg.role === 'user').length
+    const isDoItKickoff = approach === 'do-it' && userMessageCount === 0
 
     // Fetch AI context bank, unified memory, user thread, AND display name in parallel.
     // Memory and user thread use TTL-cached versions — during active milestone sessions
@@ -212,6 +268,12 @@ The user chose "Do it for me" mode. They want you to:
 3. **Be thorough** - Don't make them ask follow-up questions
 4. **Format for easy use** - Code in code blocks, content ready to copy
 
+${isDoItKickoff ? `## First Message Requirement (Important)
+This is the FIRST assistant turn in a fresh do-it-for-me session.
+Your entire response must be a concise, structured list of the questions you need answered before execution.
+Do not ask "what would you like me to do first?" and do not start doing the work yet.
+Group questions by category (Scope, Technical, Constraints, Preferences) and keep it brief.` : ''}
+
 ## Conversation Style
 - Start by asking what specifically they need done
 - After they answer, DELIVER the full solution
@@ -240,6 +302,21 @@ Want me to write the actual HTML/React code for this?"
 - Ask minimal questions, maximize output
 - If you can do it, do it. Don't ask "would you like me to..."
 - USE THE CONTEXT BANK above - don't ask about things we already know (tech stack, audience, etc.)
+
+## Completion Tags (Use When User Confirms Work Is Done)
+When the user explicitly confirms a step is complete, emit:
+[COMPLETE_STEP]
+step_id: <uuid if known, optional>
+step_number: <1-based step index if known, optional>
+step_text: <exact step text, optional>
+[/COMPLETE_STEP]
+
+When the user explicitly confirms the milestone is complete, emit:
+[COMPLETE_MILESTONE]
+milestone_id: ${milestone.id}
+[/COMPLETE_MILESTONE]
+
+Only emit completion tags after clear user confirmation.
 
 ## Learning New Things
 When you discover something new about the user or project (blockers, preferences, decisions), save it:
@@ -315,6 +392,21 @@ You: "Perfect. Let's start with the hero. What's the one thing you want visitors
 - Help them learn, not just get the answer
 - USE THE CONTEXT BANK above - reference what we already know to personalize guidance
 
+## Completion Tags (Use When User Confirms Work Is Done)
+When the user explicitly confirms a step is complete, emit:
+[COMPLETE_STEP]
+step_id: <uuid if known, optional>
+step_number: <1-based step index if known, optional>
+step_text: <exact step text, optional>
+[/COMPLETE_STEP]
+
+When the user explicitly confirms the milestone is complete, emit:
+[COMPLETE_MILESTONE]
+milestone_id: ${milestone.id}
+[/COMPLETE_MILESTONE]
+
+Only emit completion tags after clear user confirmation.
+
 ## Learning New Things
 When you discover something new about the user (blockers, preferences, how they learn best), save it:
 
@@ -332,10 +424,17 @@ Remember: They chose "Guide me" because they want to learn and grow.`
 
     const systemPrompt = approach === 'do-it' ? doItForMePrompt : guideMePrompt
 
-    const formattedMessages = messages.map(msg => ({
+    const formattedMessages = sanitizedMessages.map(msg => ({
       role: msg.role as 'user' | 'assistant',
       content: msg.content,
     }))
+
+    if (formattedMessages.length === 0) {
+      formattedMessages.push({
+        role: 'user',
+        content: 'Kick off this do-it-for-me session by asking your required execution questions.',
+      })
+    }
 
     const response = await getAnthropic().messages.create({
       model: 'claude-opus-4-5-20251101',
@@ -348,6 +447,32 @@ Remember: They chose "Guide me" because they want to learn and grow.`
       .filter(block => block.type === 'text')
       .map(block => (block as Anthropic.TextBlock).text)
       .join('\n')
+
+    const actions: MilestoneAction[] = []
+
+    for (const fields of parseTagBlocks(assistantMessage, 'COMPLETE_STEP')) {
+      const stepId = extractUuid(fields.step_id || fields.stepid || fields.id)
+      const stepText = fields.step_text?.trim() || fields.step?.trim() || fields.text?.trim()
+      const parsedStepNumber = fields.step_number ? parseInt(fields.step_number, 10) : NaN
+      const stepNumber = Number.isFinite(parsedStepNumber) && parsedStepNumber > 0 ? parsedStepNumber : undefined
+
+      if (stepId || stepText || stepNumber) {
+        actions.push({
+          type: 'complete_step',
+          stepId,
+          stepText,
+          stepNumber,
+        })
+      }
+    }
+
+    for (const fields of parseTagBlocks(assistantMessage, 'COMPLETE_MILESTONE')) {
+      const milestoneId = extractUuid(fields.milestone_id || fields.milestoneid || fields.id) || milestone.id
+      actions.push({
+        type: 'complete_milestone',
+        milestoneId,
+      })
+    }
 
     // Parse and save any insights from the response
     const extractedInsights = parseInsightTags(assistantMessage)
@@ -372,9 +497,19 @@ Remember: They chose "Guide me" because they want to learn and grow.`
 
     // Remove insight tags from visible message
     assistantMessage = stripInsightTags(assistantMessage)
+      .replace(/\[COMPLETE_STEP\][\s\S]*?\[\/COMPLETE_STEP\]/gi, '')
+      .replace(/\[COMPLETE_MILESTONE\][\s\S]*?\[\/COMPLETE_MILESTONE\]/gi, '')
+      .trim()
+
+    if (!assistantMessage) {
+      assistantMessage = actions.length > 0
+        ? 'Done. I updated your milestone progress.'
+        : 'Done.'
+    }
 
     return Response.json({
       message: assistantMessage,
+      actions: actions.length > 0 ? actions : undefined,
     })
   } catch (error) {
     console.error('Milestone Mode API error:', error)

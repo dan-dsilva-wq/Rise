@@ -105,6 +105,41 @@ function makeConversationExcerpt(
     .join('\n\n')
 }
 
+function trimLine(content: string, maxChars = 220): string {
+  const compact = content.replace(/\s+/g, ' ').trim()
+  if (compact.length <= maxChars) return compact
+  return `${compact.slice(0, maxChars - 1)}...`
+}
+
+function buildRelatedDiscussionSnippets(
+  rows: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  milestoneTitle: string
+): string[] {
+  if (!rows.length) return []
+
+  const titleTokens = milestoneTitle
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .map(token => token.trim())
+    .filter(token => token.length > 3)
+    .slice(0, 6)
+
+  const isRelevant = (content: string) => {
+    if (!titleTokens.length) return false
+    const lower = content.toLowerCase()
+    return titleTokens.some(token => lower.includes(token))
+  }
+
+  const filtered = rows
+    .filter(row => row.role !== 'system')
+    .filter(row => isRelevant(row.content))
+
+  const source = filtered.length > 0 ? filtered : rows.filter(row => row.role !== 'system')
+  return source
+    .slice(0, 6)
+    .map(row => `${row.role === 'user' ? 'User' : 'Rise'}: ${trimLine(row.content, 180)}`)
+}
+
 function buildWorkingStyle(facts: UserProfileFact[]): string {
   const preferenceFacts = facts
     .filter(fact => fact.category === 'preferences')
@@ -157,6 +192,8 @@ export async function assembleProjectContextForUser(
     factsResult,
     insightsResult,
     conversationResult,
+    doItConversationResult,
+    projectLogResult,
   ] = await Promise.all([
     supabase
       .from('projects')
@@ -206,6 +243,22 @@ export async function assembleProjectContextForUser(
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from('milestone_conversations')
+      .select('id')
+      .eq('milestone_id', milestoneId)
+      .eq('user_id', userId)
+      .eq('approach', 'do-it')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('project_logs')
+      .select('role, content')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20),
   ])
 
   if (projectResult.error || !projectResult.data) {
@@ -230,6 +283,14 @@ export async function assembleProjectContextForUser(
 
   if (insightsResult.error) {
     throw new Error(insightsResult.error.message)
+  }
+
+  if (doItConversationResult.error) {
+    throw new Error(doItConversationResult.error.message)
+  }
+
+  if (projectLogResult.error) {
+    throw new Error(projectLogResult.error.message)
   }
 
   const project = projectResult.data as Project
@@ -268,6 +329,20 @@ export async function assembleProjectContextForUser(
 
     conversationExcerpt = makeConversationExcerpt(
       (messageRows || []) as Array<{ role: 'user' | 'assistant'; content: string }>
+    )
+  }
+
+  let doItForMeConversation: string | undefined
+  if (doItConversationResult.data?.id) {
+    const { data: doItRows } = await supabase
+      .from('milestone_messages')
+      .select('role, content')
+      .eq('conversation_id', doItConversationResult.data.id)
+      .order('created_at', { ascending: false })
+      .limit(12)
+
+    doItForMeConversation = makeConversationExcerpt(
+      (doItRows || []) as Array<{ role: 'user' | 'assistant'; content: string }>
     )
   }
 
@@ -315,6 +390,17 @@ export async function assembleProjectContextForUser(
     .filter(ctx => ctx.context_type === 'requirements')
     .map(ctx => `${ctx.key}: ${ctx.value}`)
 
+  const contextBankEntries = projectContexts.map(ctx => ({
+    type: ctx.context_type,
+    key: ctx.key,
+    value: ctx.value,
+  }))
+
+  const relatedDiscussions = buildRelatedDiscussionSnippets(
+    ((projectLogResult.data || []) as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>),
+    milestone.title
+  )
+
   const stepCriteria = (remainingSteps.length > 0 ? remainingSteps : currentStep ? [currentStep.text] : [])
     .map(stepText => `Complete: ${stepText}`)
 
@@ -347,17 +433,19 @@ export async function assembleProjectContextForUser(
     relevantInsights,
     acceptanceCriteria,
     conversationExcerpt,
+    doItForMeConversation,
+    relatedDiscussions,
+    contextBankEntries,
   }
 }
 
 export function generateClaudeCodePrompt(context: ProjectContext): string {
   const lines: string[] = []
 
-  lines.push('You are Claude Code helping Rise execute a milestone task.')
-  lines.push('Use the context below as ground truth and do the work directly.')
+  lines.push('You are GPT Codex executing a Rise milestone task in this codebase.')
+  lines.push('Use the constraints below as ground truth and keep output focused on execution.')
   lines.push('')
   lines.push('## Project')
-  lines.push(`- ID: ${context.project.id}`)
   lines.push(`- Name: ${context.project.name}`)
   lines.push(`- Status: ${context.project.status}`)
   lines.push(`- Description: ${context.project.description || 'No description provided.'}`)
@@ -366,13 +454,15 @@ export function generateClaudeCodePrompt(context: ProjectContext): string {
   lines.push(`- Milestone: ${context.task.milestoneTitle}`)
   lines.push(`- Milestone Description: ${context.task.milestoneDescription || 'No description provided.'}`)
   lines.push(`- Current Step: ${context.task.currentStep}`)
+  if (context.task.remainingSteps.length > 0) {
+    lines.push('- Remaining Steps:')
+    context.task.remainingSteps.forEach(step => {
+      lines.push(`  - ${step}`)
+    })
+  } else {
+    lines.push('- Remaining Steps: None listed')
+  }
   lines.push(`- Execution Mode: ${context.task.mode}`)
-  lines.push(
-    `- Completed Steps: ${context.task.completedSteps.length > 0 ? context.task.completedSteps.join(' | ') : 'None'}`
-  )
-  lines.push(
-    `- Remaining Steps: ${context.task.remainingSteps.length > 0 ? context.task.remainingSteps.join(' | ') : 'None'}`
-  )
   lines.push('')
   lines.push('## Decisions To Respect')
   if (context.decisions.length === 0) {
@@ -383,46 +473,44 @@ export function generateClaudeCodePrompt(context: ProjectContext): string {
     })
   }
   lines.push('')
-  lines.push('## User Preferences')
-  lines.push(
-    `- Tech Comfort: ${context.userPreferences.techComfort.length > 0 ? context.userPreferences.techComfort.join(' | ') : 'Unknown'}`
-  )
-  lines.push(`- Working Style: ${context.userPreferences.workingStyle}`)
-  lines.push(
-    `- Avoid: ${context.userPreferences.avoid.length > 0 ? context.userPreferences.avoid.join(' | ') : 'None specified'}`
-  )
+  lines.push('## Context From Planning Conversation')
+  if (context.doItForMeConversation) {
+    lines.push(context.doItForMeConversation)
+  } else if (context.conversationExcerpt) {
+    lines.push(context.conversationExcerpt)
+  } else {
+    lines.push('- No planning conversation context found.')
+  }
   lines.push('')
-  lines.push('## Relevant Insights')
-  if (context.relevantInsights.length === 0) {
+  lines.push('## Technical Decisions & Constraints')
+  const technicalEntries = (context.contextBankEntries || [])
+    .filter(entry => entry.type === 'tech_stack' || entry.type === 'constraints' || entry.type === 'decisions' || entry.type === 'requirements')
+  if (technicalEntries.length === 0) {
     lines.push('- None captured yet.')
   } else {
-    context.relevantInsights.forEach(insight => {
-      lines.push(`- [${insight.type}] ${insight.content}`)
+    technicalEntries.slice(0, 12).forEach(entry => {
+      lines.push(`- [${entry.type}] ${entry.key}: ${entry.value}`)
     })
   }
   lines.push('')
-  lines.push('## Acceptance Criteria')
-  context.acceptanceCriteria.forEach(criteria => {
-    lines.push(`- ${criteria}`)
-  })
-
-  if (context.conversationExcerpt) {
-    lines.push('')
-    lines.push('## Conversation Excerpt')
-    lines.push(context.conversationExcerpt)
+  lines.push('## Related Discussions')
+  if (context.relatedDiscussions && context.relatedDiscussions.length > 0) {
+    context.relatedDiscussions.forEach(snippet => lines.push(`- ${snippet}`))
+  } else {
+    lines.push('- No related snippets found.')
   }
 
   lines.push('')
-  lines.push('## Execution Requirements')
-  lines.push('- Start with a short plan (2-5 bullets).')
-  lines.push('- Implement the change directly in the codebase.')
-  lines.push('- Run validation checks relevant to the changes.')
-  lines.push('- Return: files changed, what was done, and verification results.')
+  lines.push('## Acceptance Criteria')
+  context.acceptanceCriteria.forEach(criteria => lines.push(`- ${criteria}`))
   lines.push('')
-  lines.push('## Structured Context JSON')
-  lines.push('```json')
-  lines.push(JSON.stringify(context, null, 2))
-  lines.push('```')
+  lines.push('## Execution Requirements')
+  lines.push('- Implement the current step first, then align remaining steps if needed.')
+  lines.push('- If mode is do_it_for_me: execute changes directly.')
+  lines.push('- If mode is guide_me: implement minimally and provide clear next actions.')
+  lines.push('- Keep changes scoped to this milestone.')
+  lines.push('- Run relevant validation commands before finishing.')
+  lines.push('- Return: files changed, what was done, and verification results.')
 
   return lines.join('\n')
 }

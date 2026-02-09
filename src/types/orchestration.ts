@@ -30,6 +30,13 @@ export interface ProjectContext {
   relevantInsights: { type: OrchestrationInsightType; content: string }[]
   acceptanceCriteria: string[]
   conversationExcerpt?: string
+  doItForMeConversation?: string
+  relatedDiscussions?: string[]
+  contextBankEntries?: Array<{
+    type: 'tech_stack' | 'target_audience' | 'constraints' | 'decisions' | 'requirements'
+    key: string
+    value: string
+  }>
 }
 
 export interface OrchestrationDispatchRecord {

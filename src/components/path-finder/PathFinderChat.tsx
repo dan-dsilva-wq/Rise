@@ -9,6 +9,7 @@ import { useProfileFacts } from '@/lib/hooks/useProfileFacts'
 import { usePathFinderConversation } from '@/lib/hooks/usePathFinderConversation'
 import { createClient } from '@/lib/supabase/client'
 import { addDebugLog } from '@/components/ui/ConnectionStatus'
+import { rebalanceMilestoneFocusPipeline } from '@/lib/milestones/focusPipeline'
 import type { ProfileCategory, UserProfileFact } from '@/lib/supabase/types'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -670,6 +671,8 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             addDebugLog('error', 'Complete failed', updateError.message)
             results.push({ type: 'complete_milestone', text: `Failed to complete: ${updateError.message}` })
           } else {
+            await rebalanceMilestoneFocusPipeline(client, milestone.project_id)
+
             // Award XP
             if (milestone.xp_reward) {
               await client.rpc('increment_xp', {

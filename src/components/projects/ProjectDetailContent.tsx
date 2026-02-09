@@ -54,6 +54,7 @@ export function ProjectDetailContent({
     promoteIdea,
     addIdea,
     setFocusLevel,
+    refresh,
   } = useProject(initialProject?.id, user?.id, initialProject, initialMilestones)
 
   const [showMenu, setShowMenu] = useState(false)
@@ -75,6 +76,9 @@ export function ProjectDetailContent({
   const [isSaving, setIsSaving] = useState(false)
   const [isAddingMilestone, setIsAddingMilestone] = useState(false)
   const [isAddingIdea, setIsAddingIdea] = useState(false)
+  const [isReorganizing, setIsReorganizing] = useState(false)
+  const [reorganizeSummary, setReorganizeSummary] = useState<string | null>(null)
+  const [reorganizeRationale, setReorganizeRationale] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   // Use data from hook - it's initialized with server data
@@ -281,6 +285,41 @@ export function ProjectDetailContent({
     }
   }
 
+  const handleReorganizeMilestones = async () => {
+    if (!currentProject || isReorganizing) return
+
+    setIsReorganizing(true)
+    setReorganizeSummary(null)
+    setReorganizeRationale(null)
+
+    try {
+      const response = await fetch('/api/projects/reorganize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: currentProject.id }),
+      })
+
+      const data = await response.json() as { summary?: string; rationale?: string; error?: string }
+
+      if (!response.ok) {
+        throw new Error(data.error || `Reorganize failed (${response.status})`)
+      }
+
+      const summary = data.summary || 'Milestones reorganized.'
+      setReorganizeSummary(summary)
+      setReorganizeRationale(data.rationale || null)
+      setSuccessToast(summary)
+      setTimeout(() => setSuccessToast(null), 3500)
+      await refresh()
+    } catch (error) {
+      console.error('Failed to reorganize milestones:', error)
+      setErrorToast(error instanceof Error ? error.message : 'Failed to reorganize milestones')
+      setTimeout(() => setErrorToast(null), 5000)
+    } finally {
+      setIsReorganizing(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 pb-24">
       {/* Header */}
@@ -464,6 +503,30 @@ export function ProjectDetailContent({
 
         {/* Milestones */}
         <Card>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+              Milestones
+            </h2>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleReorganizeMilestones}
+              isLoading={isReorganizing}
+              loadingText="Organizing..."
+            >
+              {isReorganizing ? 'Organizing...' : 'AI Organize'}
+            </Button>
+          </div>
+
+          {reorganizeSummary && (
+            <div className="mb-4 rounded-lg border border-teal-500/20 bg-teal-500/10 px-3 py-2">
+              <p className="text-sm text-teal-200">{reorganizeSummary}</p>
+              {reorganizeRationale && (
+                <p className="mt-1 text-xs text-teal-100/80">{reorganizeRationale}</p>
+              )}
+            </div>
+          )}
+
           <MilestoneList
             milestones={currentMilestones}
             projectId={currentProject.id}
@@ -478,7 +541,7 @@ export function ProjectDetailContent({
             onDelete={deleteMilestone}
             showAddButton
             isEditable
-            useBottomSheet
+            useBottomSheet={false}
           />
 
           {/* Add Milestone Form */}

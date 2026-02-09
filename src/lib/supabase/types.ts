@@ -752,8 +752,9 @@ export interface Database {
           insight_type: 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
           content: string
           importance: number
+          fills_gap: string | null
           source_conversation_id: string | null
-          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin'
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer'
           created_at: string
           expires_at: string | null
           is_active: boolean
@@ -766,8 +767,9 @@ export interface Database {
           insight_type: 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
           content: string
           importance?: number
+          fills_gap?: string | null
           source_conversation_id?: string | null
-          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin'
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer'
           created_at?: string
           expires_at?: string | null
           is_active?: boolean
@@ -780,11 +782,217 @@ export interface Database {
           insight_type?: 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
           content?: string
           importance?: number
+          fills_gap?: string | null
           source_conversation_id?: string | null
-          source_ai?: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin'
+          source_ai?: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer'
           created_at?: string
           expires_at?: string | null
           is_active?: boolean
+        }
+      }
+      conversation_summaries: {
+        Row: {
+          id: string
+          user_id: string
+          conversation_key: string
+          source_hash: string
+          source_message_count: number
+          summary: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          conversation_key: string
+          source_hash: string
+          source_message_count?: number
+          summary: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          conversation_key?: string
+          source_hash?: string
+          source_message_count?: number
+          summary?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_understanding: {
+        Row: {
+          id: string
+          user_id: string
+          background: Json
+          current_situation: Json
+          values: string[]
+          motivations: string[]
+          definition_of_success: string | null
+          strengths: string[]
+          blockers: string[]
+          work_style: Json
+          unknown_questions: string[]
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          background?: Json
+          current_situation?: Json
+          values?: string[]
+          motivations?: string[]
+          definition_of_success?: string | null
+          strengths?: string[]
+          blockers?: string[]
+          work_style?: Json
+          unknown_questions?: string[]
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          background?: Json
+          current_situation?: Json
+          values?: string[]
+          motivations?: string[]
+          definition_of_success?: string | null
+          strengths?: string[]
+          blockers?: string[]
+          work_style?: Json
+          unknown_questions?: string[]
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      patterns: {
+        Row: {
+          id: string
+          user_id: string
+          pattern_type: string
+          description: string
+          evidence: Json
+          confidence: number
+          first_detected: string
+          last_confirmed: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          pattern_type: string
+          description: string
+          evidence?: Json
+          confidence?: number
+          first_detected?: string
+          last_confirmed?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          pattern_type?: string
+          description?: string
+          evidence?: Json
+          confidence?: number
+          first_detected?: string
+          last_confirmed?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      proactive_questions: {
+        Row: {
+          id: string
+          user_id: string
+          gap_identified: string
+          question: string
+          sent_at: string | null
+          opened_at: string | null
+          answered_at: string | null
+          answer: string | null
+          insight_generated: string | null
+          quality_score: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          gap_identified: string
+          question: string
+          sent_at?: string | null
+          opened_at?: string | null
+          answered_at?: string | null
+          answer?: string | null
+          insight_generated?: string | null
+          quality_score?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          gap_identified?: string
+          question?: string
+          sent_at?: string | null
+          opened_at?: string | null
+          answered_at?: string | null
+          answer?: string | null
+          insight_generated?: string | null
+          quality_score?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      push_subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          expiration_time: number | null
+          user_agent: string | null
+          is_active: boolean
+          last_success_at: string | null
+          last_error: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+          expiration_time?: number | null
+          user_agent?: string | null
+          is_active?: boolean
+          last_success_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          endpoint?: string
+          p256dh?: string
+          auth?: string
+          expiration_time?: number | null
+          user_agent?: string | null
+          is_active?: boolean
+          last_success_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
         }
       }
     }
@@ -897,4 +1105,20 @@ export type AiInsight = Database['public']['Tables']['ai_insights']['Row']
 export type AiInsightInsert = Database['public']['Tables']['ai_insights']['Insert']
 export type AiInsightUpdate = Database['public']['Tables']['ai_insights']['Update']
 export type InsightType = 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
-export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin'
+export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer'
+
+// Intelligence layer types
+export type ConversationSummary = Database['public']['Tables']['conversation_summaries']['Row']
+export type ConversationSummaryInsert = Database['public']['Tables']['conversation_summaries']['Insert']
+export type UserUnderstanding = Database['public']['Tables']['user_understanding']['Row']
+export type UserUnderstandingInsert = Database['public']['Tables']['user_understanding']['Insert']
+export type UserUnderstandingUpdate = Database['public']['Tables']['user_understanding']['Update']
+export type BehaviorPattern = Database['public']['Tables']['patterns']['Row']
+export type BehaviorPatternInsert = Database['public']['Tables']['patterns']['Insert']
+export type BehaviorPatternUpdate = Database['public']['Tables']['patterns']['Update']
+export type ProactiveQuestion = Database['public']['Tables']['proactive_questions']['Row']
+export type ProactiveQuestionInsert = Database['public']['Tables']['proactive_questions']['Insert']
+export type ProactiveQuestionUpdate = Database['public']['Tables']['proactive_questions']['Update']
+export type PushSubscription = Database['public']['Tables']['push_subscriptions']['Row']
+export type PushSubscriptionInsert = Database['public']['Tables']['push_subscriptions']['Insert']
+export type PushSubscriptionUpdate = Database['public']['Tables']['push_subscriptions']['Update']

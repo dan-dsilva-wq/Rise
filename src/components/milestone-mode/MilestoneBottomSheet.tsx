@@ -21,6 +21,7 @@ interface MilestoneBottomSheetProps {
 }
 
 type Mode = 'loading' | 'steps' | 'chat'
+const AUTO_DO_IT_KICKOFF_MARKER = '[AUTO_DO_IT_KICKOFF]'
 
 export function MilestoneBottomSheet({
   milestone,
@@ -131,12 +132,53 @@ export function MilestoneBottomSheet({
     setMode('chat')
     setExpanded(true)
 
-    // Add initial system message
-    const systemMessage = approach === 'do-it'
-      ? `I'll help you complete "${milestone?.title}". Let me work through this step by step and give you exactly what you need. What would you like me to do first?`
-      : `I'll guide you through "${milestone?.title}" step by step. I'll explain each part so you understand the process. What's the first thing you'd like to tackle?`
+    if (approach === 'do-it' && milestone && project) {
+      setIsLoading(true)
+      setChatError(null)
+      try {
+        const response = await fetch('/api/milestone-mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: AUTO_DO_IT_KICKOFF_MARKER }],
+            milestone: {
+              id: milestone.id,
+              title: milestone.title,
+              description: milestone.description,
+              status: milestone.status,
+            },
+            project: {
+              name: project.name,
+              description: project.description,
+              status: project.status,
+              milestones: allMilestones.map(m => ({
+                id: m.id,
+                title: m.title,
+                status: m.status,
+                sort_order: m.sort_order,
+              })),
+            },
+            approach: 'do-it',
+          }),
+        })
 
-    await addMessage('assistant', systemMessage)
+        if (!response.ok) throw new Error('Failed to generate kickoff questions')
+        const data = await response.json() as { message: string }
+        await addMessage('assistant', data.message)
+      } catch (err) {
+        console.error('Failed to auto-start do-it conversation:', err)
+        await addMessage(
+          'assistant',
+          `Before I execute "${milestone.title}", I need a few details: scope, technical preferences, constraints, and definition of done.`
+        )
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
+
+    const guideMessage = `I'll guide you through "${milestone?.title}" step by step. I'll explain each part so you understand the process. What's the first thing you'd like to tackle?`
+    await addMessage('assistant', guideMessage)
   }
 
   const handleSendMessage = async () => {

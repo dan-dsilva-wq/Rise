@@ -81,7 +81,11 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
       body: JSON.stringify({ text }),
     })
 
-    if (!res.ok) throw new Error('TTS failed')
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      console.error('TTS API error:', errData)
+      throw new Error(errData.error || 'TTS failed')
+    }
     const audioBlob = await res.blob()
     return audioBlob
   }, [])

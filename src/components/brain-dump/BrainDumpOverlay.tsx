@@ -130,8 +130,8 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
         try {
           const audioBlob = await speakText(aiText)
           await playAudio(audioBlob)
-        } catch {
-          // TTS failure is non-critical — user can still read the response
+        } catch (ttsErr) {
+          console.error('TTS error:', ttsErr)
         }
         actions.doneSpeaking()
       } catch (err) {

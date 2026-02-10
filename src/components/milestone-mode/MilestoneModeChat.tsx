@@ -9,60 +9,10 @@ import { useMilestoneConversation } from '@/lib/hooks/useMilestoneConversation'
 import { createClient } from '@/lib/supabase/client'
 import { addDebugLog } from '@/components/ui/ConnectionStatus'
 import { rebalanceMilestoneFocusPipeline } from '@/lib/milestones/focusPipeline'
-import type { Milestone, Project, MilestoneConversation, MilestoneMessage, MilestoneStep } from '@/lib/supabase/types'
+import type { MilestoneStep } from '@/lib/supabase/types'
 import type { OrchestrationDispatchRecord, OrchestrationDispatchStatus } from '@/types/orchestration'
-
-type Approach = 'do-it' | 'guide'
-
-interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  isError?: boolean
-}
-
-interface MilestoneAction {
-  type: 'complete_step' | 'complete_milestone'
-  milestoneId?: string
-  stepId?: string
-  stepText?: string
-  stepNumber?: number
-}
-
-interface MilestoneWithProject extends Milestone {
-  project: Project
-  allMilestones: Milestone[]
-  steps: MilestoneStep[]
-}
-
-interface MilestoneModeChatProps {
-  userId: string
-  milestone: MilestoneWithProject
-  initialConversation?: MilestoneConversation | null
-  initialMessages?: MilestoneMessage[]
-  initialApproach?: Approach
-  /** Server-generated contextual opener (memory-aware, replaces static template) */
-  contextualOpener?: string | null
-  /** Context-aware quick prompts (generated alongside opener) */
-  contextualQuickPrompts?: string[] | null
-}
-
-const AUTO_DO_IT_KICKOFF_MARKER = '[AUTO_DO_IT_KICKOFF]'
-
-const INITIAL_MESSAGE = (milestoneName: string, currentStep?: string) => {
-  if (currentStep) {
-    return `Let's work on "${milestoneName}".
-
-Your current step is: **${currentStep}**
-
-Ready to tackle this? Tell me what you're thinking, or if you're stuck, share what's blocking you and we'll figure it out together.`
-  }
-  return `Let's get "${milestoneName}" done.
-
-**What's the very first thing you need to do to make progress on this?**
-
-(If you're not sure, tell me what's making you stuck and we'll figure it out together.)`
-}
+import { AUTO_DO_IT_KICKOFF_MARKER, buildInitialMessage } from './chat-constants'
+import type { Approach, Message, MilestoneAction, MilestoneModeChatProps } from './types'
 
 export function MilestoneModeChat({
   userId,
@@ -187,7 +137,7 @@ export function MilestoneModeChat({
           setMessages([])
         } else {
           // New conversation - use contextual opener if available, fall back to static template
-          const initialContent = contextualOpener || INITIAL_MESSAGE(milestone.title, currentStep?.text)
+          const initialContent = contextualOpener || buildInitialMessage(milestone.title, currentStep?.text)
           setMessages([{
             id: 'initial',
             role: 'assistant',
@@ -222,7 +172,7 @@ export function MilestoneModeChat({
           setMessages([])
         } else {
           // New conversation - use contextual opener if available, fall back to static template
-          const initialContent = contextualOpener || INITIAL_MESSAGE(milestone.title, currentStep?.text)
+          const initialContent = contextualOpener || buildInitialMessage(milestone.title, currentStep?.text)
           setMessages([{
             id: 'initial',
             role: 'assistant',

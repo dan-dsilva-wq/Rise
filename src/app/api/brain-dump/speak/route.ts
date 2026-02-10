@@ -1,11 +1,20 @@
 import { NextRequest } from 'next/server'
+import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 
-const DEFAULT_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb'
+let openai: OpenAI | null = null
+function getOpenAI() {
+  if (!openai) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  }
+  return openai
+}
 
 export async function POST(request: NextRequest) {
   try {
-    if (!process.env.ELEVENLABS_API_KEY) {
+    if (!process.env.OPENAI_API_KEY) {
       return Response.json({ error: 'TTS service not configured' }, { status: 500 })
     }
 
@@ -22,29 +31,13 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Text required' }, { status: 400 })
     }
 
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID
+    const voice = (process.env.OPENAI_TTS_VOICE || 'nova') as 'nova' | 'alloy' | 'echo' | 'fable' | 'onyx' | 'shimmer'
 
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': process.env.ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text,
-        model_id: 'eleven_turbo_v2_5',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-        },
-      }),
+    const response = await getOpenAI().audio.speech.create({
+      model: 'tts-1',
+      voice,
+      input: text,
     })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('ElevenLabs API error:', response.status, errorText)
-      return Response.json({ error: `TTS failed: ${response.status} - ${errorText}` }, { status: 502 })
-    }
 
     const audioBuffer = await response.arrayBuffer()
 

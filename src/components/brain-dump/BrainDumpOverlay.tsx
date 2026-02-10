@@ -18,6 +18,11 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const startTimeRef = useRef<number>(0)
+  // Ref to always have latest transcript in callbacks without re-creating them
+  const transcriptRef = useRef<TranscriptMessage[]>([])
+  transcriptRef.current = state.transcript
+  // Guard against double-processing
+  const processingRef = useRef(false)
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -26,19 +31,8 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
     }
   }, [state.transcript])
 
-  // Handle open/close
-  useEffect(() => {
-    if (isOpen && state.phase === 'IDLE') {
-      actions.open()
-      startTimeRef.current = Date.now()
-      // Brief delay then ready
-      setTimeout(() => actions.ready(), 300)
-    }
-  }, [isOpen, state.phase, actions])
-
   const transcribeAudio = useCallback(async (blob: Blob) => {
     const formData = new FormData()
-    // Determine file extension from mime type
     const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
     formData.append('audio', blob, `recording.${ext}`)
 
@@ -100,63 +94,105 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
     })
   }, [])
 
-  // Main voice loop: record → transcribe → chat → speak
+  // Shared processing: stop recording → transcribe → chat → speak → auto-record again
+  const processRecording = useCallback(async () => {
+    if (processingRef.current) return
+    processingRef.current = true
+
+    actions.stopRecording()
+
+    try {
+      const blob = await recorder.stopRecording()
+
+      const text = await transcribeAudio(blob)
+      if (!text.trim()) {
+        actions.error('No speech detected. Try again.')
+        processingRef.current = false
+        return
+      }
+      actions.transcriptionDone(text)
+
+      const updatedTranscript: TranscriptMessage[] = [
+        ...transcriptRef.current,
+        { role: 'user', content: text, timestamp: new Date().toISOString() },
+      ]
+      const aiText = await getChatResponse(updatedTranscript)
+      actions.aiResponse(aiText)
+
+      // Speak the response
+      actions.startSpeaking()
+      try {
+        const audioBlob = await speakText(aiText)
+        await playAudio(audioBlob)
+      } catch (ttsErr) {
+        console.error('TTS error:', ttsErr)
+      }
+
+      // Auto-start recording for next turn with silence detection
+      actions.doneSpeaking()
+      processingRef.current = false
+      try {
+        await recorder.startRecording(handleSilence)
+        actions.startRecording()
+      } catch {
+        // Mic re-acquire failed — user can tap manually
+      }
+    } catch (err) {
+      processingRef.current = false
+      actions.error(err instanceof Error ? err.message : 'Something went wrong')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actions, recorder, transcribeAudio, getChatResponse, speakText, playAudio])
+
+  // Silence callback — called by useAudioRecorder when silence is detected
+  const handleSilence = useCallback(() => {
+    processRecording()
+  }, [processRecording])
+
+  // Start recording with silence detection
+  const startRecordingWithVAD = useCallback(async () => {
+    try {
+      await recorder.startRecording(handleSilence)
+      actions.startRecording()
+    } catch (err) {
+      actions.error(err instanceof Error ? err.message : 'Microphone access denied')
+    }
+  }, [recorder, actions, handleSilence])
+
+  // Handle open — auto-start recording so first tap on FAB goes straight to listening
+  useEffect(() => {
+    if (isOpen && state.phase === 'IDLE') {
+      actions.open()
+      startTimeRef.current = Date.now()
+      setTimeout(async () => {
+        actions.ready()
+        try {
+          await recorder.startRecording(handleSilence)
+          actions.startRecording()
+        } catch {
+          // Mic denied — user sees READY state and can tap manually
+        }
+      }, 300)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, state.phase])
+
+  // Mic button: manual stop (if recording) or manual start (if ready)
   const handleMicTap = useCallback(async () => {
     if (state.phase === 'RECORDING') {
-      // Stop recording and process
-      actions.stopRecording()
-
-      try {
-        const blob = await recorder.stopRecording()
-
-        // Transcribe
-        const text = await transcribeAudio(blob)
-        if (!text.trim()) {
-          actions.error('No speech detected. Try again.')
-          return
-        }
-        actions.transcriptionDone(text)
-
-        // Get AI response — need to include the new user message
-        const updatedTranscript: TranscriptMessage[] = [
-          ...state.transcript,
-          { role: 'user', content: text, timestamp: new Date().toISOString() },
-        ]
-        const aiText = await getChatResponse(updatedTranscript)
-        actions.aiResponse(aiText)
-
-        // Speak the response
-        actions.startSpeaking()
-        try {
-          const audioBlob = await speakText(aiText)
-          await playAudio(audioBlob)
-        } catch (ttsErr) {
-          console.error('TTS error:', ttsErr)
-        }
-        actions.doneSpeaking()
-      } catch (err) {
-        actions.error(err instanceof Error ? err.message : 'Something went wrong')
-      }
+      processRecording()
     } else if (state.phase === 'READY') {
-      // Start recording
-      try {
-        await recorder.startRecording()
-        actions.startRecording()
-      } catch (err) {
-        actions.error(err instanceof Error ? err.message : 'Microphone access denied')
-      }
+      startRecordingWithVAD()
     }
-  }, [state.phase, state.transcript, actions, recorder, transcribeAudio, getChatResponse, speakText, playAudio])
+  }, [state.phase, processRecording, startRecordingWithVAD])
 
   // End conversation
   const handleEnd = useCallback(async () => {
-    // Stop any playing audio
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
     }
 
-    // Stop recording if active
     if (recorder.isRecording) {
       try { await recorder.stopRecording() } catch { /* ignore */ }
     }
@@ -191,7 +227,6 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
     }
   }, [state.transcript, actions, recorder, onClose])
 
-  // Close after completion
   const handleCloseAfterComplete = useCallback(() => {
     actions.reset()
     onClose()
@@ -200,8 +235,8 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
   const getStatusText = () => {
     switch (state.phase) {
       case 'OPENING': return 'Starting up...'
-      case 'READY': return 'Tap the mic to speak'
-      case 'RECORDING': return 'Listening...'
+      case 'READY': return 'Tap to speak'
+      case 'RECORDING': return 'Listening... (stops when you pause)'
       case 'TRANSCRIBING': return 'Processing...'
       case 'THINKING': return 'Thinking...'
       case 'SPEAKING': return 'Speaking...'
@@ -281,10 +316,10 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
             <>
               {/* Transcript area */}
               <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-                {state.transcript.length === 0 && state.phase === 'READY' && (
+                {state.transcript.length === 0 && (state.phase === 'READY' || state.phase === 'RECORDING') && (
                   <div className="flex items-center justify-center h-full">
                     <p className="text-slate-500 text-center text-sm">
-                      Tap the mic and start talking.<br />
+                      Start talking.<br />
                       Say whatever&apos;s on your mind.
                     </p>
                   </div>
@@ -358,8 +393,6 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
                     {state.phase === 'RECORDING' ? (
                       <Square className="w-8 h-8 text-white" fill="white" />
                     ) : isBusy ? (
-                      <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
-                    ) : state.phase === 'COMPLETING' ? (
                       <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
                     ) : canRecord ? (
                       <Mic className="w-8 h-8 text-white" />

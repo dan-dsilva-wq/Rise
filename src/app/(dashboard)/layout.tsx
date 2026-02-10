@@ -1,3 +1,5 @@
+import { FeedbackButton } from '@/components/feedback/FeedbackButton'
+
 export const dynamic = 'force-dynamic'
 
 export default function DashboardLayout({
@@ -5,5 +7,10 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  return children
+  return (
+    <>
+      {children}
+      <FeedbackButton />
+    </>
+  )
 }

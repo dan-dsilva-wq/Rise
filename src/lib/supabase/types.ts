@@ -951,6 +951,29 @@ export interface Database {
           updated_at?: string
         }
       }
+      feedback_requests: {
+        Row: {
+          id: string
+          user_id: string
+          summary: string
+          is_read: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          summary: string
+          is_read?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          summary?: string
+          is_read?: boolean
+          created_at?: string
+        }
+      }
       push_subscriptions: {
         Row: {
           id: string
@@ -1122,3 +1145,7 @@ export type ProactiveQuestionUpdate = Database['public']['Tables']['proactive_qu
 export type PushSubscription = Database['public']['Tables']['push_subscriptions']['Row']
 export type PushSubscriptionInsert = Database['public']['Tables']['push_subscriptions']['Insert']
 export type PushSubscriptionUpdate = Database['public']['Tables']['push_subscriptions']['Update']
+
+// Feedback types
+export type FeedbackRequest = Database['public']['Tables']['feedback_requests']['Row']
+export type FeedbackRequestInsert = Database['public']['Tables']['feedback_requests']['Insert']

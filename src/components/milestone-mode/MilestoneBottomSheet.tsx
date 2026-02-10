@@ -272,7 +272,7 @@ export function MilestoneBottomSheet({
   const currentIndex = allMilestones.findIndex(m => m.id === milestone.id) + 1
   const completedSteps = steps.filter(s => s.is_completed).length
 
-  // Success overlay — warm celebration, no XP
+  // Success overlay — warm celebration
   if (showSuccess) {
     const remaining = allMilestones.filter(m => m.status !== 'completed' && m.id !== milestone.id).length
     const totalDone = allMilestones.filter(m => m.status === 'completed').length + 1

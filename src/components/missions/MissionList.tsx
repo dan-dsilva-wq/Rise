@@ -8,7 +8,7 @@ import type { DailyMission } from '@/lib/supabase/types'
 
 interface MissionListProps {
   missions: DailyMission[]
-  onComplete: (id: string) => Promise<number>
+  onComplete: (id: string) => Promise<void>
   onSkip: (id: string) => void
   onAdd?: () => void
   showAddButton?: boolean

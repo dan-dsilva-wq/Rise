@@ -374,7 +374,7 @@ export async function buildGreetingSignals(
 
   try {
     // Fetch the most recent user message across all conversation sources in parallel
-    const [pathFinderMsg, milestoneMsg, projectLogMsg, weeklyCompletions, loginDates] = await Promise.all([
+    const [pathFinderMsg, milestoneMsg, projectLogMsg, weeklyCompletions, recentLogDates] = await Promise.all([
       // Most recent path finder message from the user
       supabase.from('path_finder_messages')
         .select('content, created_at')
@@ -402,7 +402,7 @@ export async function buildGreetingSignals(
         .eq('user_id', userId)
         .eq('status', 'completed')
         .gte('completed_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
-      // Recent daily log dates (for login streak / days since last visit)
+      // Recent daily log dates (for days since last visit)
       supabase.from('daily_logs')
         .select('log_date')
         .eq('user_id', userId)
@@ -479,8 +479,8 @@ export async function buildGreetingSignals(
     // Weekly milestone completions
     signals.milestonesCompletedThisWeek = weeklyCompletions.data?.length || 0
 
-    // Calculate days since last visit and login streak from daily log dates
-    const logDates = ((loginDates.data || []) as Array<{ log_date: string }>).map(l => l.log_date)
+    // Calculate days since last visit from daily log dates
+    const logDates = ((recentLogDates.data || []) as Array<{ log_date: string }>).map(l => l.log_date)
     if (logDates.length > 0) {
       const today = new Date().toISOString().split('T')[0]
       const mostRecentLog = logDates[0]
@@ -490,24 +490,6 @@ export async function buildGreetingSignals(
       const lastDate = new Date(mostRecentLog + 'T00:00:00Z')
       const daysDiff = Math.round((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24))
       signals.daysSinceLastVisit = daysDiff
-
-      // Calculate consecutive login streak
-      let streak = 0
-      const dateSet = new Set(logDates)
-      for (let i = 0; i < 14; i++) {
-        const checkDate = new Date(todayDate)
-        checkDate.setDate(checkDate.getDate() - i)
-        const dateStr = checkDate.toISOString().split('T')[0]
-        if (dateSet.has(dateStr)) {
-          streak++
-        } else if (i === 0) {
-          // Today might not have a log yet — that's okay, check from yesterday
-          continue
-        } else {
-          break
-        }
-      }
-      signals.currentLoginStreak = streak
     }
 
     // Extract recurring themes and open loops from woven memory if available
@@ -578,8 +560,6 @@ export interface GreetingMemorySignals {
   lastConversationMilestone?: string | null
   /** Number of milestones completed in the last 7 days */
   milestonesCompletedThisWeek?: number
-  /** Number of consecutive days they've logged in */
-  currentLoginStreak?: number
   /** Days since they last opened the app (0 = today, 1 = yesterday) */
   daysSinceLastVisit?: number
   /** Recurring themes from across conversations */
@@ -745,16 +725,7 @@ export function generatePersonalGreeting(
     return `Your mood has been climbing, ${name}. Something's shifting in a good direction.`
   }
 
-  // ─── TIER 7: LOGIN STREAK ───
-  if (memorySignals?.currentLoginStreak && memorySignals.currentLoginStreak >= 3) {
-    const streak = memorySignals.currentLoginStreak
-    if (streak >= 7) {
-      return `${streak} days in a row, ${name}. That quiet consistency? It's building something you can't see yet.`
-    }
-    return `Day ${streak} in a row. You keep showing up, ${name}. That's how things change.`
-  }
-
-  // ─── TIER 8: DEFAULT WARMTH ───
+  // ─── TIER 7: DEFAULT WARMTH ───
   // First time or very new user
   if (!dailyLogs.length || (daysActive && daysActive <= 2)) {
     if (hour < 12) {

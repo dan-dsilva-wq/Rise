@@ -208,7 +208,7 @@ RULES:
 GREAT examples:
 - "Your energy ratings have been 2 points higher on days when you work on [project]. That's your body telling you something."
 - "You keep mentioning [topic] across different conversations but haven't made it a milestone yet. Maybe it's more important than you think?"
-- "Three of your last four gratitude entries mention people, not achievements. That tells me a lot about what actually matters to you."
+- "Three of your last four gratitude entries mention people, not output. That tells me a lot about what actually matters to you."
 - "You completed 2 milestones this week after struggling for 10 days. Something shifted — what was different?"
 
 BAD examples (don't do these):

@@ -95,7 +95,6 @@ export function useMissions(userId: string | undefined) {
           title: `Work on: ${activeMilestone.title}`,
           description: activeMilestone.description || `Part of ${project.name}`,
           mission_date: today,
-          xp_reward: 50,
           priority: missions.length + 1,
         })
       }
@@ -108,7 +107,6 @@ export function useMissions(userId: string | undefined) {
         title: 'Define your next step',
         description: 'Use the Path Finder to discover what to build',
         mission_date: today,
-        xp_reward: 25,
         priority: 1,
       })
     }
@@ -126,23 +124,20 @@ export function useMissions(userId: string | undefined) {
   }, [userId, today, client, fetchMissions])
 
   // Complete a mission
-  const completeMission = async (missionId: string): Promise<number> => {
-    if (!userId) return 0
+  const completeMission = async (missionId: string): Promise<void> => {
+    if (!userId) return
 
-    // Use the database function to complete and award XP
-    const { data: xpEarned, error } = await client.rpc('complete_mission', {
-      mission_id: missionId,
-    })
+    const { error } = await client
+      .from('daily_missions')
+      .update({ status: 'completed' })
+      .eq('id', missionId)
 
     if (error) {
       console.error('Error completing mission:', error)
-      return 0
+      return
     }
 
-    // Refresh missions
     await fetchMissions()
-
-    return xpEarned || 0
   }
 
   // Skip a mission

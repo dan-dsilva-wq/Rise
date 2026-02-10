@@ -1,21 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, Circle, Sparkles, Target, SkipForward, FolderKanban } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { CheckCircle2, Circle, Target, SkipForward, FolderKanban } from 'lucide-react'
 import Link from 'next/link'
 import type { DailyMission } from '@/lib/supabase/types'
 
 interface MissionCardProps {
   mission: DailyMission
   isPrimary?: boolean
-  onComplete: () => Promise<number>
+  onComplete: () => Promise<void>
   onSkip?: () => void
 }
 
 export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: MissionCardProps) {
   const [isCompleting, setIsCompleting] = useState(false)
-  const [recentXp, setRecentXp] = useState(0)
 
   const isCompleted = mission.status === 'completed'
   const isSkipped = mission.status === 'skipped'
@@ -24,13 +23,7 @@ export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: 
     if (isCompleted || isCompleting) return
 
     setIsCompleting(true)
-    const xp = await onComplete()
-
-    if (xp > 0) {
-      setRecentXp(xp)
-      setTimeout(() => setRecentXp(0), 3000)
-    }
-
+    await onComplete()
     setIsCompleting(false)
   }
 
@@ -81,8 +74,8 @@ export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: 
             className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
           >
             <div className="text-xs text-teal-400 uppercase tracking-wide mb-1 flex items-center gap-1">
-              <Sparkles className="w-3 h-3" />
-              Today&apos;s Mission
+              <Target className="w-3 h-3" />
+              Today&apos;s Focus
             </div>
             <h3 className={`text-lg font-semibold ${isCompleted ? 'text-slate-400 line-through' : 'text-white'}`}>
               {mission.title}
@@ -98,11 +91,6 @@ export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: 
         {/* Footer row */}
         <div className="flex items-center justify-between mt-3 ml-12">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              {mission.xp_reward} XP
-            </span>
-
             {mission.project_id && (
               <Link
                 href={`/projects/${mission.project_id}`}
@@ -112,20 +100,6 @@ export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: 
                 View Project
               </Link>
             )}
-
-            {/* XP Gain Animation */}
-            <AnimatePresence>
-              {recentXp > 0 && (
-                <motion.span
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="text-sm text-teal-400 font-medium"
-                >
-                  +{recentXp} XP!
-                </motion.span>
-              )}
-            </AnimatePresence>
           </div>
 
           {!isCompleted && !isSkipped && onSkip && (
@@ -184,23 +158,6 @@ export function MissionCard({ mission, isPrimary = false, onComplete, onSkip }: 
           <span className={`text-sm ${isCompleted ? 'text-slate-400 line-through' : isSkipped ? 'text-slate-500' : 'text-white'}`}>
             {mission.title}
           </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">{mission.xp_reward} XP</span>
-
-          <AnimatePresence>
-            {recentXp > 0 && (
-              <motion.span
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0 }}
-                className="text-xs text-teal-400 font-medium"
-              >
-                +{recentXp}!
-              </motion.span>
-            )}
-          </AnimatePresence>
         </div>
       </div>
     </motion.div>

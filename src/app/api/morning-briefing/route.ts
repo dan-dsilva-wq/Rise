@@ -8,11 +8,10 @@ import { weaveMemory, synthesizeUserThread, generatePersonalGreeting, buildGreet
 function extractMomentum(signals: GreetingMemorySignals | undefined) {
   if (!signals) return null
   const milestonesThisWeek = signals.milestonesCompletedThisWeek ?? 0
-  const loginStreak = signals.currentLoginStreak ?? 0
   const daysSinceLastVisit = signals.daysSinceLastVisit ?? 0
   // Only return if there's meaningful data
-  if (milestonesThisWeek === 0 && loginStreak < 2) return null
-  return { milestonesThisWeek, loginStreak, daysSinceLastVisit }
+  if (milestonesThisWeek === 0) return null
+  return { milestonesThisWeek, daysSinceLastVisit }
 }
 
 /**

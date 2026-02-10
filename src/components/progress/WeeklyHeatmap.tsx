@@ -7,7 +7,6 @@ import { format, parseISO, startOfWeek, addDays, isSameDay } from 'date-fns'
 interface HeatmapData {
   date: string
   completed: boolean
-  xpEarned?: number
 }
 
 interface WeeklyHeatmapProps {
@@ -25,11 +24,11 @@ export function WeeklyHeatmap({
 }: WeeklyHeatmapProps) {
   const weeks = useMemo(() => {
     const today = new Date()
-    const result: { date: Date; completed: boolean; xp: number }[][] = []
+    const result: { date: Date; completed: boolean }[][] = []
 
     for (let w = weeksToShow - 1; w >= 0; w--) {
       const weekStart = startOfWeek(addDays(today, -w * 7), { weekStartsOn: 1 })
-      const week: { date: Date; completed: boolean; xp: number }[] = []
+      const week: { date: Date; completed: boolean }[] = []
 
       for (let d = 0; d < 7; d++) {
         const date = addDays(weekStart, d)
@@ -40,7 +39,6 @@ export function WeeklyHeatmap({
         week.push({
           date,
           completed: dayData?.completed ?? false,
-          xp: dayData?.xpEarned ?? 0,
         })
       }
 
@@ -50,13 +48,8 @@ export function WeeklyHeatmap({
     return result
   }, [data, weeksToShow])
 
-  // Get intensity based on XP earned
-  const getIntensity = (xp: number): string => {
-    if (xp === 0) return 'bg-slate-800'
-    if (xp < 50) return 'bg-teal-900/50'
-    if (xp < 100) return 'bg-teal-700/60'
-    if (xp < 150) return 'bg-teal-600/70'
-    return 'bg-teal-500'
+  const getCellColor = (completed: boolean): string => {
+    return completed ? 'bg-teal-500/80' : 'bg-slate-800'
   }
 
   return (
@@ -90,9 +83,9 @@ export function WeeklyHeatmap({
                     className={`h-8 rounded-lg transition-colors ${
                       isFuture
                         ? 'bg-slate-900/30'
-                        : getIntensity(day.xp)
+                        : getCellColor(day.completed)
                     } ${isToday ? 'ring-2 ring-teal-400 ring-offset-1 ring-offset-slate-900' : ''}`}
-                    title={`${format(day.date, 'MMM d')}: ${day.xp} XP`}
+                    title={`${format(day.date, 'MMM d')}: ${day.completed ? 'Checked in' : 'No check-in'}`}
                   />
                 )
               })}
@@ -103,15 +96,12 @@ export function WeeklyHeatmap({
 
       {/* Legend */}
       <div className="flex items-center justify-end gap-2 mt-4 text-xs text-slate-500">
-        <span>Less</span>
+        <span>No check-in</span>
         <div className="flex gap-1">
           <div className="w-4 h-4 rounded bg-slate-800" />
-          <div className="w-4 h-4 rounded bg-teal-900/50" />
-          <div className="w-4 h-4 rounded bg-teal-700/60" />
-          <div className="w-4 h-4 rounded bg-teal-600/70" />
-          <div className="w-4 h-4 rounded bg-teal-500" />
+          <div className="w-4 h-4 rounded bg-teal-500/80" />
         </div>
-        <span>More</span>
+        <span>Checked in</span>
       </div>
     </div>
   )

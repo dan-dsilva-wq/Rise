@@ -315,7 +315,6 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
               title,
               sort_order: index,
               status: 'pending',
-              xp_reward: 50,
               focus_level: index === 0 ? 'active' : index <= 2 ? 'next' : 'backlog',
             }))
             const { data: createdMilestones, error: milestonesError } = await client
@@ -389,7 +388,6 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             title: action.newMilestone,
             sort_order: existing?.length || 0,
             status: 'pending',
-            xp_reward: 50,
             focus_level: defaultFocus,
           }).select().single()
 
@@ -446,7 +444,6 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
             title: action.newIdea,
             sort_order: existing?.length || 0,
             status: 'idea',
-            xp_reward: 50,
           }).select().single()
 
           if (ideaError) throw ideaError
@@ -669,7 +666,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
 
           const { data: milestone, error: findError } = await client
             .from('milestones')
-            .select('id, title, xp_reward, status, project_id')
+            .select('id, title, status, project_id')
             .eq('id', action.milestoneId)
             .single()
 
@@ -696,17 +693,10 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           } else {
             await rebalanceMilestoneFocusPipeline(client, milestone.project_id)
 
-            // Award XP
-            if (milestone.xp_reward) {
-              await client.rpc('increment_xp', {
-                user_id: userId,
-                xp_amount: milestone.xp_reward,
-              })
-            }
-            addDebugLog('success', 'Milestone completed', `${milestone.title} +${milestone.xp_reward || 50}XP`)
+            addDebugLog('success', 'Milestone completed', milestone.title)
             results.push({
               type: 'complete_milestone',
-              text: `Completed: ${milestone.title} (+${milestone.xp_reward || 50} XP)`,
+              text: `Completed: ${milestone.title}`,
               projectId: milestone.project_id,
               milestoneId: milestone.id,
               milestoneTitle: milestone.title,

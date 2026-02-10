@@ -37,7 +37,6 @@ function formatDate(dateStr: string) {
 export default function FeedbackPage() {
   const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -46,23 +45,6 @@ export default function FeedbackPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setIsAdmin(false)
-        setLoading(false)
-        return
-      }
-
-      // Check admin access via API
-      const adminId = process.env.NEXT_PUBLIC_FEEDBACK_ADMIN_USER_ID
-      if (!adminId || user.id !== adminId) {
-        setIsAdmin(false)
-        setLoading(false)
-        return
-      }
-
-      setIsAdmin(true)
-
       const { data, error } = await supabase
         .from('feedback_requests')
         .select('*')
@@ -96,17 +78,6 @@ export default function FeedbackPage() {
     return (
       <div className="min-h-screen bg-slate-900 flex justify-center items-center">
         <div className="w-8 h-8 border-2 border-teal-400 border-t-teal-600 rounded-full animate-spin" />
-      </div>
-    )
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center px-4">
-        <p className="text-slate-400 text-lg">Not authorized</p>
-        <Link href="/" className="text-teal-400 mt-4 hover:underline">
-          Back to home
-        </Link>
       </div>
     )
   }

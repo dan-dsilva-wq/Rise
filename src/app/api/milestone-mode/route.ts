@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { cachedWeaveMemory, cachedSynthesizeUserThread, parseInsightTags, stripInsightTags, fetchDisplayName, buildRisePersonalityCore } from '@/lib/ai/memoryWeaver'
+import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -424,23 +425,31 @@ Remember: They chose "Guide me" because they want to learn and grow.`
 
     const systemPrompt = approach === 'do-it' ? doItForMePrompt : guideMePrompt
 
-    const formattedMessages = sanitizedMessages.map(msg => ({
-      role: msg.role as 'user' | 'assistant',
+    const baseMessages = sanitizedMessages.map(msg => ({
+      role: msg.role,
       content: msg.content,
     }))
 
-    if (formattedMessages.length === 0) {
-      formattedMessages.push({
+    if (baseMessages.length === 0) {
+      baseMessages.push({
         role: 'user',
         content: 'Kick off this do-it-for-me session by asking your required execution questions.',
       })
     }
 
+    const preparedHistory = await prepareConversationHistory({
+      messages: baseMessages,
+      anthropic: getAnthropic(),
+      userId: user.id,
+      conversationKey: `milestone-mode:${milestone.id}:${approach ?? 'guide'}`,
+      supabase: supabaseClient,
+    })
+
     const response = await getAnthropic().messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 4096, // Match project chat — "Do it for me" needs room for full code/content
       system: systemPrompt,
-      messages: formattedMessages,
+      messages: preparedHistory.messages,
     })
 
     let assistantMessage = response.content

@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { cachedWeaveMemory, cachedSynthesizeUserThread, fetchDisplayName, buildRisePersonalityCore, parseInsightTags, stripInsightTags } from '@/lib/ai/memoryWeaver'
 import { saveAiInsight } from '@/lib/hooks/aiContextServer'
+import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -112,16 +113,23 @@ importance: <1-10>
 
 Keep the conversation short — 3-5 exchanges total. This is a wind-down, not a therapy session.`
 
-    const formattedMessages = messages.map(msg => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    }))
+    const reflectionDate = new Date().toISOString().split('T')[0]
+    const preparedHistory = await prepareConversationHistory({
+      messages: messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      anthropic: getAnthropic(),
+      userId: user.id,
+      conversationKey: `evening-reflection:${reflectionDate}`,
+      supabase: supabaseClient,
+    })
 
     const response = await getAnthropic().messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 500,
       system: systemPrompt,
-      messages: formattedMessages,
+      messages: preparedHistory.messages,
     })
 
     let assistantMessage = response.content

@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { cachedWeaveMemory, cachedSynthesizeUserThread, resolveActiveMilestoneStep, parseInsightTags, stripInsightTags, fetchDisplayName, buildRisePersonalityCore } from '@/lib/ai/memoryWeaver'
+import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
 
 // Lazy initialize to avoid build-time errors
 let anthropic: Anthropic | null = null
@@ -254,17 +255,23 @@ content: <what was learned>
 importance: <1-10>
 [/INSIGHT]`
 
-    const formattedMessages = messages.map(msg => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    }))
+    const preparedHistory = await prepareConversationHistory({
+      messages: messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      anthropic: getAnthropic(),
+      userId: user.id,
+      conversationKey: projectId ? `project-chat:${projectId}` : 'project-chat:general',
+      supabase: supabaseClient,
+    })
 
     // Call Anthropic Claude — same model as Milestone Mode for ONE consistent mind
     const response = await getAnthropic().messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 4096,
       system: systemPrompt,
-      messages: formattedMessages,
+      messages: preparedHistory.messages,
     })
 
     let assistantMessage = response.content

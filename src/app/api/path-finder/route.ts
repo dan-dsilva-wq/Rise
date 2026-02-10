@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { saveProjectContext, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { weaveMemory } from '@/lib/ai/memoryWeaver'
+import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
 import type { ProjectContextType, InsightType } from '@/lib/supabase/types'
 
 let anthropic: Anthropic | null = null
@@ -399,16 +400,22 @@ When organizing milestones, USE SET_FOCUS to move items between levels. The syst
 
 Remember: Users should feel like they're making progress AND staying organized.`
 
-    const formattedMessages = messages.map(msg => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    }))
+    const preparedHistory = await prepareConversationHistory({
+      messages: messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      anthropic: getAnthropic(),
+      userId: user.id,
+      conversationKey: 'path-finder:default',
+      supabase: supabaseClient,
+    })
 
     const response = await getAnthropic().messages.create({
       model: 'claude-opus-4-5-20251101',
       max_tokens: 1500,
       system: systemPrompt,
-      messages: formattedMessages,
+      messages: preparedHistory.messages,
     })
 
     // Extract text from response

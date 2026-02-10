@@ -128,9 +128,10 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
         console.error('TTS error:', ttsErr)
       }
 
-      // Auto-start recording for next turn with silence detection
+      // Mic stays off until TTS fully finishes, then brief delay to avoid picking up speaker echo
       actions.doneSpeaking()
       processingRef.current = false
+      await new Promise(resolve => setTimeout(resolve, 400))
       try {
         await recorder.startRecording(handleSilence)
         actions.startRecording()

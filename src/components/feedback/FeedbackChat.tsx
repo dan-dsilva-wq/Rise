@@ -53,6 +53,10 @@ export function FeedbackChat({ isOpen, onClose }: FeedbackChatProps) {
     })
   }, [messages])
 
+  const buildBeaconPayload = useCallback(() => {
+    return new Blob([buildPayload()], { type: 'application/json' })
+  }, [buildPayload])
+
   const sendSummaryAndClose = useCallback(async () => {
     if (hasSentSummary) {
       onClose()
@@ -85,7 +89,7 @@ export function FeedbackChat({ isOpen, onClose }: FeedbackChatProps) {
     const handleBeforeUnload = () => {
       const userMessages = messages.filter(m => m.role === 'user')
       if (userMessages.length > 0 && !hasSentSummary && isOpen) {
-        navigator.sendBeacon('/api/feedback', buildPayload())
+        navigator.sendBeacon('/api/feedback', buildBeaconPayload())
       }
     }
 
@@ -93,7 +97,7 @@ export function FeedbackChat({ isOpen, onClose }: FeedbackChatProps) {
       if (document.visibilityState === 'hidden' && isOpen) {
         const userMessages = messages.filter(m => m.role === 'user')
         if (userMessages.length > 0 && !hasSentSummary) {
-          navigator.sendBeacon('/api/feedback', buildPayload())
+          navigator.sendBeacon('/api/feedback', buildBeaconPayload())
           setHasSentSummary(true)
         }
       }

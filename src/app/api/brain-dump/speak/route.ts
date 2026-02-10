@@ -43,10 +43,7 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text()
       console.error('ElevenLabs API error:', response.status, errorText)
-      return Response.json(
-        { error: `TTS failed (${response.status}): ${errorText}` },
-        { status: 502 }
-      )
+      return Response.json({ error: 'TTS generation failed' }, { status: 502 })
     }
 
     const audioBuffer = await response.arrayBuffer()

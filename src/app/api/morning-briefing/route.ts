@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi } from '@/lib/hooks/aiContextServer'
 import { weaveMemory, synthesizeUserThread, generatePersonalGreeting, buildGreetingSignals, resolveCurrentStep, type GreetingMemorySignals } from '@/lib/ai/memoryWeaver'
+import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 
 // Extract momentum data from memory signals for the dashboard
 function extractMomentum(signals: GreetingMemorySignals | undefined) {
@@ -327,7 +328,7 @@ export async function GET(_request: NextRequest) {
     }
 
     const response = await getAnthropic().messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: ANTHROPIC_OPUS_MODEL,
       max_tokens: 300,
       system: `You are Rise - a supportive AI cofounder. You are ONE mind that remembers all conversations with this user. Generate a focused morning briefing.
 

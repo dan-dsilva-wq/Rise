@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { ConnectionStatus } from '@/components/ui/ConnectionStatus'
 import { FeedbackButton } from '@/components/feedback/FeedbackButton'
+import { BrainDumpButton } from '@/components/brain-dump/BrainDumpButton'
 import './globals.css'
 
 const inter = Inter({
@@ -48,6 +49,7 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans antialiased bg-slate-900 text-slate-100 min-h-screen`}>
         <ConnectionStatus />
         {children}
+        <BrainDumpButton />
         <FeedbackButton />
       </body>
     </html>

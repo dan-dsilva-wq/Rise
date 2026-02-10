@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { saveProjectContext, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { weaveMemory } from '@/lib/ai/memoryWeaver'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
+import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 import type { ProjectContextType, InsightType } from '@/lib/supabase/types'
 
 let anthropic: Anthropic | null = null
@@ -412,7 +413,7 @@ Remember: Users should feel like they're making progress AND staying organized.`
     })
 
     const response = await getAnthropic().messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: ANTHROPIC_OPUS_MODEL,
       max_tokens: 1500,
       system: systemPrompt,
       messages: preparedHistory.messages,

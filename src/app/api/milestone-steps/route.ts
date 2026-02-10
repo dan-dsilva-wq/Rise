@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 
 const anthropic = new Anthropic()
 
@@ -43,7 +44,7 @@ ${project?.description ? `Project context: ${project.description}` : ''}
 Generate 3-4 actionable first steps for this milestone.`
 
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: ANTHROPIC_OPUS_MODEL,
       max_tokens: 500,
       messages: [
         { role: 'user', content: userMessage }

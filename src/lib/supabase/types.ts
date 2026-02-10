@@ -757,7 +757,7 @@ export interface Database {
           importance: number
           fills_gap: string | null
           source_conversation_id: string | null
-          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer'
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer' | 'brain_dump'
           created_at: string
           expires_at: string | null
           is_active: boolean
@@ -772,7 +772,7 @@ export interface Database {
           importance?: number
           fills_gap?: string | null
           source_conversation_id?: string | null
-          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer'
+          source_ai: 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer' | 'brain_dump'
           created_at?: string
           expires_at?: string | null
           is_active?: boolean
@@ -977,6 +977,56 @@ export interface Database {
           created_at?: string
         }
       }
+      brain_dumps: {
+        Row: {
+          id: string
+          user_id: string
+          transcript: Json
+          summary: string | null
+          mood: string | null
+          energy_level: number | null
+          topics: string[]
+          people_mentioned: Json
+          decisions: Json
+          problems: Json
+          duration_seconds: number | null
+          message_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          transcript?: Json
+          summary?: string | null
+          mood?: string | null
+          energy_level?: number | null
+          topics?: string[]
+          people_mentioned?: Json
+          decisions?: Json
+          problems?: Json
+          duration_seconds?: number | null
+          message_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          transcript?: Json
+          summary?: string | null
+          mood?: string | null
+          energy_level?: number | null
+          topics?: string[]
+          people_mentioned?: Json
+          decisions?: Json
+          problems?: Json
+          duration_seconds?: number | null
+          message_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
       push_subscriptions: {
         Row: {
           id: string
@@ -1131,7 +1181,7 @@ export type AiInsight = Database['public']['Tables']['ai_insights']['Row']
 export type AiInsightInsert = Database['public']['Tables']['ai_insights']['Insert']
 export type AiInsightUpdate = Database['public']['Tables']['ai_insights']['Update']
 export type InsightType = 'discovery' | 'decision' | 'blocker' | 'preference' | 'learning'
-export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer'
+export type SourceAi = 'path_finder' | 'milestone_mode' | 'project_chat' | 'evening_reflection' | 'morning_checkin' | 'intelligence_layer' | 'brain_dump'
 
 // Intelligence layer types
 export type ConversationSummary = Database['public']['Tables']['conversation_summaries']['Row']
@@ -1148,6 +1198,10 @@ export type ProactiveQuestionUpdate = Database['public']['Tables']['proactive_qu
 export type PushSubscription = Database['public']['Tables']['push_subscriptions']['Row']
 export type PushSubscriptionInsert = Database['public']['Tables']['push_subscriptions']['Insert']
 export type PushSubscriptionUpdate = Database['public']['Tables']['push_subscriptions']['Update']
+
+// Brain Dump types
+export type BrainDump = Database['public']['Tables']['brain_dumps']['Row']
+export type BrainDumpInsert = Database['public']['Tables']['brain_dumps']['Insert']
 
 // Feedback types
 export type RiseFeedback = Database['public']['Tables']['rise_feedback']['Row']

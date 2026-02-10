@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { cachedWeaveMemory, cachedSynthesizeUserThread, resolveActiveMilestoneStep, parseInsightTags, stripInsightTags, fetchDisplayName, buildRisePersonalityCore } from '@/lib/ai/memoryWeaver'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
+import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 
 // Lazy initialize to avoid build-time errors
 let anthropic: Anthropic | null = null
@@ -268,7 +269,7 @@ importance: <1-10>
 
     // Call Anthropic Claude — same model as Milestone Mode for ONE consistent mind
     const response = await getAnthropic().messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: ANTHROPIC_OPUS_MODEL,
       max_tokens: 4096,
       system: systemPrompt,
       messages: preparedHistory.messages,

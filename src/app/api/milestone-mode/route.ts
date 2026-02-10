@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { cachedWeaveMemory, cachedSynthesizeUserThread, parseInsightTags, stripInsightTags, fetchDisplayName, buildRisePersonalityCore } from '@/lib/ai/memoryWeaver'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
+import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -446,7 +447,7 @@ Remember: They chose "Guide me" because they want to learn and grow.`
     })
 
     const response = await getAnthropic().messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: ANTHROPIC_OPUS_MODEL,
       max_tokens: 4096, // Match project chat — "Do it for me" needs room for full code/content
       system: systemPrompt,
       messages: preparedHistory.messages,

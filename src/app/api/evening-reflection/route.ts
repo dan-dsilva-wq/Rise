@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { cachedWeaveMemory, cachedSynthesizeUserThread, fetchDisplayName, buildRisePersonalityCore, parseInsightTags, stripInsightTags } from '@/lib/ai/memoryWeaver'
 import { saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
+import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -126,7 +127,7 @@ Keep the conversation short — 3-5 exchanges total. This is a wind-down, not a 
     })
 
     const response = await getAnthropic().messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: ANTHROPIC_OPUS_MODEL,
       max_tokens: 500,
       system: systemPrompt,
       messages: preparedHistory.messages,

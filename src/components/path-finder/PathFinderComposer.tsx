@@ -2,6 +2,7 @@
 
 import type { FormEvent, KeyboardEvent, RefObject } from 'react'
 import { Loader2, Send } from 'lucide-react'
+import { VoiceControls } from '@/components/voice/VoiceControls'
 
 interface PathFinderComposerProps {
   input: string
@@ -10,6 +11,17 @@ interface PathFinderComposerProps {
   onInputChange: (value: string) => void
   onKeyDown: (e: KeyboardEvent) => void
   onSubmit: (e?: FormEvent) => void
+  voice?: {
+    isRecording: boolean
+    isTranscribing: boolean
+    isSpeaking: boolean
+    isMuted: boolean
+    error?: string | null
+    disabled?: boolean
+    onMicClick: () => void | Promise<void>
+    onToggleMute: () => void
+    onDismissError?: () => void
+  }
 }
 
 export function PathFinderComposer({
@@ -19,6 +31,7 @@ export function PathFinderComposer({
   onInputChange,
   onKeyDown,
   onSubmit,
+  voice,
 }: PathFinderComposerProps) {
   return (
     <div className="border-t border-slate-800 p-4 bg-slate-900">
@@ -50,6 +63,21 @@ export function PathFinderComposer({
           )}
         </button>
       </form>
+      {voice && (
+        <div className="mt-2">
+          <VoiceControls
+            isRecording={voice.isRecording}
+            isTranscribing={voice.isTranscribing}
+            isSpeaking={voice.isSpeaking}
+            isMuted={voice.isMuted}
+            disabled={voice.disabled}
+            error={voice.error}
+            onMicClick={voice.onMicClick}
+            onToggleMute={voice.onToggleMute}
+            onDismissError={voice.onDismissError}
+          />
+        </div>
+      )}
       <p className="text-xs text-slate-500 mt-2">
         Press Enter to send - Conversations auto-save
       </p>

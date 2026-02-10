@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Loader2, Bot, User, Sparkles, Copy, Check, AlertCircle, RotateCcw, Zap, Compass, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import { VoiceControls } from '@/components/voice/VoiceControls'
+import { useVoiceConversation } from '@/lib/hooks/useVoiceConversation'
 import type { Project, Milestone, ProjectLog } from '@/lib/supabase/types'
 
 interface Message {
@@ -50,6 +52,17 @@ export function BuilderChat({ project, milestones, initialMessages = [], context
   const [returnBannerDismissed, setReturnBannerDismissed] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const {
+    isRecording,
+    isTranscribing,
+    isSpeaking,
+    isMuted,
+    voiceError,
+    toggleRecordingAndTranscribe,
+    toggleMute,
+    clearVoiceError,
+    speakText,
+  } = useVoiceConversation()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -114,6 +127,7 @@ export function BuilderChat({ project, milestones, initialMessages = [], context
       }
 
       setMessages(prev => [...prev, assistantMessage])
+      void speakText(assistantMessage.content)
     } catch (error) {
       console.error('Chat error:', error)
 
@@ -161,6 +175,13 @@ export function BuilderChat({ project, milestones, initialMessages = [], context
     // Pass the message directly — React state updates are async,
     // so setInput + handleSubmit() would read the stale empty input
     handleSubmit(undefined, retryText)
+  }
+
+  const handleVoiceInput = async () => {
+    if (isLoading && !isRecording) return
+    const transcript = await toggleRecordingAndTranscribe()
+    if (!transcript) return
+    await handleSubmit(undefined, transcript)
   }
 
   // Quick prompts for empty state — use contextual prompts if available
@@ -477,6 +498,19 @@ export function BuilderChat({ project, milestones, initialMessages = [], context
               Guide
             </span>
           </button>
+        </div>
+        <div className="mb-3">
+          <VoiceControls
+            isRecording={isRecording}
+            isTranscribing={isTranscribing}
+            isSpeaking={isSpeaking}
+            isMuted={isMuted}
+            disabled={isLoading && !isRecording}
+            error={voiceError}
+            onMicClick={handleVoiceInput}
+            onToggleMute={toggleMute}
+            onDismissError={clearVoiceError}
+          />
         </div>
         <form onSubmit={handleSubmit} className="flex gap-2">
           <div className="flex-1 relative">

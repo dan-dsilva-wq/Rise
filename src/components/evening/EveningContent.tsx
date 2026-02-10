@@ -8,6 +8,8 @@ import ReactMarkdown from 'react-markdown'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { VoiceControls } from '@/components/voice/VoiceControls'
+import { useVoiceConversation } from '@/lib/hooks/useVoiceConversation'
 import type { Profile, DailyLog } from '@/lib/supabase/types'
 
 interface Message {
@@ -33,6 +35,17 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
   const [eveningData, setEveningData] = useState<{ mood: number; energy: number; rating: number } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const {
+    isRecording,
+    isTranscribing,
+    isSpeaking,
+    isMuted,
+    voiceError,
+    toggleRecordingAndTranscribe,
+    toggleMute,
+    clearVoiceError,
+    speakText,
+  } = useVoiceConversation()
 
   // Check if user already completed their reflection today
   const alreadyReflected = !!(todayLog?.evening_mood || todayLog?.evening_energy)
@@ -131,6 +144,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
         role: 'assistant',
         content: data.message,
       }])
+      void speakText(data.message)
 
       if (data.eveningData) {
         setEveningData(data.eveningData)
@@ -150,6 +164,13 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleVoiceInput = async () => {
+    if (isLoading && !isRecording) return
+    const transcript = await toggleRecordingAndTranscribe()
+    if (!transcript) return
+    await handleSubmit(undefined, transcript)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -423,6 +444,17 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
             {/* Input Area — hide after completion */}
             {!isComplete && (
               <div className="border-t border-slate-800 p-4">
+                <VoiceControls
+                  isRecording={isRecording}
+                  isTranscribing={isTranscribing}
+                  isSpeaking={isSpeaking}
+                  isMuted={isMuted}
+                  disabled={isLoading && !isRecording}
+                  error={voiceError}
+                  onMicClick={handleVoiceInput}
+                  onToggleMute={toggleMute}
+                  onDismissError={clearVoiceError}
+                />
                 <form onSubmit={handleSubmit} className="flex gap-2">
                   <textarea
                     ref={inputRef}

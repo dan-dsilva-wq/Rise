@@ -9,6 +9,8 @@ import {
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { useMilestoneMode } from '@/lib/hooks/useMilestoneMode'
+import { useVoiceConversation } from '@/lib/hooks/useVoiceConversation'
+import { VoiceControls } from '@/components/voice/VoiceControls'
 import type { Milestone, Project } from '@/lib/supabase/types'
 
 interface MilestoneBottomSheetProps {
@@ -52,6 +54,17 @@ export function MilestoneBottomSheet({
   const [chatError, setChatError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const {
+    isRecording,
+    isTranscribing,
+    isSpeaking,
+    isMuted,
+    voiceError,
+    toggleRecordingAndTranscribe,
+    toggleMute,
+    clearVoiceError,
+    speakText,
+  } = useVoiceConversation()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const dragControls = useDragControls()
 
@@ -165,12 +178,12 @@ export function MilestoneBottomSheet({
         if (!response.ok) throw new Error('Failed to generate kickoff questions')
         const data = await response.json() as { message: string }
         await addMessage('assistant', data.message)
+        void speakText(data.message)
       } catch (err) {
         console.error('Failed to auto-start do-it conversation:', err)
-        await addMessage(
-          'assistant',
-          `Before I execute "${milestone.title}", I need a few details: scope, technical preferences, constraints, and definition of done.`
-        )
+        const fallbackMessage = `Before I execute "${milestone.title}", I need a few details: scope, technical preferences, constraints, and definition of done.`
+        await addMessage('assistant', fallbackMessage)
+        void speakText(fallbackMessage)
       } finally {
         setIsLoading(false)
       }
@@ -179,12 +192,14 @@ export function MilestoneBottomSheet({
 
     const guideMessage = `I'll guide you through "${milestone?.title}" step by step. I'll explain each part so you understand the process. What's the first thing you'd like to tackle?`
     await addMessage('assistant', guideMessage)
+    void speakText(guideMessage)
   }
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || isLoading || !milestone || !project || !conversation) return
+  const handleSendMessage = async (overrideInput?: string) => {
+    const messageText = (overrideInput ?? input).trim()
+    if (!messageText || isLoading || !milestone || !project || !conversation) return
 
-    const userMessage = input.trim()
+    const userMessage = messageText
     setInput('')
     setIsLoading(true)
     setChatError(null)
@@ -221,6 +236,7 @@ export function MilestoneBottomSheet({
       if (!response.ok) throw new Error('Failed to get response')
 
       const data = await response.json()
+      void speakText(data.message)
 
       // Save both messages to database
       await addMessage('user', userMessage)
@@ -241,6 +257,13 @@ export function MilestoneBottomSheet({
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleVoiceInput = async () => {
+    if (isLoading && !isRecording) return
+    const transcript = await toggleRecordingAndTranscribe()
+    if (!transcript) return
+    await handleSendMessage(transcript)
   }
 
   const handleComplete = async () => {
@@ -560,6 +583,20 @@ export function MilestoneBottomSheet({
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              <div className="mb-2">
+                <VoiceControls
+                  isRecording={isRecording}
+                  isTranscribing={isTranscribing}
+                  isSpeaking={isSpeaking}
+                  isMuted={isMuted}
+                  disabled={isLoading && !isRecording}
+                  error={voiceError}
+                  onMicClick={handleVoiceInput}
+                  onToggleMute={toggleMute}
+                  onDismissError={clearVoiceError}
+                />
+              </div>
 
               <motion.form
                 onSubmit={(e) => { e.preventDefault(); handleSendMessage() }}

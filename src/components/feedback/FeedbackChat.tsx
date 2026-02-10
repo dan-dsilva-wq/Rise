@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
+import { VoiceControls } from '@/components/voice/VoiceControls'
+import { useVoiceConversation } from '@/lib/hooks/useVoiceConversation'
 
 interface Message {
   id: string
@@ -28,6 +30,17 @@ export function FeedbackChat({ isOpen, onClose }: FeedbackChatProps) {
   const [hasSentSummary, setHasSentSummary] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const {
+    isRecording,
+    isTranscribing,
+    isSpeaking,
+    isMuted,
+    voiceError,
+    toggleRecordingAndTranscribe,
+    toggleMute,
+    clearVoiceError,
+    speakText,
+  } = useVoiceConversation()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -112,15 +125,16 @@ export function FeedbackChat({ isOpen, onClose }: FeedbackChatProps) {
     }
   }, [messages, hasSentSummary, isOpen, buildPayload])
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, overrideInput?: string) => {
     e?.preventDefault()
 
-    if (!input.trim() || isLoading) return
+    const messageText = (overrideInput ?? input).trim()
+    if (!messageText || isLoading) return
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: messageText,
     }
 
     setMessages(prev => [...prev, userMessage])
@@ -151,6 +165,7 @@ export function FeedbackChat({ isOpen, onClose }: FeedbackChatProps) {
       }
 
       setMessages(prev => [...prev, assistantMessage])
+      void speakText(assistantMessage.content)
 
       // If AI says it's complete, send the summary
       if (data.isComplete) {
@@ -180,6 +195,13 @@ export function FeedbackChat({ isOpen, onClose }: FeedbackChatProps) {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleVoiceInput = async () => {
+    if (isLoading && !isRecording) return
+    const transcript = await toggleRecordingAndTranscribe()
+    if (!transcript) return
+    await handleSubmit(undefined, transcript)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -262,6 +284,17 @@ export function FeedbackChat({ isOpen, onClose }: FeedbackChatProps) {
 
             {/* Input */}
             <div className="border-t border-slate-700 p-4">
+              <VoiceControls
+                isRecording={isRecording}
+                isTranscribing={isTranscribing}
+                isSpeaking={isSpeaking}
+                isMuted={isMuted}
+                disabled={isLoading && !isRecording}
+                error={voiceError}
+                onMicClick={handleVoiceInput}
+                onToggleMute={toggleMute}
+                onDismissError={clearVoiceError}
+              />
               <form onSubmit={handleSubmit} className="flex gap-2">
                 <textarea
                   ref={inputRef}

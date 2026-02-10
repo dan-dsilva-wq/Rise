@@ -6,9 +6,11 @@ import { Send, Loader2, User, Zap, ArrowLeft, CheckCircle, Target, Circle, Chevr
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { useMilestoneConversation } from '@/lib/hooks/useMilestoneConversation'
+import { useVoiceConversation } from '@/lib/hooks/useVoiceConversation'
 import { createClient } from '@/lib/supabase/client'
 import { addDebugLog } from '@/components/ui/ConnectionStatus'
 import { rebalanceMilestoneFocusPipeline } from '@/lib/milestones/focusPipeline'
+import { VoiceControls } from '@/components/voice/VoiceControls'
 import type { MilestoneStep } from '@/lib/supabase/types'
 import type { OrchestrationDispatchRecord, OrchestrationDispatchStatus } from '@/types/orchestration'
 import { AUTO_DO_IT_KICKOFF_MARKER, buildInitialMessage } from './chat-constants'
@@ -54,6 +56,17 @@ export function MilestoneModeChat({
   const [autoFocusedStepId, setAutoFocusedStepId] = useState<string | null>(null)
   const [doItKickoffTriggered, setDoItKickoffTriggered] = useState(false)
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
+  const {
+    isRecording,
+    isTranscribing,
+    isSpeaking,
+    isMuted,
+    voiceError,
+    toggleRecordingAndTranscribe,
+    toggleMute,
+    clearVoiceError,
+    speakText,
+  } = useVoiceConversation()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const stepRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -433,6 +446,7 @@ export function MilestoneModeChat({
           }
           return [...prev, kickoffMessage]
         })
+        void speakText(kickoffMessage.content)
 
         if (currentConversation) {
           await saveMessage('assistant', kickoffMessage.content)
@@ -461,6 +475,7 @@ export function MilestoneModeChat({
     buildMilestoneContext,
     buildProjectContext,
     showTransientNotice,
+    speakText,
   ])
 
   const handleCopyDispatchPrompt = async (prompt: string) => {
@@ -616,6 +631,7 @@ export function MilestoneModeChat({
       }
 
       setMessages(prev => [...prev, assistantMessage])
+      void speakText(assistantMessage.content)
       await applyMilestoneActions(data.actions)
 
       // Save assistant message
@@ -642,6 +658,13 @@ export function MilestoneModeChat({
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleVoiceInput = async () => {
+    if (isLoading && !isRecording) return
+    const transcript = await toggleRecordingAndTranscribe()
+    if (!transcript) return
+    await handleSubmit(undefined, transcript)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1179,6 +1202,19 @@ export function MilestoneModeChat({
               Guide
             </span>
           </button>
+        </div>
+        <div className="mb-3">
+          <VoiceControls
+            isRecording={isRecording}
+            isTranscribing={isTranscribing}
+            isSpeaking={isSpeaking}
+            isMuted={isMuted}
+            disabled={isLoading && !isRecording}
+            error={voiceError}
+            onMicClick={handleVoiceInput}
+            onToggleMute={toggleMute}
+            onDismissError={clearVoiceError}
+          />
         </div>
         <form onSubmit={handleSubmit} className="flex gap-2">
           <textarea

@@ -6,6 +6,7 @@ import { Loader2, Sparkles, UserCircle, Plus, X, Check, Edit2, Trash2, MessageSq
 import Link from 'next/link'
 import { useProfileFacts } from '@/lib/hooks/useProfileFacts'
 import { usePathFinderConversation } from '@/lib/hooks/usePathFinderConversation'
+import { useVoiceConversation } from '@/lib/hooks/useVoiceConversation'
 import { createClient } from '@/lib/supabase/client'
 import { addDebugLog } from '@/components/ui/ConnectionStatus'
 import type { ProfileCategory, UserProfileFact } from '@/lib/supabase/types'
@@ -194,12 +195,13 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     scrollToBottom()
   }, [messages])
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, overrideInput?: string) => {
     e?.preventDefault()
 
-    if (!input.trim() || isLoading) return
+    const messageText = (overrideInput ?? input).trim()
+    if (!messageText || isLoading) return
 
-    addDebugLog('info', 'Sending message', input.trim().slice(0, 50))
+    addDebugLog('info', 'Sending message', messageText.slice(0, 50))
 
     let canSaveToCloud = !!currentConversation
 
@@ -223,7 +225,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: messageText,
     }
 
     setMessages(prev => [...prev, userMessage])
@@ -307,6 +309,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       }
 
       setMessages(prev => [...prev, assistantMessage])
+      void speakText(assistantMessage.content)
 
       // Save assistant message to database (if we have a conversation)
       // Embed action results in content so they persist
@@ -355,7 +358,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       // Auto-title the conversation if untitled (after first exchange)
       if (currentConversation && !currentConversation.title && messages.length <= 2) {
         // Generate title from user's first message
-        const userFirstMsg = messages.find(m => m.role === 'user')?.content || input
+        const userFirstMsg = messages.find(m => m.role === 'user')?.content || messageText
         if (userFirstMsg) {
           // Take first ~40 chars, truncate at word boundary
           let title = userFirstMsg.slice(0, 50)
@@ -387,6 +390,13 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleVoiceInput = async () => {
+    if (isLoading && !isRecording) return
+    const transcript = await toggleRecordingAndTranscribe()
+    if (!transcript) return
+    await handleSubmit(undefined, transcript)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -474,6 +484,17 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
   const [showDebug, setShowDebug] = useState(false)
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const [showGestureHint, setShowGestureHint] = useState(true)
+  const {
+    isRecording,
+    isTranscribing,
+    isSpeaking,
+    isMuted,
+    voiceError,
+    toggleRecordingAndTranscribe,
+    toggleMute,
+    clearVoiceError,
+    speakText,
+  } = useVoiceConversation()
   const debugTapCount = useRef(0)
   const debugTapTimer = useRef<NodeJS.Timeout | null>(null)
 
@@ -935,6 +956,17 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         onInputChange={setInput}
         onKeyDown={handleKeyDown}
         onSubmit={handleSubmit}
+        voice={{
+          isRecording,
+          isTranscribing,
+          isSpeaking,
+          isMuted,
+          error: voiceError,
+          disabled: isLoading && !isRecording,
+          onMicClick: handleVoiceInput,
+          onToggleMute: toggleMute,
+          onDismissError: clearVoiceError,
+        }}
       />
     </div>
   )

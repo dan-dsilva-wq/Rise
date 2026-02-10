@@ -23,6 +23,7 @@ export interface Database {
           week_start_date: string
           partner_sharing_enabled: boolean
           partner_email: string | null
+          has_onboarded: boolean
           created_at: string
           updated_at: string
         }
@@ -39,6 +40,7 @@ export interface Database {
           week_start_date?: string
           partner_sharing_enabled?: boolean
           partner_email?: string | null
+          has_onboarded?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -55,6 +57,7 @@ export interface Database {
           week_start_date?: string
           partner_sharing_enabled?: boolean
           partner_email?: string | null
+          has_onboarded?: boolean
           created_at?: string
           updated_at?: string
         }

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DashboardContent } from '@/components/dashboard/DashboardContent'
-import type { DailyLog, DailyPrompt, Project } from '@/lib/supabase/types'
+import type { DailyLog, DailyPrompt, Profile, Project } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +47,10 @@ export default async function HomePage() {
       .single(),
   ])
 
-  const profile = profileResult.data
+  const profile = profileResult.data as Profile | null
+  if (profile && profile.has_onboarded === false) {
+    redirect('/onboarding')
+  }
   const prompts = promptsResult.data as DailyPrompt[] | null
   const projects = (projectsResult.data || []) as Project[]
   const todayLog = (todayLogResult.data as DailyLog | null) ?? null

@@ -72,6 +72,8 @@ interface PathFinderChatProps {
   initialConversations?: PathFinderConversation[]
   initialMessages?: PathFinderMessage[]
   initialFacts?: UserProfileFact[]
+  onboardingMode?: boolean
+  onProjectCreated?: (projectId: string, projectName: string) => void
 }
 
 // Import the types we need for initial data
@@ -107,6 +109,11 @@ As we talk, I'll remember important things you share so we can build on our conv
 
 Let's start simple: **What does "freedom" mean to you?** Is it about money, time, location, the type of work you do, or something else entirely?`,
   freshStart: `Fresh start! I still have your profile saved, so I know your background. **What would you like to explore today?**`,
+  onboarding: `Hey! I'm Path Finder — I help you figure out what to build for freedom.
+
+Let's have a quick chat so I can understand what you're working toward, and I'll set up your first project.
+
+Tell me a bit about yourself — what are you interested in, and what does success look like for you?`,
 }
 
 // Helper to parse action results embedded in message content
@@ -137,7 +144,7 @@ function transformMessage(m: { id: string; role: 'user' | 'assistant'; content: 
   }
 }
 
-export function PathFinderChat({ userId, initialConversation, initialConversations, initialMessages, initialFacts }: PathFinderChatProps) {
+export function PathFinderChat({ userId, initialConversation, initialConversations, initialMessages, initialFacts, onboardingMode, onProjectCreated }: PathFinderChatProps) {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
@@ -887,7 +894,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         setMessages([{
           id: 'initial',
           role: 'assistant',
-          content: hasProfile ? INITIAL_MESSAGES.withProfile : INITIAL_MESSAGES.noProfile,
+          content: onboardingMode ? INITIAL_MESSAGES.onboarding : hasProfile ? INITIAL_MESSAGES.withProfile : INITIAL_MESSAGES.noProfile,
         }])
       }
     }, 5000) // 5 second timeout
@@ -925,7 +932,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           }
 
           const hasProfile = (initialFacts && initialFacts.length > 0) || facts.length > 0
-          const initialContent = hasProfile ? INITIAL_MESSAGES.withProfile : INITIAL_MESSAGES.noProfile
+          const initialContent = onboardingMode ? INITIAL_MESSAGES.onboarding : hasProfile ? INITIAL_MESSAGES.withProfile : INITIAL_MESSAGES.noProfile
 
           // Save the initial message to the database
           if (convo) {
@@ -952,7 +959,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         setMessages([{
           id: 'initial',
           role: 'assistant',
-          content: hasProfile ? INITIAL_MESSAGES.withProfile : INITIAL_MESSAGES.noProfile,
+          content: onboardingMode ? INITIAL_MESSAGES.onboarding : hasProfile ? INITIAL_MESSAGES.withProfile : INITIAL_MESSAGES.noProfile,
         }])
       }
       addDebugLog('success', 'init() complete')
@@ -961,7 +968,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
     init()
 
     return () => clearTimeout(timeoutId)
-  }, [factsLoading, convoLoading, initialized, userId, loadMostRecent, setCurrentDirect, createConversation, saveMessage, facts.length, fetchProjects, hasInitialData, initialMessages, initialFacts, initialConversation])
+  }, [factsLoading, convoLoading, initialized, userId, loadMostRecent, setCurrentDirect, createConversation, saveMessage, facts.length, fetchProjects, hasInitialData, initialMessages, initialFacts, initialConversation, onboardingMode])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1059,6 +1066,10 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
         if (actionResults.length > 0) {
           setActionFeedback(actionResults.map(r => r.text).join(' | '))
           setTimeout(() => setActionFeedback(null), 5000)
+        }
+        const createdProject = actionResults.find(r => r.type === 'create_project')
+        if (createdProject && onProjectCreated) {
+          onProjectCreated(createdProject.projectId!, createdProject.projectName!)
         }
       }
 
@@ -1342,6 +1353,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       )}
 
       {/* Profile & History Toggle Bar */}
+      {!onboardingMode && (
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/50">
         <div className="flex items-center gap-2">
           <button
@@ -1389,10 +1401,11 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
           New Chat
         </button>
       </div>
+      )}
 
       {/* Gesture Hint */}
       <AnimatePresence>
-        {showGestureHint && !showProfile && !showHistory && messages.length <= 2 && (
+        {showGestureHint && !onboardingMode && !showProfile && !showHistory && messages.length <= 2 && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1677,7 +1690,7 @@ export function PathFinderChat({ userId, initialConversation, initialConversatio
       </AnimatePresence>
 
       {/* Projects Link */}
-      {existingProjects.length > 0 && (
+      {existingProjects.length > 0 && !onboardingMode && (
         <div className="mx-4 mb-2">
           <Link
             href="/projects"

@@ -38,7 +38,7 @@ export async function updateSession(request: NextRequest) {
   )
 
   // Protected routes - only check auth for these
-  const protectedPaths = ['/', '/morning', '/evening', '/progress', '/settings', '/path-finder', '/projects']
+  const protectedPaths = ['/', '/morning', '/evening', '/progress', '/settings', '/path-finder', '/projects', '/onboarding']
   const isProtectedPath = protectedPaths.some(path =>
     pathname === path || pathname.startsWith(path + '/')
   )

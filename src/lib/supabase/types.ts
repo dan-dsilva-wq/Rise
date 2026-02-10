@@ -951,7 +951,7 @@ export interface Database {
           updated_at?: string
         }
       }
-      feedback_requests: {
+      rise_feedback: {
         Row: {
           id: string
           user_id: string
@@ -1147,5 +1147,5 @@ export type PushSubscriptionInsert = Database['public']['Tables']['push_subscrip
 export type PushSubscriptionUpdate = Database['public']['Tables']['push_subscriptions']['Update']
 
 // Feedback types
-export type FeedbackRequest = Database['public']['Tables']['feedback_requests']['Row']
-export type FeedbackRequestInsert = Database['public']['Tables']['feedback_requests']['Insert']
+export type RiseFeedback = Database['public']['Tables']['rise_feedback']['Row']
+export type RiseFeedbackInsert = Database['public']['Tables']['rise_feedback']['Insert']

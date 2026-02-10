@@ -46,7 +46,7 @@ export default function FeedbackPage() {
   useEffect(() => {
     async function load() {
       const { data, error } = await supabase
-        .from('feedback_requests')
+        .from('rise_feedback')
         .select('*')
         .order('created_at', { ascending: false })
 
@@ -57,7 +57,7 @@ export default function FeedbackPage() {
         const unreadIds = (data as FeedbackItem[]).filter(f => !f.is_read).map(f => f.id)
         if (unreadIds.length > 0) {
           await supabase
-            .from('feedback_requests')
+            .from('rise_feedback')
             .update({ is_read: true })
             .in('id', unreadIds)
 

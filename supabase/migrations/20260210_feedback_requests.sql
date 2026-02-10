@@ -1,5 +1,5 @@
 -- Feedback requests table for beta user feedback
-CREATE TABLE IF NOT EXISTS feedback_requests (
+CREATE TABLE IF NOT EXISTS rise_feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   summary TEXT NOT NULL,
@@ -8,23 +8,23 @@ CREATE TABLE IF NOT EXISTS feedback_requests (
 );
 
 -- Indexes
-CREATE INDEX idx_feedback_requests_created_at ON feedback_requests (created_at DESC);
-CREATE INDEX idx_feedback_requests_is_read ON feedback_requests (is_read);
+CREATE INDEX idx_rise_feedback_created_at ON rise_feedback (created_at DESC);
+CREATE INDEX idx_rise_feedback_is_read ON rise_feedback (is_read);
 
 -- RLS
-ALTER TABLE feedback_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rise_feedback ENABLE ROW LEVEL SECURITY;
 
 -- Users can insert their own feedback
 CREATE POLICY "Users can insert own feedback"
-  ON feedback_requests FOR INSERT
+  ON rise_feedback FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can read their own feedback
 CREATE POLICY "Users can read own feedback"
-  ON feedback_requests FOR SELECT
+  ON rise_feedback FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Users can update their own feedback (for marking as read)
 CREATE POLICY "Users can update own feedback"
-  ON feedback_requests FOR UPDATE
+  ON rise_feedback FOR UPDATE
   USING (auth.uid() = user_id);

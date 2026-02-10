@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
           // Insert feedback record
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const db = supabase as any
-          await db.from('feedback_requests').insert({
+          await db.from('rise_feedback').insert({
             user_id: user.id,
             summary,
           })

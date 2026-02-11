@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { useUser } from '@/lib/hooks/useUser'
 import { createClient } from '@/lib/supabase/client'
 import { rebalanceMilestoneFocusPipeline } from '@/lib/milestones/focusPipeline'
+import { getHourForTimezone } from '@/lib/time/logDate'
 import type { DailyLog, Milestone, MilestoneStep, Profile, Project } from '@/lib/supabase/types'
 
 const ACTIONABLE_STATUSES: Milestone['status'][] = ['pending', 'in_progress']
@@ -46,9 +47,10 @@ interface FeedbackState {
   message: string
 }
 
-function shouldShowEveningNudge(todayLog: DailyLog | null): boolean {
-  const hour = new Date().getHours()
-  if (hour < 18) return false
+function shouldShowEveningNudge(todayLog: DailyLog | null, timezone: string | null | undefined): boolean {
+  const hour = timezone ? getHourForTimezone(timezone) : new Date().getHours()
+  const inEveningWindow = hour >= 17 || hour < 4
+  if (!inEveningWindow) return false
   if (!todayLog) return false
   if (todayLog.evening_mood || todayLog.evening_energy) return false
   return true
@@ -511,7 +513,7 @@ export function DashboardContent({
           )}
         </section>
 
-        {shouldShowEveningNudge(todayLog) && (
+        {shouldShowEveningNudge(todayLog, currentProfile?.timezone) && (
           <div className="mt-4 text-center">
             <Link
               href="/evening"

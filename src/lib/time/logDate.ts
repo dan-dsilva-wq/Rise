@@ -32,6 +32,10 @@ function getTimezoneParts(date: Date, timezone: string): {
   return { year, month, day, hour }
 }
 
+export function getHourForTimezone(timezone: string, now: Date = new Date()): number {
+  return getTimezoneParts(now, timezone).hour
+}
+
 export function getLogDateForTimezone(
   timezone: string,
   options?: {

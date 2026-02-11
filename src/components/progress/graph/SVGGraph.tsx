@@ -32,7 +32,8 @@ export function SVGGraph({
 }: SVGGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const edgeRefs = useRef<Map<string, SVGLineElement>>(new Map())
-  const nodeRefs = useRef<Map<string, SVGCircleElement>>(new Map())
+  // Ref to the <g> group wrapping each node — moving this moves both hit target and visible circle
+  const nodeGroupRefs = useRef<Map<string, SVGGElement>>(new Map())
 
   const onTick = useCallback(() => {
     const state = simRef.current
@@ -42,10 +43,9 @@ export function SVGGraph({
     const nodeMap = new Map<string, GraphNode>()
     for (const n of nodes) {
       nodeMap.set(n.id, n)
-      const circle = nodeRefs.current.get(n.id)
-      if (circle) {
-        circle.setAttribute('cx', String(n.x))
-        circle.setAttribute('cy', String(n.y))
+      const group = nodeGroupRefs.current.get(n.id)
+      if (group) {
+        group.setAttribute('transform', `translate(${n.x},${n.y})`)
       }
     }
 
@@ -117,7 +117,7 @@ export function SVGGraph({
         />
       ))}
 
-      {/* Nodes */}
+      {/* Nodes — each wrapped in a <g> that gets translated by the simulation */}
       {initialNodes.map((node) => {
         const r = nodeRadius(node.importance)
         const color = CATEGORY_COLORS[node.category]
@@ -125,11 +125,17 @@ export function SVGGraph({
         const isSelected = node.id === selectedNodeId
 
         return (
-          <g key={node.id}>
-            {/* Invisible hit target (min 20px radius) */}
+          <g
+            key={node.id}
+            ref={(el) => {
+              if (el) nodeGroupRefs.current.set(node.id, el)
+            }}
+            transform={`translate(${node.x},${node.y})`}
+          >
+            {/* Invisible hit target (min 20px radius) — centered at 0,0 */}
             <circle
-              cx={node.x}
-              cy={node.y}
+              cx={0}
+              cy={0}
               r={Math.max(20, r)}
               fill="transparent"
               style={{ cursor: 'pointer' }}
@@ -138,13 +144,10 @@ export function SVGGraph({
                 if (current) onNodeTap(current)
               }}
             />
-            {/* Visible node */}
+            {/* Visible node — centered at 0,0 */}
             <circle
-              ref={(el) => {
-                if (el) nodeRefs.current.set(node.id, el)
-              }}
-              cx={node.x}
-              cy={node.y}
+              cx={0}
+              cy={0}
               r={isSelected ? r * 1.3 : r}
               fill={color}
               opacity={dimmed ? 0.15 : 0.85}

@@ -12,6 +12,7 @@ export function BrainDumpButton() {
 
   const shouldHideButton =
     pathname?.startsWith('/evening') ||
+    pathname?.startsWith('/progress') ||
     pathname?.startsWith('/login') ||
     pathname?.startsWith('/signup')
 

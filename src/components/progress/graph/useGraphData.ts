@@ -19,6 +19,35 @@ const SEMANTIC_LINKS: Array<[string, GraphCategory]> = [
   ['blockers', 'blockers'],
 ]
 
+// Some DB fields store JSON objects as strings — extract readable text
+function sanitizeLabel(raw: unknown): string | null {
+  if (raw == null) return null
+  if (typeof raw === 'object') {
+    // It's an actual object (e.g. from Json column) — try to pull a meaningful string
+    const obj = raw as Record<string, unknown>
+    if (typeof obj.description === 'string') return obj.description
+    if (typeof obj.text === 'string') return obj.text
+    if (typeof obj.summary === 'string') return obj.summary
+    if (typeof obj.content === 'string') return obj.content
+    if (typeof obj.name === 'string') return obj.name
+    // No usable field — skip this node
+    return null
+  }
+  const str = String(raw)
+  // Detect stringified JSON
+  if (str.startsWith('{') || str.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(str)
+      if (typeof parsed === 'object' && parsed !== null) {
+        return sanitizeLabel(parsed)
+      }
+    } catch {
+      // Not JSON — use as-is
+    }
+  }
+  return str
+}
+
 function extractKeywords(text: string): Set<string> {
   const words = text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/)
   return new Set(words.filter(w => w.length > 5 && !STOP_WORDS.has(w)))
@@ -42,9 +71,11 @@ export function useGraphData(
 
     // 1. Profile facts → nodes
     for (const fact of rawData.facts) {
+      const label = sanitizeLabel(fact.fact)
+      if (!label) continue
       nodes.push({
         id: `fact-${fact.id}`,
-        label: fact.fact,
+        label,
         category: fact.category as GraphCategory,
         importance: 5,
         x: randomSpread(cx, spread),
@@ -56,10 +87,12 @@ export function useGraphData(
 
     // 2. AI insights → nodes
     for (const insight of rawData.insights) {
+      const label = sanitizeLabel(insight.content)
+      if (!label) continue
       const category = INSIGHT_TYPE_MAP[insight.insight_type] || 'discoveries'
       nodes.push({
         id: `insight-${insight.id}`,
-        label: insight.content,
+        label,
         category,
         importance: Math.max(1, Math.min(10, insight.importance)),
         x: randomSpread(cx, spread),
@@ -71,9 +104,11 @@ export function useGraphData(
 
     // 3. Patterns → nodes (category: discoveries)
     for (const pattern of rawData.patterns) {
+      const label = sanitizeLabel(pattern.description)
+      if (!label) continue
       nodes.push({
         id: `pattern-${pattern.id}`,
-        label: pattern.description,
+        label,
         category: 'discoveries',
         importance: Math.max(1, Math.min(10, Math.round(pattern.confidence * 10))),
         x: randomSpread(cx, spread),
@@ -85,10 +120,11 @@ export function useGraphData(
 
     // 4. Brain dumps (with summary) → nodes (category: situation)
     for (const dump of rawData.brainDumps) {
-      if (!dump.summary) continue
+      const label = sanitizeLabel(dump.summary)
+      if (!label) continue
       nodes.push({
         id: `dump-${dump.id}`,
-        label: dump.summary,
+        label,
         category: 'situation',
         importance: 4,
         x: randomSpread(cx, spread),
@@ -111,9 +147,11 @@ export function useGraphData(
 
       for (const [items, category, importance] of arrays) {
         for (let i = 0; i < items.length; i++) {
+          const label = sanitizeLabel(items[i])
+          if (!label) continue
           nodes.push({
             id: `understanding-${category}-${i}`,
-            label: items[i],
+            label,
             category,
             importance,
             x: randomSpread(cx, spread),
@@ -124,10 +162,11 @@ export function useGraphData(
         }
       }
 
-      if (u.definition_of_success) {
+      const successLabel = sanitizeLabel(u.definition_of_success)
+      if (successLabel) {
         nodes.push({
           id: 'understanding-success',
-          label: u.definition_of_success,
+          label: successLabel,
           category: 'goals',
           importance: 9,
           x: randomSpread(cx, spread),

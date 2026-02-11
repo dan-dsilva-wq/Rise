@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { DashboardContent } from '@/components/dashboard/DashboardContent'
+import { getLogDateForTimezone } from '@/lib/time/logDate'
 import type { DailyLog, DailyPrompt, Profile, Project } from '@/lib/supabase/types'
 
 export const dynamic = 'force-dynamic'
@@ -13,16 +14,23 @@ export default async function HomePage() {
     redirect('/login')
   }
 
-  const today = new Date().toISOString().split('T')[0]
+  // Fetch profile first so day-boundary logic can respect user timezone.
+  const profileResult = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
+  const profile = profileResult.data as Profile | null
 
-  // Fetch data in parallel for faster loading
-  const [profileResult, promptsResult, projectsResult, todayLogResult] = await Promise.all([
-    // Get user profile
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single(),
+  if (profile && profile.has_onboarded === false) {
+    redirect('/onboarding')
+  }
+
+  const timezone = profile?.timezone || 'UTC'
+  const today = getLogDateForTimezone(timezone)
+
+  // Fetch remaining data in parallel for faster loading
+  const [promptsResult, projectsResult, todayLogResult] = await Promise.all([
 
     // Get daily prompts
     supabase
@@ -44,13 +52,9 @@ export default async function HomePage() {
       .select('*')
       .eq('user_id', user.id)
       .eq('log_date', today)
-      .single(),
+      .maybeSingle(),
   ])
 
-  const profile = profileResult.data as Profile | null
-  if (profile && profile.has_onboarded === false) {
-    redirect('/onboarding')
-  }
   const prompts = promptsResult.data as DailyPrompt[] | null
   const projects = (projectsResult.data || []) as Project[]
   const todayLog = (todayLogResult.data as DailyLog | null) ?? null

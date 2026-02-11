@@ -71,7 +71,9 @@ export function KnowledgeGraphContent({ rawData }: KnowledgeGraphContentProps) {
     return (
       <>
         <EmptyGraph />
-        <BottomNavigation />
+        <div className="fixed bottom-0 left-0 right-0 z-30">
+          <BottomNavigation />
+        </div>
       </>
     )
   }
@@ -112,7 +114,9 @@ export function KnowledgeGraphContent({ rawData }: KnowledgeGraphContentProps) {
       />
 
       {/* Bottom nav */}
-      <BottomNavigation />
+      <div className="fixed bottom-0 left-0 right-0 z-30">
+        <BottomNavigation />
+      </div>
     </div>
   )
 }

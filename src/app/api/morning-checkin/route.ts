@@ -1,19 +1,10 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getLogDateForTimezone } from '@/lib/time/logDate'
 
 interface CheckInRequest {
   mood: number
   energy: number
-}
-
-function getDateInTimezone(timezone: string): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-  return formatter.format(new Date())
 }
 
 export async function POST(request: NextRequest) {
@@ -45,7 +36,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     const timezone = profile?.timezone || 'UTC'
-    const today = getDateInTimezone(timezone)
+    const today = getLogDateForTimezone(timezone)
 
     // Check if a daily_log already exists for today
     const { data: existingLog } = await supabase

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Moon, Send, Loader2, X, AlertCircle, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { VoiceControls } from '@/components/voice/VoiceControls'
 import { useVoiceConversation } from '@/lib/hooks/useVoiceConversation'
+import { getLogDateForTimezone } from '@/lib/time/logDate'
 import type { Profile, DailyLog } from '@/lib/supabase/types'
 
 interface Message {
@@ -24,12 +25,24 @@ interface EveningContentProps {
   todayLog: DailyLog | null
 }
 
+interface PersistedEveningState {
+  version: number
+  messages: Message[]
+  isComplete: boolean
+  initialized: boolean
+  lastFailedMessage: string | null
+  eveningData: { mood: number; energy: number; rating: number } | null
+}
+
+const EVENING_PERSIST_VERSION = 1
+
 export function EveningContent({ profile, todayLog }: EveningContentProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [initialized, setInitialized] = useState(false)
+  const [hasHydratedPersistedState, setHasHydratedPersistedState] = useState(false)
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
   const [errorToast, setErrorToast] = useState<string | null>(null)
   const [eveningData, setEveningData] = useState<{ mood: number; energy: number; rating: number } | null>(null)
@@ -49,6 +62,12 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
 
   // Check if user already completed their reflection today
   const alreadyReflected = !!(todayLog?.evening_mood || todayLog?.evening_energy)
+  const timezone = profile?.timezone || 'UTC'
+  const reflectionDate = useMemo(() => getLogDateForTimezone(timezone), [timezone])
+  const storageKey = useMemo(
+    () => `rise:evening-reflection:${profile?.id || 'unknown'}:${reflectionDate}`,
+    [profile?.id, reflectionDate]
+  )
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -58,8 +77,85 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
     scrollToBottom()
   }, [messages])
 
+  // Restore persisted conversation state for this user + reflection day.
+  useEffect(() => {
+    setMessages([])
+    setIsComplete(false)
+    setInitialized(false)
+    setLastFailedMessage(null)
+    setEveningData(null)
+
+    if (typeof window === 'undefined') {
+      setHasHydratedPersistedState(true)
+      return
+    }
+
+    try {
+      const raw = window.localStorage.getItem(storageKey)
+      if (!raw) {
+        setHasHydratedPersistedState(true)
+        return
+      }
+
+      const parsed = JSON.parse(raw) as PersistedEveningState
+      if (parsed.version !== EVENING_PERSIST_VERSION) {
+        window.localStorage.removeItem(storageKey)
+        setHasHydratedPersistedState(true)
+        return
+      }
+
+      setMessages(Array.isArray(parsed.messages) ? parsed.messages : [])
+      setIsComplete(Boolean(parsed.isComplete))
+      setInitialized(Boolean(parsed.initialized || (parsed.messages?.length ?? 0) > 0))
+      setLastFailedMessage(parsed.lastFailedMessage ?? null)
+      setEveningData(parsed.eveningData ?? null)
+    } catch {
+      // Ignore malformed local state and boot clean.
+      window.localStorage.removeItem(storageKey)
+    } finally {
+      setHasHydratedPersistedState(true)
+    }
+  }, [storageKey])
+
+  // Persist conversation state locally so reopening the page resumes the same reflection
+  // until the 4 AM reflection-day boundary changes the storage key.
+  useEffect(() => {
+    if (!hasHydratedPersistedState || typeof window === 'undefined') return
+
+    const hasState =
+      initialized ||
+      messages.length > 0 ||
+      isComplete ||
+      !!lastFailedMessage ||
+      !!eveningData
+
+    if (!hasState) {
+      window.localStorage.removeItem(storageKey)
+      return
+    }
+
+    const payload: PersistedEveningState = {
+      version: EVENING_PERSIST_VERSION,
+      messages,
+      isComplete,
+      initialized,
+      lastFailedMessage,
+      eveningData,
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(payload))
+  }, [
+    eveningData,
+    hasHydratedPersistedState,
+    initialized,
+    isComplete,
+    lastFailedMessage,
+    messages,
+    storageKey,
+  ])
+
   // Initialize with the AI's opening message
   useEffect(() => {
+    if (!hasHydratedPersistedState) return
     if (initialized || !todayLog || alreadyReflected) return
     setInitialized(true)
 
@@ -100,7 +196,7 @@ export function EveningContent({ profile, todayLog }: EveningContentProps) {
     }
 
     initConversation()
-  }, [initialized, todayLog, alreadyReflected, profile?.display_name])
+  }, [hasHydratedPersistedState, initialized, todayLog, alreadyReflected, profile?.display_name])
 
   const handleSubmit = async (e?: React.FormEvent, overrideInput?: string) => {
     e?.preventDefault()

@@ -1,15 +1,15 @@
 import { GraphCategory } from './types'
 
 export const CATEGORY_COLORS: Record<GraphCategory, string> = {
-  background: '#2dd4bf',  // teal-400
-  skills: '#a78bfa',      // violet-400
-  situation: '#60a5fa',   // blue-400
-  goals: '#fbbf24',       // amber-400
-  preferences: '#f472b6', // pink-400
-  constraints: '#fb923c', // orange-400
-  discoveries: '#34d399', // emerald-400
-  decisions: '#818cf8',   // indigo-400
-  blockers: '#f87171',    // red-400
+  background: '#5b9fa6',  // muted teal
+  skills: '#8b8fbf',      // slate-violet
+  situation: '#6a9fd8',   // cool blue
+  goals: '#c4a961',       // muted gold
+  preferences: '#a07a8f', // dusty mauve
+  constraints: '#b08a60', // warm slate
+  discoveries: '#5daa8f', // sage green
+  decisions: '#7a82b5',   // slate-indigo
+  blockers: '#b87272',    // muted coral
 }
 
 export const CATEGORY_LABELS: Record<GraphCategory, string> = {
@@ -43,9 +43,9 @@ export const PHYSICS = {
 }
 
 // Edge opacity range
-export const EDGE_OPACITY_MIN = 0.08
-export const EDGE_OPACITY_MAX = 0.2
-export const EDGE_HIGHLIGHT_OPACITY = 0.5
+export const EDGE_OPACITY_MIN = 0.12
+export const EDGE_OPACITY_MAX = 0.3
+export const EDGE_HIGHLIGHT_OPACITY = 0.6
 
 // Words to ignore for keyword overlap
 export const STOP_WORDS = new Set([

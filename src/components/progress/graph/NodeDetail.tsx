@@ -39,20 +39,18 @@ export function NodeDetail({ node, connectedNodes, onClose }: NodeDetailProps) {
             </div>
 
             <div className="px-5 pb-6">
-              {/* Header */}
+              {/* Header: colored left border accent + uppercase mono label */}
               <div className="flex items-start justify-between mb-3">
                 <div
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-                  style={{
-                    backgroundColor: CATEGORY_COLORS[node.category] + '20',
-                    color: CATEGORY_COLORS[node.category],
-                  }}
+                  className="flex items-center gap-2 pl-3 border-l-2"
+                  style={{ borderColor: CATEGORY_COLORS[node.category] }}
                 >
                   <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: CATEGORY_COLORS[node.category] }}
-                  />
-                  {CATEGORY_LABELS[node.category]}
+                    className="text-[10px] font-mono font-medium uppercase tracking-widest"
+                    style={{ color: CATEGORY_COLORS[node.category] }}
+                  >
+                    {CATEGORY_LABELS[node.category]}
+                  </span>
                 </div>
                 <button
                   onClick={onClose}
@@ -63,15 +61,21 @@ export function NodeDetail({ node, connectedNodes, onClose }: NodeDetailProps) {
               </div>
 
               {/* Content */}
-              <p className="text-slate-100 text-sm leading-relaxed mb-4">
+              <p className="text-slate-100 text-sm leading-relaxed mb-3">
                 {node.label}
+              </p>
+
+              {/* Importance */}
+              <p className="text-slate-500 text-xs font-mono mb-4">
+                Importance: {node.importance}/10
               </p>
 
               {/* Connected nodes */}
               {connectedNodes.length > 0 && (
                 <div>
-                  <p className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-2">
-                    Connected
+                  <div className="border-t border-slate-700 mb-3" />
+                  <p className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-2 font-mono">
+                    Connected ({connectedNodes.length})
                   </p>
                   <div className="space-y-1.5">
                     {connectedNodes.slice(0, 5).map((cn) => (

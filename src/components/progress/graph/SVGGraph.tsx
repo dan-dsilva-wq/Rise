@@ -31,7 +31,7 @@ export function SVGGraph({
   onNodeTap,
 }: SVGGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null)
-  const edgeRefs = useRef<Map<string, SVGLineElement>>(new Map())
+  const edgeRefs = useRef<Map<string, SVGGElement>>(new Map())
   // Ref to the <g> group wrapping each node — moving this moves both hit target and visible circle
   const nodeGroupRefs = useRef<Map<string, SVGGElement>>(new Map())
 
@@ -50,14 +50,27 @@ export function SVGGraph({
     }
 
     for (const edge of edges) {
-      const line = edgeRefs.current.get(`${edge.source}-${edge.target}`)
+      const group = edgeRefs.current.get(`${edge.source}-${edge.target}`)
       const s = nodeMap.get(edge.source)
       const t = nodeMap.get(edge.target)
-      if (line && s && t) {
-        line.setAttribute('x1', String(s.x))
-        line.setAttribute('y1', String(s.y))
-        line.setAttribute('x2', String(t.x))
-        line.setAttribute('y2', String(t.y))
+      if (group && s && t) {
+        const line = group.querySelector('line')
+        const dot1 = group.querySelector('.edge-dot-source') as SVGCircleElement | null
+        const dot2 = group.querySelector('.edge-dot-target') as SVGCircleElement | null
+        if (line) {
+          line.setAttribute('x1', String(s.x))
+          line.setAttribute('y1', String(s.y))
+          line.setAttribute('x2', String(t.x))
+          line.setAttribute('y2', String(t.y))
+        }
+        if (dot1) {
+          dot1.setAttribute('cx', String(s.x))
+          dot1.setAttribute('cy', String(s.y))
+        }
+        if (dot2) {
+          dot2.setAttribute('cx', String(t.x))
+          dot2.setAttribute('cy', String(t.y))
+        }
       }
     }
   }, [edges])
@@ -80,6 +93,12 @@ export function SVGGraph({
     return !connectedNodeIds.has(nodeId)
   }
 
+  // Truncate label for inline SVG text
+  const truncateLabel = (label: string, maxLen: number) => {
+    if (label.length <= maxLen) return label
+    return label.slice(0, maxLen - 1) + '…'
+  }
+
   return (
     <svg
       ref={svgRef}
@@ -88,10 +107,16 @@ export function SVGGraph({
       className="absolute inset-0"
     >
       <defs>
+        {/* Dot grid background pattern */}
+        <pattern id="dot-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="10" cy="10" r="0.5" fill="#94a3b8" opacity="0.15" />
+        </pattern>
+
+        {/* Tighter glow filters */}
         {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
           <filter key={cat} id={`glow-${cat}`} x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feFlood floodColor={color} floodOpacity="0.4" result="color" />
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feFlood floodColor={color} floodOpacity="0.25" result="color" />
             <feComposite in="color" in2="blur" operator="in" result="glow" />
             <feMerge>
               <feMergeNode in="glow" />
@@ -99,30 +124,67 @@ export function SVGGraph({
             </feMerge>
           </filter>
         ))}
+
+        {/* Pulse animation for selected node */}
+        <style>{`
+          @keyframes pulse-ring {
+            0% { opacity: 0.6; r: inherit; }
+            100% { opacity: 0; r: 30; }
+          }
+        `}</style>
       </defs>
 
-      {/* Edges */}
-      {edges.map((edge) => (
-        <line
-          key={`${edge.source}-${edge.target}`}
-          ref={(el) => {
-            if (el) edgeRefs.current.set(`${edge.source}-${edge.target}`, el)
-          }}
-          stroke="#94a3b8"
-          strokeWidth={1}
-          opacity={edgeOpacity(edge)}
-          style={{
-            transition: selectedNodeId ? 'opacity 0.3s' : 'none',
-          }}
-        />
-      ))}
+      {/* Dot grid background */}
+      <rect width={width} height={height} fill="url(#dot-grid)" />
 
-      {/* Nodes — each wrapped in a <g> that gets translated by the simulation */}
+      {/* Edges with terminal dots */}
+      {edges.map((edge) => {
+        const opacity = edgeOpacity(edge)
+        return (
+          <g
+            key={`${edge.source}-${edge.target}`}
+            ref={(el) => {
+              if (el) edgeRefs.current.set(`${edge.source}-${edge.target}`, el)
+            }}
+          >
+            <line
+              stroke="#94a3b8"
+              strokeWidth={1}
+              opacity={opacity}
+              style={{
+                transition: selectedNodeId ? 'opacity 0.3s' : 'none',
+              }}
+            />
+            {/* Terminal dots — molecular bond style */}
+            <circle
+              className="edge-dot-source"
+              r={1.5}
+              fill="#94a3b8"
+              opacity={opacity}
+              style={{
+                transition: selectedNodeId ? 'opacity 0.3s' : 'none',
+              }}
+            />
+            <circle
+              className="edge-dot-target"
+              r={1.5}
+              fill="#94a3b8"
+              opacity={opacity}
+              style={{
+                transition: selectedNodeId ? 'opacity 0.3s' : 'none',
+              }}
+            />
+          </g>
+        )
+      })}
+
+      {/* Nodes — ring style with optional inline labels */}
       {initialNodes.map((node) => {
         const r = nodeRadius(node.importance)
         const color = CATEGORY_COLORS[node.category]
         const dimmed = nodeDimmed(node.id)
         const isSelected = node.id === selectedNodeId
+        const showLabel = node.importance >= 7
 
         return (
           <g
@@ -132,7 +194,7 @@ export function SVGGraph({
             }}
             transform={`translate(${node.x},${node.y})`}
           >
-            {/* Invisible hit target (min 20px radius) — centered at 0,0 */}
+            {/* Invisible hit target (min 20px radius) */}
             <circle
               cx={0}
               cy={0}
@@ -144,19 +206,55 @@ export function SVGGraph({
                 if (current) onNodeTap(current)
               }}
             />
-            {/* Visible node — centered at 0,0 */}
+
+            {/* Selected: outer pulse ring */}
+            {isSelected && (
+              <circle
+                cx={0}
+                cy={0}
+                r={r * 1.6}
+                fill="none"
+                stroke={color}
+                strokeWidth={1}
+                opacity={0.4}
+                style={{
+                  animation: 'pulse-ring 2s ease-out infinite',
+                }}
+              />
+            )}
+
+            {/* Ring node: thin stroke + very faint fill */}
             <circle
               cx={0}
               cy={0}
-              r={isSelected ? r * 1.3 : r}
+              r={isSelected ? r * 1.2 : r}
               fill={color}
+              fillOpacity={isSelected ? 0.15 : 0.05}
+              stroke={color}
+              strokeWidth={isSelected ? 2 : 1.5}
               opacity={dimmed ? 0.15 : 0.85}
               filter={`url(#glow-${node.category})`}
               style={{
-                transition: selectedNodeId ? 'opacity 0.3s, r 0.2s' : 'none',
+                transition: selectedNodeId ? 'opacity 0.3s' : 'none',
                 pointerEvents: 'none',
               }}
             />
+
+            {/* Inline label for high-importance nodes */}
+            {showLabel && !dimmed && (
+              <text
+                x={0}
+                y={r + 12}
+                textAnchor="middle"
+                fill="#94a3b8"
+                fontSize="9"
+                fontFamily="monospace"
+                opacity={0.6}
+                style={{ pointerEvents: 'none' }}
+              >
+                {truncateLabel(node.label, 18)}
+              </text>
+            )}
           </g>
         )
       })}

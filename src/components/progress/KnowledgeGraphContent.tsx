@@ -82,13 +82,21 @@ export function KnowledgeGraphContent({ rawData }: KnowledgeGraphContentProps) {
 
   return (
     <div className="fixed inset-0 bg-slate-900">
+      {/* Radial vignette overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none z-[1]"
+        style={{
+          background: 'radial-gradient(ellipse at center, transparent 40%, rgba(15, 23, 42, 0.6) 100%)',
+        }}
+      />
+
       {/* Header */}
       <div className="absolute top-0 left-0 right-0 z-10 px-4 pt-12 pb-3">
         <h1 className="text-slate-300 text-sm font-medium tracking-wide">
-          What Rise Knows
+          Knowledge Network
         </h1>
-        <p className="text-slate-600 text-xs mt-0.5">
-          {nodes.length} things learned
+        <p className="text-slate-600 text-xs mt-0.5 font-mono">
+          {nodes.length} nodes · {edges.length} connections
         </p>
       </div>
 

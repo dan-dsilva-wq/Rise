@@ -70,6 +70,7 @@ export interface NotificationContext {
   userId: string
   userTimezone: string
   lastQuestionSent: Date | null
+  recentQuestionSent: Date[]
   lastUserActivity: Date
   currentTime: Date
 }
@@ -81,7 +82,9 @@ export interface NotificationDecision {
   minutesSinceActivity: number
   hoursSinceActivity: number
   hoursSinceLastQuestion: number | null
-  inIdealWindow: boolean
+  inPreferredWindow: boolean
+  currentWindow: 'morning' | 'late_evening' | 'none'
+  sentTodayCount: number
   openedAppToday: boolean
 }
 
@@ -119,6 +122,12 @@ function getDateKeyInTimezone(date: Date, timezone: string): string {
   } catch {
     return date.toISOString().slice(0, 10)
   }
+}
+
+function resolvePromptWindow(hour: number): 'morning' | 'late_evening' | 'none' {
+  if (hour >= 9 && hour <= 11) return 'morning'
+  if (hour >= 21 && hour <= 23) return 'late_evening'
+  return 'none'
 }
 
 function hasOpenedAppToday(lastActivity: Date, currentTime: Date, timezone: string): boolean {
@@ -201,18 +210,24 @@ export async function buildNotificationContextForUser(
         .eq('user_id', userId)
         .not('sent_at', 'is', null)
         .order('sent_at', { ascending: false })
-        .limit(1)
+        .limit(20)
     ),
     getLastActivityAt(client, userId),
   ])
 
   const timezone = profileResult.data?.timezone || 'UTC'
-  const sentAt = lastQuestionResult.data[0]?.sent_at
+  const recentQuestionSent = lastQuestionResult.data
+    .map(row => row.sent_at)
+    .filter((value): value is string => Boolean(value))
+    .map(value => new Date(value))
+    .filter(value => !Number.isNaN(value.getTime()))
+  const sentAt = recentQuestionSent[0]
 
   return {
     userId,
     userTimezone: timezone,
     lastQuestionSent: sentAt ? new Date(sentAt) : null,
+    recentQuestionSent,
     lastUserActivity,
     currentTime: new Date(),
   }
@@ -220,24 +235,25 @@ export async function buildNotificationContextForUser(
 
 export function shouldSendQuestion(ctx: NotificationContext): NotificationDecision {
   const userHour = getHourInTimezone(ctx.currentTime, ctx.userTimezone)
+  const currentWindow = resolvePromptWindow(userHour)
   const minutesSinceActivity = minutesBetween(ctx.lastUserActivity, ctx.currentTime)
   const hoursSinceActivity = hoursBetween(ctx.lastUserActivity, ctx.currentTime)
   const hoursSinceLastQuestion = ctx.lastQuestionSent
     ? hoursBetween(ctx.lastQuestionSent, ctx.currentTime)
     : null
-
-  if (hoursSinceLastQuestion !== null && hoursSinceLastQuestion < 24) {
-    return {
-      shouldSend: false,
-      reason: 'Last proactive question was sent less than 24 hours ago.',
-      userHour,
-      minutesSinceActivity,
-      hoursSinceActivity,
-      hoursSinceLastQuestion,
-      inIdealWindow: false,
-      openedAppToday: hasOpenedAppToday(ctx.lastUserActivity, ctx.currentTime, ctx.userTimezone),
-    }
-  }
+  const todayKey = getDateKeyInTimezone(ctx.currentTime, ctx.userTimezone)
+  const sentToday = ctx.recentQuestionSent.filter(
+    sentAt => getDateKeyInTimezone(sentAt, ctx.userTimezone) === todayKey
+  )
+  const sentTodayCount = sentToday.length
+  const sentMorningToday = sentToday.some(
+    sentAt => resolvePromptWindow(getHourInTimezone(sentAt, ctx.userTimezone)) === 'morning'
+  )
+  const sentEveningToday = sentToday.some(
+    sentAt => resolvePromptWindow(getHourInTimezone(sentAt, ctx.userTimezone)) === 'late_evening'
+  )
+  const inPreferredWindow = currentWindow !== 'none'
+  const openedToday = hasOpenedAppToday(ctx.lastUserActivity, ctx.currentTime, ctx.userTimezone)
 
   if (minutesSinceActivity < 30) {
     return {
@@ -247,53 +263,131 @@ export function shouldSendQuestion(ctx: NotificationContext): NotificationDecisi
       minutesSinceActivity,
       hoursSinceActivity,
       hoursSinceLastQuestion,
-      inIdealWindow: false,
-      openedAppToday: hasOpenedAppToday(ctx.lastUserActivity, ctx.currentTime, ctx.userTimezone),
-    }
-  }
-
-  if (userHour < 9 || userHour > 21) {
-    return {
-      shouldSend: false,
-      reason: 'Current local time is outside 9am-9pm.',
-      userHour,
-      minutesSinceActivity,
-      hoursSinceActivity,
-      hoursSinceLastQuestion,
-      inIdealWindow: false,
-      openedAppToday: hasOpenedAppToday(ctx.lastUserActivity, ctx.currentTime, ctx.userTimezone),
-    }
-  }
-
-  const inIdealWindow =
-    (userHour >= 9 && userHour <= 10) ||
-    (userHour >= 14 && userHour <= 15) ||
-    (userHour >= 19 && userHour <= 20)
-
-  const openedToday = hasOpenedAppToday(ctx.lastUserActivity, ctx.currentTime, ctx.userTimezone)
-
-  if (inIdealWindow && !openedToday) {
-    return {
-      shouldSend: true,
-      reason: 'Ideal prompt window and user has not opened the app today.',
-      userHour,
-      minutesSinceActivity,
-      hoursSinceActivity,
-      hoursSinceLastQuestion,
-      inIdealWindow,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
       openedAppToday: openedToday,
     }
   }
 
-  if (hoursSinceActivity > 48) {
+  if (userHour < 9 || userHour > 23) {
     return {
-      shouldSend: true,
-      reason: 'User has been inactive for more than 48 hours.',
+      shouldSend: false,
+      reason: 'Current local time is outside 9am-11pm.',
       userHour,
       minutesSinceActivity,
       hoursSinceActivity,
       hoursSinceLastQuestion,
-      inIdealWindow,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
+      openedAppToday: openedToday,
+    }
+  }
+
+  if (sentTodayCount >= 2) {
+    return {
+      shouldSend: false,
+      reason: 'Already sent two proactive questions today.',
+      userHour,
+      minutesSinceActivity,
+      hoursSinceActivity,
+      hoursSinceLastQuestion,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
+      openedAppToday: openedToday,
+    }
+  }
+
+  if (!inPreferredWindow) {
+    return {
+      shouldSend: false,
+      reason: 'Current local time is outside preferred morning/evening windows.',
+      userHour,
+      minutesSinceActivity,
+      hoursSinceActivity,
+      hoursSinceLastQuestion,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
+      openedAppToday: openedToday,
+    }
+  }
+
+  if (currentWindow === 'morning' && sentMorningToday) {
+    return {
+      shouldSend: false,
+      reason: 'Morning proactive question already sent today.',
+      userHour,
+      minutesSinceActivity,
+      hoursSinceActivity,
+      hoursSinceLastQuestion,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
+      openedAppToday: openedToday,
+    }
+  }
+
+  if (currentWindow === 'late_evening' && sentEveningToday) {
+    return {
+      shouldSend: false,
+      reason: 'Late-evening proactive question already sent today.',
+      userHour,
+      minutesSinceActivity,
+      hoursSinceActivity,
+      hoursSinceLastQuestion,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
+      openedAppToday: openedToday,
+    }
+  }
+
+  if (hoursSinceLastQuestion !== null && hoursSinceLastQuestion < 6) {
+    return {
+      shouldSend: false,
+      reason: 'Most recent proactive question was sent too recently.',
+      userHour,
+      minutesSinceActivity,
+      hoursSinceActivity,
+      hoursSinceLastQuestion,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
+      openedAppToday: openedToday,
+    }
+  }
+
+  if (currentWindow === 'morning' && !sentMorningToday) {
+    return {
+      shouldSend: true,
+      reason: 'Morning window is open and no morning proactive question has been sent yet.',
+      userHour,
+      minutesSinceActivity,
+      hoursSinceActivity,
+      hoursSinceLastQuestion,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
+      openedAppToday: openedToday,
+    }
+  }
+
+  if (currentWindow === 'late_evening' && !sentEveningToday) {
+    return {
+      shouldSend: true,
+      reason: sentTodayCount === 0
+        ? 'Late-evening window fallback to ensure at least one daily proactive touchpoint.'
+        : 'Late-evening window is open and evening proactive question has not been sent yet.',
+      userHour,
+      minutesSinceActivity,
+      hoursSinceActivity,
+      hoursSinceLastQuestion,
+      inPreferredWindow,
+      currentWindow,
+      sentTodayCount,
       openedAppToday: openedToday,
     }
   }
@@ -305,7 +399,9 @@ export function shouldSendQuestion(ctx: NotificationContext): NotificationDecisi
     minutesSinceActivity,
     hoursSinceActivity,
     hoursSinceLastQuestion,
-    inIdealWindow,
+    inPreferredWindow,
+    currentWindow,
+    sentTodayCount,
     openedAppToday: openedToday,
   }
 }

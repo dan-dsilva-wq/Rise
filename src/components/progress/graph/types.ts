@@ -16,10 +16,23 @@ export interface GraphNode {
   importance: number // 1-10
 }
 
+export interface PositionedNode extends GraphNode {
+  x: number
+  y: number
+}
+
 export interface GraphEdge {
   source: string // node id
   target: string // node id
   strength: number // 0-1
+}
+
+export interface ClusterInfo {
+  category: GraphCategory
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface RawGraphData {

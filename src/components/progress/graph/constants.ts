@@ -24,6 +24,26 @@ export const CATEGORY_LABELS: Record<GraphCategory, string> = {
   blockers: 'Blockers',
 }
 
+// Node sizing: importance 1-10 → radius 8-22px
+export function nodeRadius(importance: number): number {
+  const clamped = Math.max(1, Math.min(10, importance))
+  return 8 + (clamped - 1) * (14 / 9)
+}
+
+// Structured layout constants
+export const LAYOUT = {
+  NODES_PER_ROW: 2,
+  NODE_H_SPACING: 110,
+  NODE_V_SPACING: 85,
+  CLUSTER_PADDING_X: 50,
+  CLUSTER_PADDING_Y: 40,
+  CLUSTER_H_GAP: 100,
+  CLUSTER_V_GAP: 60,
+  CANVAS_PADDING: 30,
+  CLUSTER_HEADER_HEIGHT: 32,
+  CLUSTER_COLS: 3,
+}
+
 // Words to ignore for keyword overlap
 export const STOP_WORDS = new Set([
   'the', 'and', 'for', 'that', 'this', 'with', 'from', 'have', 'has',

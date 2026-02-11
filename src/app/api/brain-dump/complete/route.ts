@@ -92,7 +92,8 @@ ${transcriptText}
 Extract the following using these EXACT tags:
 
 [BRAIN_DUMP_ANALYSIS]
-summary: A 1-2 sentence summary of what this brain dump was about
+summary: A concise 1-2 sentence recap of what they processed
+rise_input: One short, practical "Rise take" insight or pattern you noticed
 mood: The user's overall mood (e.g., excited, anxious, frustrated, reflective, energized, overwhelmed)
 energy: A number 1-10 representing their energy level
 topics: Comma-separated list of topics discussed
@@ -158,6 +159,10 @@ Only include tags where you actually found relevant information. Be specific and
       ? analysis.topics.split(',').map((t: string) => t.trim()).filter(Boolean)
       : []
 
+    const combinedSummary = [analysis.summary, analysis.rise_input ? `Rise input: ${analysis.rise_input}` : null]
+      .filter(Boolean)
+      .join('\n')
+
     const energyLevel = analysis.energy ? parseInt(analysis.energy, 10) : null
     const validEnergy = energyLevel && energyLevel >= 1 && energyLevel <= 10 ? energyLevel : null
 
@@ -167,7 +172,7 @@ Only include tags where you actually found relevant information. Be specific and
       .insert({
         user_id: user.id,
         transcript: messages,
-        summary: analysis.summary || null,
+        summary: combinedSummary || analysis.summary || null,
         mood: analysis.mood || null,
         energy_level: validEnergy,
         topics,
@@ -214,7 +219,7 @@ Only include tags where you actually found relevant information. Be specific and
 
     return Response.json({
       brainDumpId: brainDump?.id || null,
-      summary: analysis.summary || null,
+      summary: combinedSummary || analysis.summary || null,
       mood: analysis.mood || null,
       factsExtracted: profileUpdates.length + insights.length,
       topics,

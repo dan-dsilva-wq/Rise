@@ -5,6 +5,7 @@ import { cachedWeaveMemory, cachedSynthesizeUserThread, fetchDisplayName, buildR
 import { saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
 import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
+import { getLogDateForTimezone } from '@/lib/time/logDate'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -44,6 +45,14 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return Response.json({ error: 'Not logged in' }, { status: 401 })
     }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('timezone')
+      .eq('id', user.id)
+      .maybeSingle()
+    const timezone = profile?.timezone || 'UTC'
+    const reflectionDate = getLogDateForTimezone(timezone)
 
     const body: ReflectionRequest = await request.json()
     const { messages, todayContext } = body
@@ -114,7 +123,6 @@ importance: <1-10>
 
 Keep the conversation short — 3-5 exchanges total. This is a wind-down, not a therapy session.`
 
-    const reflectionDate = new Date().toISOString().split('T')[0]
     const preparedHistory = await prepareConversationHistory({
       messages: messages.map(msg => ({
         role: msg.role,
@@ -177,8 +185,6 @@ Keep the conversation short — 3-5 exchanges total. This is a wind-down, not a 
     // this is the MEMORY BRIDGE that lets tomorrow's morning briefing and
     // greeting reference what the user said tonight. Without this, the
     // evening reflection is a dead end: Rise forgets what you opened up about.
-    const today = new Date().toISOString().split('T')[0]
-
     if (eveningData || isComplete) {
       const updateData: Record<string, unknown> = {}
 
@@ -207,11 +213,27 @@ Keep the conversation short — 3-5 exchanges total. This is a wind-down, not a 
       }
 
       if (Object.keys(updateData).length > 0) {
-        await supabase
+        const { data: existingLog } = await supabase
           .from('daily_logs')
-          .update(updateData)
+          .select('id')
           .eq('user_id', user.id)
-          .eq('log_date', today)
+          .eq('log_date', reflectionDate)
+          .maybeSingle()
+
+        if (existingLog?.id) {
+          await supabase
+            .from('daily_logs')
+            .update(updateData)
+            .eq('id', existingLog.id)
+        } else {
+          await supabase
+            .from('daily_logs')
+            .insert({
+              user_id: user.id,
+              log_date: reflectionDate,
+              ...updateData,
+            })
+        }
       }
     }
 

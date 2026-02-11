@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAudioRecorder } from '@/components/brain-dump/useAudioRecorder'
 
 const DEFAULT_STORAGE_KEY = 'rise.voice.muted'
+const MAX_TTS_CHARS = 520
+const LEAD_CHUNK_MAX_CHARS = 150
 
 interface UseVoiceConversationOptions {
   storageKey?: string
@@ -14,6 +16,8 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
   const recorder = useAudioRecorder()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const isRecordingRef = useRef(false)
+  const isMutedRef = useRef(false)
+  const speechRunRef = useRef(0)
   const stopRecordingRef = useRef(recorder.stopRecording)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -34,6 +38,10 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
   }, [isMuted, storageKey])
 
   useEffect(() => {
+    isMutedRef.current = isMuted
+  }, [isMuted])
+
+  useEffect(() => {
     isRecordingRef.current = recorder.isRecording
   }, [recorder.isRecording])
 
@@ -46,6 +54,7 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
   }, [])
 
   const stopSpeaking = useCallback(() => {
+    speechRunRef.current += 1
     if (!audioRef.current) return
     audioRef.current.pause()
     audioRef.current = null
@@ -116,9 +125,12 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
     if (recorder.isRecording) {
       return stopRecordingAndTranscribe()
     }
+    if (isSpeaking) {
+      stopSpeaking()
+    }
     await startRecording()
     return null
-  }, [recorder.isRecording, startRecording, stopRecordingAndTranscribe])
+  }, [recorder.isRecording, startRecording, stopRecordingAndTranscribe, isSpeaking, stopSpeaking])
 
   const playAudio = useCallback(async (blob: Blob) => {
     const url = URL.createObjectURL(blob)
@@ -141,6 +153,44 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
     }
   }, [])
 
+  const splitForFastSpeech = useCallback((text: string): [string, string] => {
+    const squashed = text.replace(/\s+/g, ' ').trim()
+    const bounded =
+      squashed.length > MAX_TTS_CHARS
+        ? `${squashed.slice(0, MAX_TTS_CHARS).trimEnd()}...`
+        : squashed
+
+    if (!bounded) return ['', '']
+
+    const sentenceParts = bounded.split(/(?<=[.!?])\s+/).filter(Boolean)
+    if (sentenceParts.length === 0) return [bounded, '']
+
+    let lead = sentenceParts[0]
+    let remainder = sentenceParts.slice(1).join(' ').trim()
+
+    if (lead.length > LEAD_CHUNK_MAX_CHARS) {
+      lead = `${lead.slice(0, LEAD_CHUNK_MAX_CHARS).trimEnd()}...`
+      remainder = bounded.slice(Math.min(bounded.length, lead.length)).trim()
+    }
+
+    return [lead, remainder]
+  }, [])
+
+  const fetchSpeechBlob = useCallback(async (text: string) => {
+    const response = await fetch('/api/brain-dump/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      throw new Error((body as { error?: string }).error || 'Text-to-speech failed')
+    }
+
+    return response.blob()
+  }, [])
+
   const speakText = useCallback(async (text: string) => {
     const cleanText = text.trim()
     if (!cleanText || isMuted) return false
@@ -148,30 +198,37 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
     setVoiceError(null)
     stopSpeaking()
     setIsSpeaking(true)
+    const runId = speechRunRef.current
+    const [leadText, remainderText] = splitForFastSpeech(cleanText)
 
     try {
-      const response = await fetch('/api/brain-dump/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cleanText }),
-      })
+      // Start remainder synthesis in parallel while the lead sentence plays.
+      const remainderBlobPromise = remainderText
+        ? fetchSpeechBlob(remainderText).catch(() => null)
+        : Promise.resolve<Blob | null>(null)
 
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}))
-        throw new Error((body as { error?: string }).error || 'Text-to-speech failed')
+      if (leadText) {
+        const leadBlob = await fetchSpeechBlob(leadText)
+        if (speechRunRef.current !== runId || isMutedRef.current) return false
+        await playAudio(leadBlob)
       }
 
-      const audioBlob = await response.blob()
-      await playAudio(audioBlob)
+      const remainderBlob = await remainderBlobPromise
+      if (remainderBlob && speechRunRef.current === runId && !isMutedRef.current) {
+        await playAudio(remainderBlob)
+      }
+
       return true
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Text-to-speech failed'
       setVoiceError(message)
       return false
     } finally {
-      setIsSpeaking(false)
+      if (speechRunRef.current === runId) {
+        setIsSpeaking(false)
+      }
     }
-  }, [isMuted, playAudio, stopSpeaking])
+  }, [isMuted, stopSpeaking, splitForFastSpeech, fetchSpeechBlob, playAudio])
 
   const toggleMute = useCallback(() => {
     setVoiceError(null)

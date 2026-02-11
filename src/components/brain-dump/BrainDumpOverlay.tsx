@@ -19,6 +19,21 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const startTimeRef = useRef<number>(0)
 
+  const splitForFastSpeech = useCallback((text: string): [string, string] => {
+    const squashed = text.replace(/\s+/g, ' ').trim()
+    if (!squashed) return ['', '']
+    const capped = squashed.length > 520 ? `${squashed.slice(0, 520).trimEnd()}...` : squashed
+    const parts = capped.split(/(?<=[.!?])\s+/).filter(Boolean)
+    if (parts.length === 0) return [capped, '']
+    let lead = parts[0]
+    let rest = parts.slice(1).join(' ').trim()
+    if (lead.length > 150) {
+      lead = `${lead.slice(0, 150).trimEnd()}...`
+      rest = capped.slice(Math.min(capped.length, lead.length)).trim()
+    }
+    return [lead, rest]
+  }, [])
+
   // Auto-scroll transcript
   useEffect(() => {
     if (scrollRef.current) {
@@ -74,7 +89,7 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
     return data.message as string
   }, [])
 
-  const speakText = useCallback(async (text: string) => {
+  const fetchSpeechBlob = useCallback(async (text: string) => {
     const res = await fetch('/api/brain-dump/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -86,8 +101,7 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
       console.error('TTS API error:', errData)
       throw new Error(errData.error || 'TTS failed')
     }
-    const audioBlob = await res.blob()
-    return audioBlob
+    return res.blob()
   }, [])
 
   const playAudio = useCallback((blob: Blob): Promise<void> => {
@@ -140,8 +154,20 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
         // Speak the response
         actions.startSpeaking()
         try {
-          const audioBlob = await speakText(aiText)
-          await playAudio(audioBlob)
+          const [leadText, restText] = splitForFastSpeech(aiText)
+          const restBlobPromise = restText
+            ? fetchSpeechBlob(restText).catch(() => null)
+            : Promise.resolve<Blob | null>(null)
+
+          if (leadText) {
+            const leadBlob = await fetchSpeechBlob(leadText)
+            await playAudio(leadBlob)
+          }
+
+          const restBlob = await restBlobPromise
+          if (restBlob) {
+            await playAudio(restBlob)
+          }
         } catch (ttsErr) {
           console.error('TTS error:', ttsErr)
         }
@@ -158,7 +184,7 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
         actions.error(err instanceof Error ? err.message : 'Microphone access denied')
       }
     }
-  }, [state.phase, state.transcript, actions, recorder, transcribeAudio, getChatResponse, speakText, playAudio])
+  }, [state.phase, state.transcript, actions, recorder, transcribeAudio, getChatResponse, fetchSpeechBlob, playAudio, splitForFastSpeech])
 
   // End conversation
   const handleEnd = useCallback(async () => {

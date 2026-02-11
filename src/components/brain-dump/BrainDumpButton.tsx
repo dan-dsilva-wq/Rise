@@ -3,10 +3,21 @@
 import { useState } from 'react'
 import { Mic } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { usePathname } from 'next/navigation'
 import { BrainDumpOverlay } from './BrainDumpOverlay'
 
 export function BrainDumpButton() {
   const [isOpen, setIsOpen] = useState(false)
+  const pathname = usePathname()
+
+  const shouldHideButton =
+    pathname?.startsWith('/evening') ||
+    pathname?.startsWith('/login') ||
+    pathname?.startsWith('/signup')
+
+  if (shouldHideButton) {
+    return null
+  }
 
   return (
     <>

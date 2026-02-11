@@ -14,10 +14,6 @@ export interface GraphNode {
   label: string
   category: GraphCategory
   importance: number // 1-10
-  x: number
-  y: number
-  vx: number
-  vy: number
 }
 
 export interface GraphEdge {

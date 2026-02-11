@@ -23,18 +23,15 @@ const SEMANTIC_LINKS: Array<[string, GraphCategory]> = [
 function sanitizeLabel(raw: unknown): string | null {
   if (raw == null) return null
   if (typeof raw === 'object') {
-    // It's an actual object (e.g. from Json column) — try to pull a meaningful string
     const obj = raw as Record<string, unknown>
     if (typeof obj.description === 'string') return obj.description
     if (typeof obj.text === 'string') return obj.text
     if (typeof obj.summary === 'string') return obj.summary
     if (typeof obj.content === 'string') return obj.content
     if (typeof obj.name === 'string') return obj.name
-    // No usable field — skip this node
     return null
   }
   const str = String(raw)
-  // Detect stringified JSON
   if (str.startsWith('{') || str.startsWith('[')) {
     try {
       const parsed = JSON.parse(str)
@@ -53,21 +50,12 @@ function extractKeywords(text: string): Set<string> {
   return new Set(words.filter(w => w.length > 5 && !STOP_WORDS.has(w)))
 }
 
-function randomSpread(center: number, range: number): number {
-  return center + (Math.random() - 0.5) * range
-}
-
 export function useGraphData(
-  rawData: RawGraphData,
-  width: number,
-  height: number
+  rawData: RawGraphData
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
   return useMemo(() => {
     const nodes: GraphNode[] = []
     const edges: GraphEdge[] = []
-    const cx = width / 2
-    const cy = height / 2
-    const spread = Math.min(width, height) * 0.35
 
     // 1. Profile facts → nodes
     for (const fact of rawData.facts) {
@@ -78,10 +66,6 @@ export function useGraphData(
         label,
         category: fact.category as GraphCategory,
         importance: 5,
-        x: randomSpread(cx, spread),
-        y: randomSpread(cy, spread),
-        vx: 0,
-        vy: 0,
       })
     }
 
@@ -95,10 +79,6 @@ export function useGraphData(
         label,
         category,
         importance: Math.max(1, Math.min(10, insight.importance)),
-        x: randomSpread(cx, spread),
-        y: randomSpread(cy, spread),
-        vx: 0,
-        vy: 0,
       })
     }
 
@@ -111,10 +91,6 @@ export function useGraphData(
         label,
         category: 'discoveries',
         importance: Math.max(1, Math.min(10, Math.round(pattern.confidence * 10))),
-        x: randomSpread(cx, spread),
-        y: randomSpread(cy, spread),
-        vx: 0,
-        vy: 0,
       })
     }
 
@@ -127,10 +103,6 @@ export function useGraphData(
         label,
         category: 'situation',
         importance: 4,
-        x: randomSpread(cx, spread),
-        y: randomSpread(cy, spread),
-        vx: 0,
-        vy: 0,
       })
     }
 
@@ -154,10 +126,6 @@ export function useGraphData(
             label,
             category,
             importance,
-            x: randomSpread(cx, spread),
-            y: randomSpread(cy, spread),
-            vx: 0,
-            vy: 0,
           })
         }
       }
@@ -169,10 +137,6 @@ export function useGraphData(
           label: successLabel,
           category: 'goals',
           importance: 9,
-          x: randomSpread(cx, spread),
-          y: randomSpread(cy, spread),
-          vx: 0,
-          vy: 0,
         })
       }
     }
@@ -242,7 +206,6 @@ export function useGraphData(
         const targetNodes = nodes.filter(n =>
           n.category === targetCategory && !n.id.startsWith('understanding-')
         )
-        // Link first understanding node to first target node if both exist
         if (understandingNodes.length > 0 && targetNodes.length > 0) {
           edges.push({
             source: understandingNodes[0].id,
@@ -254,5 +217,5 @@ export function useGraphData(
     }
 
     return { nodes, edges }
-  }, [rawData, width, height])
+  }, [rawData])
 }

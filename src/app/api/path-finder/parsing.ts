@@ -1,5 +1,12 @@
 import type { ExtractedContext, ExtractedInsight, MilestoneWithSteps, ProjectAction, SuggestedFact } from './types'
 import type { InsightType, ProjectContextType } from '@/lib/supabase/types'
+import {
+  areNearDuplicateMemories,
+  isLikelyRelevantInsight,
+  isLikelyRelevantProfileFact,
+  memorySignature,
+  normalizeMemoryText,
+} from '@/lib/memory/relevance'
 
 export function parseTagBlocks(message: string, tag: string): Array<Record<string, string>> {
   const blocks: Array<Record<string, string>> = []
@@ -46,13 +53,21 @@ export function extractUuid(value: string | undefined): string | undefined {
 
 export function parseSuggestedFacts(assistantMessage: string): SuggestedFact[] {
   const suggestedFacts: SuggestedFact[] = []
+  const seenBySignature = new Map<string, string>()
   const profileUpdateRegex = /\[PROFILE_UPDATE\]\s*category:\s*(\w+)\s*fact:\s*([^\[]+?)\s*\[\/PROFILE_UPDATE\]/g
   let match: RegExpExecArray | null
   while ((match = profileUpdateRegex.exec(assistantMessage)) !== null) {
     const category = match[1].toLowerCase()
-    const fact = match[2].trim()
+    const fact = normalizeMemoryText(match[2].trim())
+
+    if (!isLikelyRelevantProfileFact(fact)) continue
 
     if (['background', 'skills', 'situation', 'goals', 'preferences', 'constraints'].includes(category)) {
+      const signature = memorySignature(fact)
+      const existing = seenBySignature.get(signature)
+      if (existing && areNearDuplicateMemories(existing, fact)) continue
+      seenBySignature.set(signature, fact)
+
       suggestedFacts.push({
         category: category as SuggestedFact['category'],
         fact,
@@ -88,13 +103,25 @@ export function parseExtractedContexts(assistantMessage: string): ExtractedConte
 
 export function parseExtractedInsights(assistantMessage: string): ExtractedInsight[] {
   const extractedInsights: ExtractedInsight[] = []
+  const seenBySignature = new Map<string, string>()
   for (const fields of parseTagBlocks(assistantMessage, 'AI_INSIGHT')) {
     const insightType = fields.type?.toLowerCase() as InsightType
-    const content = fields.content?.trim()
+    const rawContent = fields.content?.trim()
     const importance = fields.importance ? parseInt(fields.importance, 10) : 5
+    const content = rawContent ? normalizeMemoryText(rawContent) : undefined
     const projectId = extractUuid(fields.project_id || fields.projectid)
 
-    if (content && insightType && ['discovery', 'decision', 'blocker', 'preference', 'learning'].includes(insightType)) {
+    if (
+      content &&
+      insightType &&
+      ['discovery', 'decision', 'blocker', 'preference', 'learning'].includes(insightType) &&
+      isLikelyRelevantInsight(content, importance)
+    ) {
+      const signature = memorySignature(content)
+      const existing = seenBySignature.get(signature)
+      if (existing && areNearDuplicateMemories(existing, content)) continue
+      seenBySignature.set(signature, content)
+
       extractedInsights.push({ type: insightType, content, importance, projectId })
     }
   }

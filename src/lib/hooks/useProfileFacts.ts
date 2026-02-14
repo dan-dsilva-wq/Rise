@@ -4,12 +4,46 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getFromCache, setCache, getCacheKey } from '@/lib/cache'
 import type { UserProfileFact, UserProfileFactInsert, ProfileCategory } from '@/lib/supabase/types'
+import {
+  areNearDuplicateMemories,
+  isLikelyRelevantProfileFact,
+  memorySignature,
+  normalizeMemoryText,
+} from '@/lib/memory/relevance'
 
 // Helper to get client - only call after mount (client-side)
 function getClient() {
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return supabase as any
+}
+
+function sanitizeAndDedupeFacts(facts: UserProfileFact[]): { kept: UserProfileFact[]; dropIds: string[] } {
+  const kept: UserProfileFact[] = []
+  const dropIds: string[] = []
+  const seenBySignature = new Map<string, UserProfileFact>()
+
+  const sorted = [...facts].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  for (const fact of sorted) {
+    const cleaned = normalizeMemoryText(fact.fact)
+    if (!isLikelyRelevantProfileFact(cleaned)) {
+      dropIds.push(fact.id)
+      continue
+    }
+
+    const signature = memorySignature(cleaned)
+    const existing = seenBySignature.get(signature)
+    if (existing && areNearDuplicateMemories(existing.fact, cleaned)) {
+      dropIds.push(fact.id)
+      continue
+    }
+
+    const nextFact = { ...fact, fact: cleaned }
+    kept.push(nextFact)
+    seenBySignature.set(signature, nextFact)
+  }
+
+  return { kept, dropIds }
 }
 
 export function useProfileFacts(userId: string | undefined) {
@@ -28,7 +62,8 @@ export function useProfileFacts(userId: string | undefined) {
     const cacheKey = getCacheKey(userId, 'facts')
     const cached = getFromCache<UserProfileFact[]>(cacheKey)
     if (cached && !initializedRef.current) {
-      setFacts(cached)
+      const sanitizedCached = sanitizeAndDedupeFacts(cached).kept
+      setFacts(sanitizedCached)
       setLoading(false)
       initializedRef.current = true
     }
@@ -48,15 +83,25 @@ export function useProfileFacts(userId: string | undefined) {
     }
 
     const freshFacts = (data as UserProfileFact[]) || []
-    console.log('[DEBUG] fetchFacts: Got', freshFacts.length, 'facts from database')
-    setFacts(freshFacts)
-    setCache(cacheKey, freshFacts)
+    const { kept, dropIds } = sanitizeAndDedupeFacts(freshFacts)
+    setFacts(kept)
+    setCache(cacheKey, kept)
+
+    if (dropIds.length > 0) {
+      client
+        .from('user_profile_facts')
+        .update({ is_active: false })
+        .in('id', dropIds)
+        .eq('user_id', userId)
+        .then(() => null)
+        .catch(() => null)
+    }
+
     setLoading(false)
     initializedRef.current = true
   }, [userId])
 
   useEffect(() => {
-    console.log('[DEBUG] useProfileFacts useEffect triggered, calling fetchFacts')
     const timeout = setTimeout(() => {
       void fetchFacts()
     }, 0)
@@ -66,11 +111,18 @@ export function useProfileFacts(userId: string | undefined) {
 
   // Add a new fact (with optimistic update)
   const addFact = async (category: ProfileCategory, fact: string): Promise<UserProfileFact | null> => {
-    console.log('[DEBUG] addFact called', { category, factLength: fact.length, userId })
-
     if (!userId) {
-      console.error('[DEBUG] addFact: No userId!')
       throw new Error('No user')
+    }
+
+    const cleanedFact = normalizeMemoryText(fact)
+    if (!isLikelyRelevantProfileFact(cleanedFact)) {
+      return null
+    }
+
+    const duplicate = facts.find(existing => areNearDuplicateMemories(existing.fact, cleanedFact))
+    if (duplicate) {
+      return duplicate
     }
 
     // Optimistic update - show immediately
@@ -79,7 +131,7 @@ export function useProfileFacts(userId: string | undefined) {
       id: tempId,
       user_id: userId,
       category,
-      fact,
+      fact: cleanedFact,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       is_active: true,
@@ -89,10 +141,9 @@ export function useProfileFacts(userId: string | undefined) {
     const newFact: UserProfileFactInsert = {
       user_id: userId,
       category,
-      fact,
+      fact: cleanedFact,
     }
 
-    console.log('[DEBUG] addFact: Inserting to database...')
     const client = getClient()
     const { data, error } = await client
       .from('user_profile_facts')
@@ -100,18 +151,13 @@ export function useProfileFacts(userId: string | undefined) {
       .select()
       .single()
 
-    console.log('[DEBUG] addFact result:', { data: !!data, error })
-
     if (error) {
-      console.error('[DEBUG] addFact error:', error)
-      console.error('[DEBUG] addFact error details:', JSON.stringify(error, null, 2))
       // Rollback on error
       setFacts(prev => prev.filter(f => f.id !== tempId))
       throw error
     }
 
     const insertedFact = data as UserProfileFact
-    console.log('[DEBUG] addFact: Fact saved successfully:', insertedFact.id)
     // Replace temp with real
     setFacts(prev => {
       const updated = prev.map(f => f.id === tempId ? insertedFact : f)
@@ -124,18 +170,29 @@ export function useProfileFacts(userId: string | undefined) {
   // Update a fact
   const updateFact = async (factId: string, fact: string): Promise<void> => {
     if (!userId) throw new Error('No user')
+    const cleanedFact = normalizeMemoryText(fact)
+    if (!isLikelyRelevantProfileFact(cleanedFact)) {
+      throw new Error('Fact is too vague to remember')
+    }
+
+    const duplicate = facts.find(existing =>
+      existing.id !== factId && areNearDuplicateMemories(existing.fact, cleanedFact)
+    )
+    if (duplicate) {
+      throw new Error('Fact already remembered')
+    }
 
     const client = getClient()
     const { error } = await client
       .from('user_profile_facts')
-      .update({ fact, updated_at: new Date().toISOString() })
+      .update({ fact: cleanedFact, updated_at: new Date().toISOString() })
       .eq('id', factId)
       .eq('user_id', userId)
 
     if (error) throw error
 
     setFacts(prev => prev.map(f =>
-      f.id === factId ? { ...f, fact, updated_at: new Date().toISOString() } : f
+      f.id === factId ? { ...f, fact: cleanedFact, updated_at: new Date().toISOString() } : f
     ))
   }
 

@@ -5,6 +5,7 @@ import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer
 import { cachedWeaveMemory, cachedSynthesizeUserThread, resolveActiveMilestoneStep, parseInsightTags, stripInsightTags, fetchDisplayName, buildRisePersonalityCore } from '@/lib/ai/memoryWeaver'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
 import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
+import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 
 // Lazy initialize to avoid build-time errors
 let anthropic: Anthropic | null = null
@@ -26,6 +27,7 @@ interface ChatRequest {
   messages: ChatMessage[]
   projectId: string
   approach?: 'do-it' | 'guide'
+  reasoningMode?: 'single' | 'council'
   projectContext?: {
     name: string
     description: string | null
@@ -33,6 +35,8 @@ interface ChatRequest {
     milestones: Array<{ title: string; status: string; description: string | null }>
   }
 }
+
+type ReasoningMode = 'single' | 'council'
 
 // Generate dynamic expert persona based on project context
 function generateExpertise(
@@ -61,6 +65,97 @@ INSTRUCTIONS FOR DETERMINING YOUR EXPERT IDENTITY:
 Be the precise expert they need RIGHT NOW. Not a generalist — their specialist cofounder.`
 }
 
+function extractTextFromClaude(response: { content: Array<{ type: string }> }): string {
+  return response.content
+    .filter(block => block.type === 'text')
+    .map(block => (block as Anthropic.TextBlock).text)
+    .join('\n')
+}
+
+interface CouncilPayload {
+  analyst: string
+  critic: string
+  strategist: string
+  operator: string
+  synthesis: string
+  final_answer: string
+}
+
+function parseCouncilPayload(raw: string): CouncilPayload | null {
+  const candidates: string[] = []
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  const fenced = trimmed.match(/```json\s*([\s\S]*?)```/i)
+  if (fenced?.[1]) {
+    candidates.push(fenced[1].trim())
+  }
+
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
+  if (jsonMatch?.[0]) {
+    candidates.push(jsonMatch[0].trim())
+  }
+
+  if (candidates.length === 0) {
+    candidates.push(trimmed)
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as Partial<CouncilPayload>
+      if (
+        typeof parsed.analyst === 'string' &&
+        typeof parsed.critic === 'string' &&
+        typeof parsed.strategist === 'string' &&
+        typeof parsed.operator === 'string' &&
+        typeof parsed.synthesis === 'string' &&
+        typeof parsed.final_answer === 'string'
+      ) {
+        return {
+          analyst: parsed.analyst.trim(),
+          critic: parsed.critic.trim(),
+          strategist: parsed.strategist.trim(),
+          operator: parsed.operator.trim(),
+          synthesis: parsed.synthesis.trim(),
+          final_answer: parsed.final_answer.trim(),
+        }
+      }
+    } catch {
+      // Keep trying next candidate
+    }
+  }
+
+  return null
+}
+
+function buildCouncilSystemPrompt(baseSystemPrompt: string): string {
+  return `${baseSystemPrompt}
+
+## Council Reasoning Mode
+Before replying, run an internal four-role council:
+- Analyst: facts, assumptions, and constraints
+- Critic: risks, blind spots, and failure modes
+- Strategist: options and tradeoffs
+- Operator: concrete execution plan
+
+Then synthesize one clear answer for the user.
+
+Respond ONLY with valid JSON:
+{
+  "analyst": "...",
+  "critic": "...",
+  "strategist": "...",
+  "operator": "...",
+  "synthesis": "...",
+  "final_answer": "..."
+}
+
+Rules:
+- Keep each council field concise.
+- "final_answer" must be directly user-facing and action-oriented.
+- Put any [INSIGHT] tags only inside "final_answer" if needed.`
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -78,7 +173,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: ChatRequest = await request.json()
-    const { messages, projectId, projectContext, approach } = body
+    const { messages, projectId, projectContext, approach, reasoningMode } = body
 
     if (!messages || messages.length === 0) {
       return Response.json({ error: 'Messages required' }, { status: 400 })
@@ -88,7 +183,7 @@ export async function POST(request: NextRequest) {
     // Memory and user thread use TTL-cached versions — during active chat sessions these
     // heavy multi-query functions get called per message, but the context doesn't change
     // that quickly. Caching cuts ~10 DB queries per message after the first one.
-    const [aiContext, wovenMemory, userThread, activeMilestoneData, displayName] = await Promise.all([
+    const [aiContext, wovenMemory, userThread, activeMilestoneData, displayName, appCapabilitiesBlock] = await Promise.all([
       fetchAiContextForApi(
         supabaseClient,
         user.id,
@@ -108,6 +203,7 @@ export async function POST(request: NextRequest) {
       projectId ? resolveActiveMilestoneStep(supabaseClient, projectId, user.id) : Promise.resolve(null),
       // Fetch display name so AI can address user by name — the "cofounder knows you" effect
       fetchDisplayName(supabaseClient, user.id),
+      getAppCapabilitiesPromptBlock('project_chat'),
     ])
 
     // Build context bank section if we have data
@@ -175,12 +271,13 @@ ${contextBankSection}${memorySection}${userThreadSection}`
       userThreadBlock: userThread.threadBlock || null,
       memoryBlock: wovenMemory.contextBlock || null,
     })
+    const capabilitySection = `\n\n${appCapabilitiesBlock}`
 
     // Build system prompt based on approach
     const isDoIt = approach === 'do-it'
 
     const systemPrompt = isDoIt
-      ? `${personalityCore}
+      ? `${personalityCore}${capabilitySection}
 
 You are a SPECIALIST who DOES THE WORK. You're not a generalist - you're the exact expert cofounder they need for this specific project.
 
@@ -217,7 +314,7 @@ importance: <1-10>
 [/INSIGHT]
 
 Remember: They chose "Do it for me" because they want results, not guidance.`
-      : `${personalityCore}
+      : `${personalityCore}${capabilitySection}
 
 You're in Guide & Collaborate mode — helping them think through problems and build alongside them.
 
@@ -267,18 +364,39 @@ importance: <1-10>
       supabase: supabaseClient,
     })
 
-    // Call Anthropic Claude — same model as Milestone Mode for ONE consistent mind
-    const response = await getAnthropic().messages.create({
-      model: ANTHROPIC_OPUS_MODEL,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: preparedHistory.messages,
-    })
+    const requestedReasoningMode: ReasoningMode = reasoningMode === 'council' ? 'council' : 'single'
+    let activeReasoningMode: ReasoningMode = requestedReasoningMode
+    let councilFallbackUsed = false
+    let assistantMessage = ''
 
-    let assistantMessage = response.content
-      .filter(block => block.type === 'text')
-      .map(block => (block as Anthropic.TextBlock).text)
-      .join('\n')
+    if (requestedReasoningMode === 'council') {
+      const councilResponse = await getAnthropic().messages.create({
+        model: ANTHROPIC_OPUS_MODEL,
+        max_tokens: 4096,
+        system: buildCouncilSystemPrompt(systemPrompt),
+        messages: preparedHistory.messages,
+      })
+
+      const councilText = extractTextFromClaude(councilResponse)
+      const parsedCouncil = parseCouncilPayload(councilText)
+
+      if (parsedCouncil?.final_answer) {
+        assistantMessage = parsedCouncil.final_answer
+      } else {
+        councilFallbackUsed = true
+        activeReasoningMode = 'single'
+      }
+    }
+
+    if (!assistantMessage) {
+      const singleResponse = await getAnthropic().messages.create({
+        model: ANTHROPIC_OPUS_MODEL,
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: preparedHistory.messages,
+      })
+      assistantMessage = extractTextFromClaude(singleResponse)
+    }
 
     // Parse and save any insights from the response
     const extractedInsights = parseInsightTags(assistantMessage)
@@ -326,6 +444,9 @@ importance: <1-10>
 
     return Response.json({
       message: assistantMessage,
+      reasoningMode: activeReasoningMode,
+      requestedReasoningMode,
+      councilFallbackUsed: requestedReasoningMode === 'council' ? councilFallbackUsed : undefined,
     })
   } catch (error) {
     console.error('Chat API error:', error)

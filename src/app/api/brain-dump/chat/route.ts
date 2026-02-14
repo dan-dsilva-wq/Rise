@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { cachedWeaveMemory, buildRisePersonalityCore, parseInsightTags, stripInsightTags, fetchDisplayName } from '@/lib/ai/memoryWeaver'
 import { ANTHROPIC_SONNET_MODEL } from '@/lib/ai/model-config'
+import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Messages required' }, { status: 400 })
     }
 
-    const [aiContext, wovenMemory, displayName] = await Promise.all([
+    const [aiContext, wovenMemory, displayName, appCapabilitiesBlock] = await Promise.all([
       fetchAiContextForApi(supabaseClient, user.id),
       cachedWeaveMemory(supabaseClient, user.id, {
         currentSource: 'brain_dump',
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
         lookbackDays: 7,
       }),
       fetchDisplayName(supabaseClient, user.id),
+      getAppCapabilitiesPromptBlock('general'),
     ])
 
     const personalityCore = buildRisePersonalityCore({
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
     const memorySection = wovenMemory.contextBlock
       ? `\n\n${wovenMemory.contextBlock}`
       : ''
+    const capabilitySection = `\n\n${appCapabilitiesBlock}`
 
     const systemPrompt = `${personalityCore}
 
@@ -96,7 +99,7 @@ type: <discovery|decision|blocker|preference|learning>
 content: <what was learned>
 importance: <1-10>
 [/INSIGHT]
-${contextSection}${memorySection}`
+${contextSection}${memorySection}${capabilitySection}`
 
     const response = await getAnthropic().messages.create({
       model: ANTHROPIC_SONNET_MODEL,

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isLikelyRelevantMemory, normalizeMemoryText } from '@/lib/memory/relevance'
 
 interface ConversationThread {
   source: 'path_finder' | 'milestone_mode' | 'project_chat'
@@ -398,8 +399,8 @@ function extractOpenLoops(threads: ConversationThread[]): string[] {
         const sentences = msg.content.split(/[.!?]+/)
         for (const sentence of sentences) {
           if (sentence.toLowerCase().match(/i('ll| will| should| need to| want to| plan to| going to)\s/)) {
-            const trimmed = sentence.trim()
-            if (trimmed.length > 10 && trimmed.length < 200) {
+            const trimmed = normalizeMemoryText(sentence)
+            if (trimmed.length > 10 && trimmed.length < 200 && isLikelyRelevantMemory(trimmed)) {
               loops.push(`[${thread.source}] "${trimmed}"`)
             }
             break
@@ -412,8 +413,8 @@ function extractOpenLoops(threads: ConversationThread[]): string[] {
         const sentences = msg.content.split(/[.!?]+/)
         for (const sentence of sentences) {
           if (sentence.toLowerCase().match(/(not sure|don't know|confused about|struggling with|worried about)/)) {
-            const trimmed = sentence.trim()
-            if (trimmed.length > 10 && trimmed.length < 200) {
+            const trimmed = normalizeMemoryText(sentence)
+            if (trimmed.length > 10 && trimmed.length < 200 && isLikelyRelevantMemory(trimmed)) {
               loops.push(`[${thread.source}] "${trimmed}"`)
             }
             break
@@ -495,7 +496,9 @@ function buildLastSessionSummary(
 
   // Get the last few messages as context
   const recentMessages = lastThread.messages.slice(-4)
-  const userMessages = recentMessages.filter(m => m.role === 'user')
+  const userMessages = recentMessages
+    .filter(m => m.role === 'user')
+    .filter(m => isLikelyRelevantMemory(m.content))
   const lastUserMessage = userMessages[userMessages.length - 1]
 
   if (!lastUserMessage) return null
@@ -562,8 +565,9 @@ function weaveIntoContext(
 
       // Extract meaningful user quotes
       const userMsgs = thread.messages.filter(m => m.role === 'user')
-      if (userMsgs.length > 0) {
-        const lastMsg = userMsgs[userMsgs.length - 1]
+      const relevantUserMsgs = userMsgs.filter(msg => isLikelyRelevantMemory(msg.content))
+      if (relevantUserMsgs.length > 0) {
+        const lastMsg = relevantUserMsgs[relevantUserMsgs.length - 1]
         const preview = lastMsg.content.length > 150
           ? lastMsg.content.slice(0, 150) + '...'
           : lastMsg.content

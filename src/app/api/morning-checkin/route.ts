@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getLogDateForTimezone } from '@/lib/time/logDate'
+import { saveAiInsight } from '@/lib/hooks/aiContextServer'
 
 interface CheckInRequest {
   mood: number
@@ -88,16 +89,17 @@ export async function POST(request: NextRequest) {
         ? `Morning check-in on ${today} (${timezone}): User reported ${mood <= 3 ? 'low mood (' + mood + '/10)' : ''}${mood <= 3 && energy <= 3 ? ' and ' : ''}${energy <= 3 ? 'low energy (' + energy + '/10)' : ''}. May need extra support or gentler pacing today.`
         : `Morning check-in on ${today} (${timezone}): User feeling great - mood ${mood}/10, energy ${energy}/10. Good day to tackle challenging work.`
 
-      await supabase
-        .from('ai_insights')
-        .insert({
-          user_id: user.id,
-          insight_type: isNotablyLow ? 'blocker' : 'discovery',
-          content: insightContent,
+      await saveAiInsight(
+        supabaseClient,
+        user.id,
+        isNotablyLow ? 'blocker' : 'discovery',
+        insightContent,
+        'morning_checkin',
+        {
           importance: isNotablyLow ? 8 : 5,
-          source_ai: 'morning_checkin',
-          expires_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days
-        })
+          expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        }
+      )
     }
 
     return Response.json({ success: true })

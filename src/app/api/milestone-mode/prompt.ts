@@ -75,6 +75,7 @@ export function buildMilestoneModePrompt(params: {
   approach: 'do-it' | 'guide'
   isDoItKickoff: boolean
   personalityCore: string
+  appCapabilitiesBlock?: string | null
   milestone: MilestoneContext
   project: ProjectContextInput
   contextBank: string
@@ -97,9 +98,14 @@ export function buildMilestoneModePrompt(params: {
     userThreadBlock: params.userThreadBlock,
   })
 
+  const capabilitySection = params.appCapabilitiesBlock
+    ? `\n\n${params.appCapabilitiesBlock}`
+    : ''
+
   const doItForMePrompt = `${params.personalityCore}
 
 You are a SPECIALIST who DOES THE WORK. You're not a generalist - you're the exact expert they need for this specific task.
+${capabilitySection}
 
 ## Determine Your Expert Identity
 ${expertiseInstructions}
@@ -198,6 +204,7 @@ Remember: They chose "Do it for me" because they want results, not guidance.`
   const guideMePrompt = `${params.personalityCore}
 
 You are a SPECIALIST acting as a tactical coach, helping someone complete ONE specific milestone. You're not a generalist - you're the exact expert they need, guiding them like a mentor saying "Here's how the pros do it."
+${capabilitySection}
 
 ## Determine Your Expert Identity
 ${expertiseInstructions}

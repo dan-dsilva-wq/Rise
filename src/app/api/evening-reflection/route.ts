@@ -6,6 +6,7 @@ import { saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
 import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 import { getLogDateForTimezone } from '@/lib/time/logDate'
+import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch memory, user thread, and display name in parallel
-    const [wovenMemory, userThread, displayName] = await Promise.all([
+    const [wovenMemory, userThread, displayName, appCapabilitiesBlock] = await Promise.all([
       cachedWeaveMemory(supabaseClient, user.id, {
         currentSource: 'evening_reflection',
         maxPerSource: 10,
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
         lookbackDays: 14,
       }),
       fetchDisplayName(supabaseClient, user.id),
+      getAppCapabilitiesPromptBlock('general'),
     ])
 
     const personalityCore = buildRisePersonalityCore({
@@ -85,11 +87,13 @@ export async function POST(request: NextRequest) {
       ? `\nThis morning they logged: mood ${todayContext.morningMood}/10, energy ${todayContext.morningEnergy}/10.`
       : ''
 
+    const capabilitySection = `\n\n${appCapabilitiesBlock}`
     const systemPrompt = `${personalityCore}
 
 You are guiding an evening reflection conversation. This is a gentle, end-of-day check-in.
 ${morningContext}
 ${todayContext.hasEveningData ? '\nThey have already provided their evening scores — the reflection is wrapping up.' : ''}
+${capabilitySection}
 
 ## Your Role
 - Be warm, real, and concise

@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useUser } from '@/lib/hooks/useUser'
 import { usePushNotifications } from '@/lib/hooks/usePushNotifications'
+import type { CapabilityAudience } from '@/lib/path-finder/app-capabilities'
 
 const HAS_VAPID_PUBLIC_KEY = Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
 
@@ -33,6 +34,11 @@ export default function SettingsPage() {
   const [resetMessage, setResetMessage] = useState<string | null>(null)
   const [comingSoonToast, setComingSoonToast] = useState<string | null>(null)
   const [notificationToast, setNotificationToast] = useState<string | null>(null)
+  const [capabilityAudience, setCapabilityAudience] = useState<CapabilityAudience>('general')
+  const [capabilitySnapshot, setCapabilitySnapshot] = useState<string | null>(null)
+  const [capabilityLoading, setCapabilityLoading] = useState(false)
+  const [capabilityError, setCapabilityError] = useState<string | null>(null)
+  const [showCapabilitySnapshot, setShowCapabilitySnapshot] = useState(false)
 
   const {
     supported,
@@ -119,6 +125,32 @@ export default function SettingsPage() {
       showNotificationToast('Test notification sent')
     }
   }
+
+  const fetchCapabilitySnapshot = useCallback(async (audience: CapabilityAudience) => {
+    setCapabilityLoading(true)
+    setCapabilityError(null)
+
+    try {
+      const response = await fetch(`/api/system/capabilities?audience=${audience}`)
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error || 'Failed to fetch capability snapshot')
+      }
+
+      const payload = await response.json() as { block?: string }
+      setCapabilitySnapshot(payload.block || null)
+    } catch (error) {
+      setCapabilityError(error instanceof Error ? error.message : 'Failed to fetch capability snapshot')
+    } finally {
+      setCapabilityLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    if (capabilitySnapshot) return
+    void fetchCapabilitySnapshot(capabilityAudience)
+  }, [capabilityAudience, capabilitySnapshot, fetchCapabilitySnapshot, user])
 
   const notificationState = useMemo(() => {
     if (!supported) {
@@ -324,6 +356,67 @@ export default function SettingsPage() {
               </div>
             </button>
           </div>
+        </Card>
+
+        <Card>
+          <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-4">
+            AI System
+          </h3>
+          <p className="text-slate-400 text-sm mb-4">
+            Inspect the live capability map Rise uses, so you can verify what the model currently knows about this app.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <select
+              value={capabilityAudience}
+              onChange={(event) => {
+                const next = event.target.value as CapabilityAudience
+                setCapabilityAudience(next)
+                void fetchCapabilitySnapshot(next)
+              }}
+              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:border-teal-500 focus:outline-none"
+            >
+              <option value="general">General</option>
+              <option value="path_finder">Path Finder</option>
+              <option value="project_chat">Project Chat</option>
+              <option value="milestone_mode">Milestone Mode</option>
+            </select>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              isLoading={capabilityLoading}
+              loadingText="Refreshing..."
+              onClick={() => {
+                void fetchCapabilitySnapshot(capabilityAudience)
+              }}
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+              Refresh snapshot
+            </Button>
+
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowCapabilitySnapshot(prev => !prev)}
+              disabled={!capabilitySnapshot}
+            >
+              {showCapabilitySnapshot ? 'Hide details' : 'Show details'}
+            </Button>
+          </div>
+
+          {capabilityError && (
+            <div className="mb-3 flex items-start gap-2 text-sm text-red-300">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>{capabilityError}</span>
+            </div>
+          )}
+
+          {showCapabilitySnapshot && capabilitySnapshot && (
+            <pre className="max-h-72 overflow-auto rounded-xl border border-slate-700 bg-slate-950/70 p-3 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap">
+              {capabilitySnapshot}
+            </pre>
+          )}
         </Card>
 
         <Card>

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi } from '@/lib/hooks/aiContextServer'
 import { weaveMemory, synthesizeUserThread, generatePersonalGreeting, buildGreetingSignals, resolveCurrentStep, type GreetingMemorySignals } from '@/lib/ai/memoryWeaver'
 import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
+import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 
 // Extract momentum data from memory signals for the dashboard
 function extractMomentum(signals: GreetingMemorySignals | undefined) {
@@ -248,7 +249,7 @@ export async function GET(_request: NextRequest) {
     // Fetch AI context bank, unified memory, user thread, AND greeting data in parallel.
     // The greeting helper consolidates logs + profile + milestone queries that were
     // previously duplicated across 4 code paths in this route.
-    const [aiContext, wovenMemory, userThread] = await Promise.all([
+    const [aiContext, wovenMemory, userThread, appCapabilitiesBlock] = await Promise.all([
       fetchAiContextForApi(
         supabaseClient,
         user.id,
@@ -264,6 +265,7 @@ export async function GET(_request: NextRequest) {
         includeWorkPatterns: true,
         lookbackDays: 14,
       }),
+      getAppCapabilitiesPromptBlock('general'),
     ])
 
     // Fetch greeting context (logs, profile, milestone, signals → greeting + momentum)
@@ -298,6 +300,7 @@ export async function GET(_request: NextRequest) {
     const userThreadSection = userThread.threadBlock
       ? `\n\n${userThread.threadBlock}`
       : ''
+    const capabilitySection = `\n\n${appCapabilitiesBlock}`
 
     // Generate briefing with AI
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -330,7 +333,7 @@ export async function GET(_request: NextRequest) {
     const response = await getAnthropic().messages.create({
       model: ANTHROPIC_OPUS_MODEL,
       max_tokens: 300,
-      system: `You are Rise - a supportive AI cofounder. You are ONE mind that remembers all conversations with this user. Generate a focused morning briefing.
+      system: `You are Rise - a supportive AI cofounder. You are ONE mind that remembers all conversations with this user. Generate a focused morning briefing.${capabilitySection}
 
 Rules:
 - mission_headline: 2-5 word action-oriented summary (e.g. "Build the landing page")

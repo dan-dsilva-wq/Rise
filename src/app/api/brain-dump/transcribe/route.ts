@@ -32,13 +32,30 @@ export async function POST(request: NextRequest) {
     if (!audioFile) {
       return Response.json({ error: 'Audio file required' }, { status: 400 })
     }
+    const maxUploadBytes = 24 * 1024 * 1024
+    if (audioFile.size > maxUploadBytes) {
+      return Response.json(
+        { error: 'Recording too large. Please send in shorter chunks.' },
+        { status: 413 }
+      )
+    }
 
-    const transcription = await getOpenAI().audio.transcriptions.create({
-      file: audioFile,
-      model: 'whisper-1',
-    })
+    const models = ['gpt-4o-transcribe', 'gpt-4o-mini-transcribe', 'whisper-1'] as const
+    let lastError: unknown = null
 
-    return Response.json({ text: transcription.text })
+    for (const model of models) {
+      try {
+        const transcription = await getOpenAI().audio.transcriptions.create({
+          file: audioFile,
+          model,
+        })
+        return Response.json({ text: transcription.text })
+      } catch (error) {
+        lastError = error
+      }
+    }
+
+    throw lastError ?? new Error('Transcription failed')
   } catch (error) {
     console.error('Transcribe API error:', error)
     return Response.json(

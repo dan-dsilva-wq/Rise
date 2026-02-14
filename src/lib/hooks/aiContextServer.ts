@@ -6,14 +6,45 @@ import type {
   UserProfileFact,
   ProjectContextType,
   InsightType,
-  SourceAi
+  SourceAi,
+  ProfileCategory,
 } from '@/lib/supabase/types'
+import {
+  areNearDuplicateMemories,
+  isLikelyRelevantInsight,
+  isLikelyRelevantProfileFact,
+  normalizeMemoryText,
+} from '@/lib/memory/relevance'
 
 interface FormattedContext {
   profileSummary: string
   projectContext: string
   insights: string
   fullContext: string
+}
+
+function sanitizeProfileFacts(facts: UserProfileFact[]): UserProfileFact[] {
+  const kept: UserProfileFact[] = []
+  for (const fact of facts) {
+    const cleaned = normalizeMemoryText(fact.fact)
+    if (!isLikelyRelevantProfileFact(cleaned)) continue
+    const duplicate = kept.some(existing => areNearDuplicateMemories(existing.fact, cleaned))
+    if (duplicate) continue
+    kept.push({ ...fact, fact: cleaned })
+  }
+  return kept
+}
+
+function sanitizeInsights(insights: AiInsight[]): AiInsight[] {
+  const kept: AiInsight[] = []
+  for (const insight of insights) {
+    const cleaned = normalizeMemoryText(insight.content)
+    if (!isLikelyRelevantInsight(cleaned, insight.importance)) continue
+    const duplicate = kept.some(existing => areNearDuplicateMemories(existing.content, cleaned))
+    if (duplicate) continue
+    kept.push({ ...insight, content: cleaned })
+  }
+  return kept
 }
 
 // Server-side helper to fetch context (for API routes)
@@ -65,8 +96,8 @@ export async function fetchAiContextForApi(
   ])
 
   const projectContexts = (contextResult.data as ProjectContext[]) || []
-  const insights = (insightsResult.data as AiInsight[]) || []
-  const profileFacts = (factsResult.data as UserProfileFact[]) || []
+  const insights = sanitizeInsights((insightsResult.data as AiInsight[]) || [])
+  const profileFacts = sanitizeProfileFacts((factsResult.data as UserProfileFact[]) || [])
 
   // Format profile summary
   const categories = ['background', 'skills', 'situation', 'goals', 'preferences', 'constraints'] as const
@@ -181,6 +212,51 @@ export async function saveProjectContext(
   return data as ProjectContext
 }
 
+export async function saveUserProfileFact(
+  client: SupabaseClient,
+  userId: string,
+  category: ProfileCategory,
+  fact: string
+): Promise<UserProfileFact | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = client as any
+  const cleanedFact = normalizeMemoryText(fact)
+  if (!isLikelyRelevantProfileFact(cleanedFact)) {
+    return null
+  }
+
+  const { data: existingRows } = await supabase
+    .from('user_profile_facts')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(120)
+
+  const existingFacts = (existingRows as UserProfileFact[]) || []
+  const duplicate = existingFacts.find(existing => areNearDuplicateMemories(existing.fact, cleanedFact))
+  if (duplicate) {
+    return duplicate
+  }
+
+  const { data, error } = await supabase
+    .from('user_profile_facts')
+    .insert({
+      user_id: userId,
+      category,
+      fact: cleanedFact,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error saving profile fact:', error)
+    return null
+  }
+
+  return data as UserProfileFact
+}
+
 // Server-side helper to save AI insight
 export async function saveAiInsight(
   client: SupabaseClient,
@@ -193,10 +269,37 @@ export async function saveAiInsight(
     milestoneId?: string
     importance?: number
     conversationId?: string
+    expiresAt?: string
   } = {}
 ): Promise<AiInsight | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = client as any
+  const cleanedContent = normalizeMemoryText(content)
+  const clampedImportance = Math.max(1, Math.min(10, options.importance || 5))
+  if (!isLikelyRelevantInsight(cleanedContent, clampedImportance)) {
+    return null
+  }
+
+  const { data: existingRows } = await supabase
+    .from('ai_insights')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(120)
+
+  const existingInsights = (existingRows as AiInsight[]) || []
+  const duplicate = existingInsights.find(existing => areNearDuplicateMemories(existing.content, cleanedContent))
+  if (duplicate) {
+    if (duplicate.importance < clampedImportance) {
+      await supabase
+        .from('ai_insights')
+        .update({ importance: clampedImportance })
+        .eq('id', duplicate.id)
+        .eq('user_id', userId)
+    }
+    return duplicate
+  }
 
   const { data, error } = await supabase
     .from('ai_insights')
@@ -205,10 +308,11 @@ export async function saveAiInsight(
       project_id: options.projectId || null,
       milestone_id: options.milestoneId || null,
       insight_type: insightType,
-      content,
-      importance: options.importance || 5,
+      content: cleanedContent,
+      importance: clampedImportance,
       source_conversation_id: options.conversationId || null,
       source_ai: sourceAi,
+      expires_at: options.expiresAt || null,
     })
     .select()
     .single()

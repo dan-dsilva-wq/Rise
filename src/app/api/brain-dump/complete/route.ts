@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { saveAiInsight } from '@/lib/hooks/aiContextServer'
+import { saveAiInsight, saveUserProfileFact } from '@/lib/hooks/aiContextServer'
 import { ANTHROPIC_SONNET_MODEL } from '@/lib/ai/model-config'
-import type { InsightType } from '@/lib/supabase/types'
+import type { InsightType, ProfileCategory } from '@/lib/supabase/types'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -192,14 +192,10 @@ Only include tags where you actually found relevant information. Be specific and
     // Save profile facts in parallel
     const profilePromises = profileUpdates.map(update => {
       const validCategories = ['background', 'skills', 'situation', 'goals', 'preferences', 'constraints']
-      const category = validCategories.includes(update.category) ? update.category : 'situation'
+      const category = validCategories.includes(update.category) ? update.category as ProfileCategory : 'situation'
       if (!update.fact) return Promise.resolve()
 
-      return supabase.from('user_profile_facts').insert({
-        user_id: user.id,
-        category,
-        fact: update.fact,
-      })
+      return saveUserProfileFact(supabaseClient, user.id, category, update.fact)
     })
 
     // Save insights in parallel

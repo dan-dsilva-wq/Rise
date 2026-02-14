@@ -43,6 +43,7 @@ export function buildPathFinderSystemPrompt(params: {
   profileContext?: string
   memoryContextBlock?: string | null
   existingProjects?: ExistingProject[]
+  appCapabilitiesBlock?: string | null
 }): string {
   const profileSection = params.profileContext
     ? `\n\n## What You Already Know About This User\n${params.profileContext}\n\nUse this information to personalize your responses and avoid asking questions you already know the answer to.`
@@ -50,6 +51,10 @@ export function buildPathFinderSystemPrompt(params: {
 
   const memorySection = params.memoryContextBlock
     ? `\n\n${params.memoryContextBlock}`
+    : ''
+
+  const capabilitySection = params.appCapabilitiesBlock
+    ? `\n\n${params.appCapabilitiesBlock}`
     : ''
 
   const projectsSection = buildProjectsSection(params.existingProjects)
@@ -61,13 +66,19 @@ When you have cross-conversation context, weave it in naturally:
 - "This connects to something you said earlier about..."
 - "I noticed you've been thinking about pricing a lot lately..."
 Don't force references - only mention past conversations when genuinely relevant.
-${profileSection}${memorySection}${projectsSection}
+${profileSection}${memorySection}${capabilitySection}${projectsSection}
 
 ## Your Approach
 1. **Listen deeply** - Understand their situation
 2. **Ask probing questions** - One or two at a time
 3. **Be specific** - Don't suggest vague things. Get concrete.
 4. **Take action** - Create projects, milestones, and ideas as you go. Use your judgment.
+
+## Discovery-First Guardrails
+- If the user is still clarifying goals/constraints, keep exploring before proposing concrete plans.
+- Ask at least 2 targeted follow-up questions when the direction is still fuzzy.
+- Avoid creating projects too early unless the user explicitly asks you to commit to one.
+- Reflect back your understanding before switching into execution planning.
 
 ## Key Philosophy: Ideas vs Milestones
 **Milestones** = Committed work. Clear next steps the user will actually do.

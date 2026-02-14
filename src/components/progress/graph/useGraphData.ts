@@ -1,6 +1,13 @@
 import { useMemo } from 'react'
 import { GraphNode, GraphEdge, GraphCategory, RawGraphData } from './types'
 import { STOP_WORDS } from './constants'
+import {
+  areNearDuplicateMemories,
+  isLikelyRelevantInsight,
+  isLikelyRelevantMemory,
+  isLikelyRelevantProfileFact,
+  normalizeMemoryText,
+} from '@/lib/memory/relevance'
 
 // Map insight types to graph categories
 const INSIGHT_TYPE_MAP: Record<string, GraphCategory> = {
@@ -50,6 +57,27 @@ function extractKeywords(text: string): Set<string> {
   return new Set(words.filter(w => w.length > 5 && !STOP_WORDS.has(w)))
 }
 
+function dedupeNodes(input: GraphNode[]): GraphNode[] {
+  const deduped: GraphNode[] = []
+  for (const node of input) {
+    const duplicateIndex = deduped.findIndex(existing =>
+      areNearDuplicateMemories(existing.label, node.label)
+    )
+
+    if (duplicateIndex === -1) {
+      deduped.push(node)
+      continue
+    }
+
+    const existing = deduped[duplicateIndex]
+    if (node.importance > existing.importance) {
+      deduped[duplicateIndex] = node
+    }
+  }
+
+  return deduped
+}
+
 export function useGraphData(
   rawData: RawGraphData
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
@@ -61,9 +89,11 @@ export function useGraphData(
     for (const fact of rawData.facts) {
       const label = sanitizeLabel(fact.fact)
       if (!label) continue
+      const cleaned = normalizeMemoryText(label)
+      if (!isLikelyRelevantProfileFact(cleaned)) continue
       nodes.push({
         id: `fact-${fact.id}`,
-        label,
+        label: cleaned,
         category: fact.category as GraphCategory,
         importance: 5,
       })
@@ -73,10 +103,12 @@ export function useGraphData(
     for (const insight of rawData.insights) {
       const label = sanitizeLabel(insight.content)
       if (!label) continue
+      const cleaned = normalizeMemoryText(label)
+      if (!isLikelyRelevantInsight(cleaned, insight.importance)) continue
       const category = INSIGHT_TYPE_MAP[insight.insight_type] || 'discoveries'
       nodes.push({
         id: `insight-${insight.id}`,
-        label,
+        label: cleaned,
         category,
         importance: Math.max(1, Math.min(10, insight.importance)),
       })
@@ -86,9 +118,11 @@ export function useGraphData(
     for (const pattern of rawData.patterns) {
       const label = sanitizeLabel(pattern.description)
       if (!label) continue
+      const cleaned = normalizeMemoryText(label)
+      if (!isLikelyRelevantMemory(cleaned)) continue
       nodes.push({
         id: `pattern-${pattern.id}`,
-        label,
+        label: cleaned,
         category: 'discoveries',
         importance: Math.max(1, Math.min(10, Math.round(pattern.confidence * 10))),
       })
@@ -98,9 +132,11 @@ export function useGraphData(
     for (const dump of rawData.brainDumps) {
       const label = sanitizeLabel(dump.summary)
       if (!label) continue
+      const cleaned = normalizeMemoryText(label)
+      if (!isLikelyRelevantMemory(cleaned)) continue
       nodes.push({
         id: `dump-${dump.id}`,
-        label,
+        label: cleaned,
         category: 'situation',
         importance: 4,
       })
@@ -121,9 +157,11 @@ export function useGraphData(
         for (let i = 0; i < items.length; i++) {
           const label = sanitizeLabel(items[i])
           if (!label) continue
+          const cleaned = normalizeMemoryText(label)
+          if (!isLikelyRelevantMemory(cleaned)) continue
           nodes.push({
             id: `understanding-${category}-${i}`,
-            label,
+            label: cleaned,
             category,
             importance,
           })
@@ -132,20 +170,25 @@ export function useGraphData(
 
       const successLabel = sanitizeLabel(u.definition_of_success)
       if (successLabel) {
-        nodes.push({
-          id: 'understanding-success',
-          label: successLabel,
-          category: 'goals',
-          importance: 9,
-        })
+        const cleaned = normalizeMemoryText(successLabel)
+        if (isLikelyRelevantMemory(cleaned)) {
+          nodes.push({
+            id: 'understanding-success',
+            label: cleaned,
+            category: 'goals',
+            importance: 9,
+          })
+        }
       }
     }
+
+    const graphNodes = dedupeNodes(nodes)
 
     // --- EDGE GENERATION ---
 
     // Group nodes by category
     const byCategory = new Map<GraphCategory, GraphNode[]>()
-    for (const node of nodes) {
+    for (const node of graphNodes) {
       const group = byCategory.get(node.category) || []
       group.push(node)
       byCategory.set(node.category, group)
@@ -166,20 +209,20 @@ export function useGraphData(
     const crossLinkCount = new Map<string, number>()
     const keywordCache = new Map<string, Set<string>>()
 
-    for (const node of nodes) {
+    for (const node of graphNodes) {
       keywordCache.set(node.id, extractKeywords(node.label))
     }
 
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        if (nodes[i].category === nodes[j].category) continue
+    for (let i = 0; i < graphNodes.length; i++) {
+      for (let j = i + 1; j < graphNodes.length; j++) {
+        if (graphNodes[i].category === graphNodes[j].category) continue
 
-        const countA = crossLinkCount.get(nodes[i].id) || 0
-        const countB = crossLinkCount.get(nodes[j].id) || 0
+        const countA = crossLinkCount.get(graphNodes[i].id) || 0
+        const countB = crossLinkCount.get(graphNodes[j].id) || 0
         if (countA >= 2 || countB >= 2) continue
 
-        const kw1 = keywordCache.get(nodes[i].id)!
-        const kw2 = keywordCache.get(nodes[j].id)!
+        const kw1 = keywordCache.get(graphNodes[i].id)!
+        const kw2 = keywordCache.get(graphNodes[j].id)!
         let overlap = 0
         for (const w of kw1) {
           if (kw2.has(w)) overlap++
@@ -187,12 +230,12 @@ export function useGraphData(
 
         if (overlap >= 1) {
           edges.push({
-            source: nodes[i].id,
-            target: nodes[j].id,
+            source: graphNodes[i].id,
+            target: graphNodes[j].id,
             strength: 0.3,
           })
-          crossLinkCount.set(nodes[i].id, countA + 1)
-          crossLinkCount.set(nodes[j].id, countB + 1)
+          crossLinkCount.set(graphNodes[i].id, countA + 1)
+          crossLinkCount.set(graphNodes[j].id, countB + 1)
         }
       }
     }
@@ -200,10 +243,10 @@ export function useGraphData(
     // 3. Semantic links: understanding nodes → related category nodes
     if (rawData.understanding) {
       for (const [field, targetCategory] of SEMANTIC_LINKS) {
-        const understandingNodes = nodes.filter(n =>
+        const understandingNodes = graphNodes.filter(n =>
           n.id.startsWith(`understanding-${field === 'values' || field === 'motivations' ? 'goals' : field}`)
         )
-        const targetNodes = nodes.filter(n =>
+        const targetNodes = graphNodes.filter(n =>
           n.category === targetCategory && !n.id.startsWith('understanding-')
         )
         if (understandingNodes.length > 0 && targetNodes.length > 0) {
@@ -216,6 +259,6 @@ export function useGraphData(
       }
     }
 
-    return { nodes, edges }
+    return { nodes: graphNodes, edges }
   }, [rawData])
 }

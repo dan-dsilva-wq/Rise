@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAudioRecorder } from '@/components/brain-dump/useAudioRecorder'
+import { buildSpeechChunks } from '@/lib/voice/speech-chunks'
 
 const DEFAULT_STORAGE_KEY = 'rise.voice.muted'
-const MAX_TTS_CHARS = 520
-const LEAD_CHUNK_MAX_CHARS = 150
 
 interface UseVoiceConversationOptions {
   storageKey?: string
@@ -153,29 +152,6 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
     }
   }, [])
 
-  const splitForFastSpeech = useCallback((text: string): [string, string] => {
-    const squashed = text.replace(/\s+/g, ' ').trim()
-    const bounded =
-      squashed.length > MAX_TTS_CHARS
-        ? `${squashed.slice(0, MAX_TTS_CHARS).trimEnd()}...`
-        : squashed
-
-    if (!bounded) return ['', '']
-
-    const sentenceParts = bounded.split(/(?<=[.!?])\s+/).filter(Boolean)
-    if (sentenceParts.length === 0) return [bounded, '']
-
-    let lead = sentenceParts[0]
-    let remainder = sentenceParts.slice(1).join(' ').trim()
-
-    if (lead.length > LEAD_CHUNK_MAX_CHARS) {
-      lead = `${lead.slice(0, LEAD_CHUNK_MAX_CHARS).trimEnd()}...`
-      remainder = bounded.slice(Math.min(bounded.length, lead.length)).trim()
-    }
-
-    return [lead, remainder]
-  }, [])
-
   const fetchSpeechBlob = useCallback(async (text: string) => {
     const response = await fetch('/api/brain-dump/speak', {
       method: 'POST',
@@ -199,23 +175,23 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
     stopSpeaking()
     setIsSpeaking(true)
     const runId = speechRunRef.current
-    const [leadText, remainderText] = splitForFastSpeech(cleanText)
+    const chunks = buildSpeechChunks(cleanText)
 
     try {
-      // Start remainder synthesis in parallel while the lead sentence plays.
-      const remainderBlobPromise = remainderText
-        ? fetchSpeechBlob(remainderText).catch(() => null)
-        : Promise.resolve<Blob | null>(null)
+      if (chunks.length === 0) return false
 
-      if (leadText) {
-        const leadBlob = await fetchSpeechBlob(leadText)
+      let nextBlobPromise: Promise<Blob> | null = null
+      for (let i = 0; i < chunks.length; i++) {
         if (speechRunRef.current !== runId || isMutedRef.current) return false
-        await playAudio(leadBlob)
-      }
 
-      const remainderBlob = await remainderBlobPromise
-      if (remainderBlob && speechRunRef.current === runId && !isMutedRef.current) {
-        await playAudio(remainderBlob)
+        const currentBlobPromise = nextBlobPromise || fetchSpeechBlob(chunks[i])
+        nextBlobPromise = i + 1 < chunks.length
+          ? fetchSpeechBlob(chunks[i + 1])
+          : null
+
+        const blob = await currentBlobPromise
+        if (speechRunRef.current !== runId || isMutedRef.current) return false
+        await playAudio(blob)
       }
 
       return true
@@ -228,7 +204,7 @@ export function useVoiceConversation(options: UseVoiceConversationOptions = {}) 
         setIsSpeaking(false)
       }
     }
-  }, [isMuted, stopSpeaking, splitForFastSpeech, fetchSpeechBlob, playAudio])
+  }, [isMuted, stopSpeaking, fetchSpeechBlob, playAudio])
 
   const toggleMute = useCallback(() => {
     setVoiceError(null)

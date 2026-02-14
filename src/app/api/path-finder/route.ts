@@ -5,6 +5,7 @@ import { weaveMemory } from '@/lib/ai/memoryWeaver'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
 import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 import { buildPathFinderSystemPrompt } from './prompt'
+import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 import {
   parseExtractedContexts,
   parseExtractedInsights,
@@ -45,16 +46,20 @@ export async function POST(request: NextRequest) {
       existingProjects?: ExistingProject[]
     }
 
-    const wovenMemory = await weaveMemory(supabaseClient, user.id, {
-      currentSource: 'path_finder',
-      maxPerSource: 15,
-      lookbackDays: 7,
-    })
+    const [wovenMemory, appCapabilitiesBlock] = await Promise.all([
+      weaveMemory(supabaseClient, user.id, {
+        currentSource: 'path_finder',
+        maxPerSource: 15,
+        lookbackDays: 7,
+      }),
+      getAppCapabilitiesPromptBlock('path_finder'),
+    ])
 
     const systemPrompt = buildPathFinderSystemPrompt({
       profileContext,
       memoryContextBlock: wovenMemory.contextBlock,
       existingProjects,
+      appCapabilitiesBlock,
     })
 
     const preparedHistory = await prepareConversationHistory({

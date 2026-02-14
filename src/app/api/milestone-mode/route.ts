@@ -16,6 +16,7 @@ import { parseMilestoneActions, stripMilestoneActionTags } from './parsing'
 import { buildMilestoneModePrompt } from './prompt'
 import { persistMilestoneModeInsights } from './service'
 import type { ChatMessage, MilestoneContext, ProjectContextInput } from './types'
+import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 
 let anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
     const userMessageCount = sanitizedMessages.filter(msg => msg.role === 'user').length
     const isDoItKickoff = approach === 'do-it' && userMessageCount === 0
 
-    const [aiContext, wovenMemory, userThread, displayName] = await Promise.all([
+    const [aiContext, wovenMemory, userThread, displayName, appCapabilitiesBlock] = await Promise.all([
       fetchAiContextForApi(
         supabaseClient,
         user.id,
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
         lookbackDays: 14,
       }),
       fetchDisplayName(supabaseClient, user.id),
+      getAppCapabilitiesPromptBlock('milestone_mode'),
     ])
 
     const personalityCore = buildRisePersonalityCore({
@@ -86,6 +88,7 @@ export async function POST(request: NextRequest) {
       approach: approach ?? 'guide',
       isDoItKickoff,
       personalityCore,
+      appCapabilitiesBlock,
       milestone,
       project,
       contextBank: aiContext.fullContext || '',

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { motion } from 'framer-motion'
 
 interface VoiceWaveformProps {
@@ -12,6 +12,14 @@ interface VoiceWaveformProps {
 export function VoiceWaveform({ analyser, isActive, barCount = 24 }: VoiceWaveformProps) {
   const barsRef = useRef<HTMLDivElement>(null)
   const animationRef = useRef<number>(0)
+  const fallbackHeights = useMemo(
+    () => Array.from({ length: barCount }, (_, index) => 16 + ((index * 11) % 24)),
+    [barCount]
+  )
+  const fallbackDurations = useMemo(
+    () => Array.from({ length: barCount }, (_, index) => 0.6 + ((index * 7) % 5) * 0.08),
+    [barCount]
+  )
 
   useEffect(() => {
     if (!analyser || !isActive || !barsRef.current) return
@@ -50,14 +58,14 @@ export function VoiceWaveform({ analyser, isActive, barCount = 24 }: VoiceWavefo
             animate={
               isActive
                 ? {
-                    height: [4, 16 + Math.random() * 24, 4],
+                    height: [4, fallbackHeights[i], 4],
                   }
                 : { height: 4 }
             }
             transition={
               isActive
                 ? {
-                    duration: 0.6 + Math.random() * 0.4,
+                    duration: fallbackDurations[i],
                     repeat: Infinity,
                     delay: i * 0.05,
                     ease: 'easeInOut',

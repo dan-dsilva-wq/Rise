@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, Loader2 } from 'lucide-react'
 import { usePushNotifications } from '@/lib/hooks/usePushNotifications'
@@ -10,12 +10,10 @@ const HAS_VAPID_KEY = Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
 
 export function NotificationBanner() {
   const { supported, permission, syncing, error, setError, enable } = usePushNotifications()
-  const [dismissed, setDismissed] = useState(true)
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    setDismissed(localStorage.getItem(DISMISSED_KEY) === '1')
-  }, [])
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem(DISMISSED_KEY) === '1'
+  })
 
   const visible = supported && HAS_VAPID_KEY && permission === 'default' && !dismissed
 

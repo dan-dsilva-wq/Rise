@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Mic, MicOff, Square, Loader2 } from 'lucide-react'
+import { X, Mic, MicOff, Square, Loader2, Send } from 'lucide-react'
 import { useBrainDumpReducer, type TranscriptMessage } from './useBrainDumpReducer'
 import { useAudioRecorder } from './useAudioRecorder'
 import { VoiceWaveform } from './VoiceWaveform'
+import { buildSpeechChunks } from '@/lib/voice/speech-chunks'
 
 interface BrainDumpOverlayProps {
   isOpen: boolean
@@ -18,21 +19,7 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const startTimeRef = useRef<number>(0)
-
-  const splitForFastSpeech = useCallback((text: string): [string, string] => {
-    const squashed = text.replace(/\s+/g, ' ').trim()
-    if (!squashed) return ['', '']
-    const capped = squashed.length > 520 ? `${squashed.slice(0, 520).trimEnd()}...` : squashed
-    const parts = capped.split(/(?<=[.!?])\s+/).filter(Boolean)
-    if (parts.length === 0) return [capped, '']
-    let lead = parts[0]
-    let rest = parts.slice(1).join(' ').trim()
-    if (lead.length > 150) {
-      lead = `${lead.slice(0, 150).trimEnd()}...`
-      rest = capped.slice(Math.min(capped.length, lead.length)).trim()
-    }
-    return [lead, rest]
-  }, [])
+  const [typedInput, setTypedInput] = useState('')
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -41,27 +28,22 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
     }
   }, [state.transcript])
 
-  // Handle open — auto-start recording so it's one tap to speak
+  // Handle open
   useEffect(() => {
     if (isOpen && state.phase === 'IDLE') {
       actions.open()
+      setTypedInput('')
       startTimeRef.current = Date.now()
-      // Brief delay then start recording automatically
-      setTimeout(async () => {
-        try {
-          await recorder.startRecording()
-          actions.startRecording()
-        } catch {
-          // Mic denied — fall back to ready state
-          actions.ready()
-        }
-      }, 300)
+      const timer = setTimeout(() => {
+        actions.ready()
+      }, 180)
+      return () => clearTimeout(timer)
     }
-  }, [isOpen, state.phase, actions, recorder])
+    return undefined
+  }, [isOpen, state.phase, actions])
 
   const transcribeAudio = useCallback(async (blob: Blob) => {
     const formData = new FormData()
-    // Determine file extension from mime type
     const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
     formData.append('audio', blob, `recording.${ext}`)
 
@@ -126,57 +108,66 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
     })
   }, [])
 
+  const speakAssistantResponse = useCallback(async (text: string) => {
+    const chunks = buildSpeechChunks(text)
+    if (chunks.length === 0) return
+
+    let nextBlobPromise: Promise<Blob> | null = null
+    for (let i = 0; i < chunks.length; i++) {
+      const currentBlobPromise = nextBlobPromise || fetchSpeechBlob(chunks[i])
+      nextBlobPromise = i + 1 < chunks.length
+        ? fetchSpeechBlob(chunks[i + 1])
+        : null
+      const blob = await currentBlobPromise
+      await playAudio(blob)
+    }
+  }, [fetchSpeechBlob, playAudio])
+
+  const processUserMessage = useCallback(async (text: string) => {
+    const cleanedText = text.trim()
+    if (!cleanedText) return
+
+    try {
+      actions.transcriptionDone(cleanedText)
+
+      const updatedTranscript: TranscriptMessage[] = [
+        ...state.transcript,
+        { role: 'user', content: cleanedText, timestamp: new Date().toISOString() },
+      ]
+
+      const aiText = await getChatResponse(updatedTranscript)
+      actions.aiResponse(aiText)
+
+      actions.startSpeaking()
+      try {
+        await speakAssistantResponse(aiText)
+      } catch (ttsErr) {
+        console.error('TTS error:', ttsErr)
+      }
+      actions.doneSpeaking()
+    } catch (err) {
+      actions.error(err instanceof Error ? err.message : 'Something went wrong')
+    }
+  }, [actions, getChatResponse, speakAssistantResponse, state.transcript])
+
   // Main voice loop: record → transcribe → chat → speak
   const handleMicTap = useCallback(async () => {
     if (state.phase === 'RECORDING') {
-      // Stop recording and process
       actions.stopRecording()
 
       try {
         const blob = await recorder.stopRecording()
-
-        // Transcribe
         const text = await transcribeAudio(blob)
         if (!text.trim()) {
           actions.error('No speech detected. Try again.')
           return
         }
-        actions.transcriptionDone(text)
 
-        // Get AI response — need to include the new user message
-        const updatedTranscript: TranscriptMessage[] = [
-          ...state.transcript,
-          { role: 'user', content: text, timestamp: new Date().toISOString() },
-        ]
-        const aiText = await getChatResponse(updatedTranscript)
-        actions.aiResponse(aiText)
-
-        // Speak the response
-        actions.startSpeaking()
-        try {
-          const [leadText, restText] = splitForFastSpeech(aiText)
-          const restBlobPromise = restText
-            ? fetchSpeechBlob(restText).catch(() => null)
-            : Promise.resolve<Blob | null>(null)
-
-          if (leadText) {
-            const leadBlob = await fetchSpeechBlob(leadText)
-            await playAudio(leadBlob)
-          }
-
-          const restBlob = await restBlobPromise
-          if (restBlob) {
-            await playAudio(restBlob)
-          }
-        } catch (ttsErr) {
-          console.error('TTS error:', ttsErr)
-        }
-        actions.doneSpeaking()
+        await processUserMessage(text)
       } catch (err) {
         actions.error(err instanceof Error ? err.message : 'Something went wrong')
       }
     } else if (state.phase === 'READY') {
-      // Start recording
       try {
         await recorder.startRecording()
         actions.startRecording()
@@ -184,23 +175,40 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
         actions.error(err instanceof Error ? err.message : 'Microphone access denied')
       }
     }
-  }, [state.phase, state.transcript, actions, recorder, transcribeAudio, getChatResponse, fetchSpeechBlob, playAudio, splitForFastSpeech])
+  }, [actions, processUserMessage, recorder, state.phase, transcribeAudio])
+
+  const handleTypedSubmit = useCallback(async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (state.phase !== 'READY') return
+
+    const text = typedInput.trim()
+    if (!text) return
+
+    setTypedInput('')
+    await processUserMessage(text)
+  }, [state.phase, typedInput, processUserMessage])
+
+  const handleTypedKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      event.currentTarget.form?.requestSubmit()
+    }
+  }, [])
 
   // End conversation
   const handleEnd = useCallback(async () => {
-    // Stop any playing audio
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
     }
 
-    // Stop recording if active
     if (recorder.isRecording) {
       try { await recorder.stopRecording() } catch { /* ignore */ }
     }
 
     if (state.transcript.length === 0) {
       actions.close()
+      setTypedInput('')
       setTimeout(() => {
         actions.reset()
         onClose()
@@ -229,8 +237,8 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
     }
   }, [state.transcript, actions, recorder, onClose])
 
-  // Close after completion
   const handleCloseAfterComplete = useCallback(() => {
+    setTypedInput('')
     actions.reset()
     onClose()
   }, [actions, onClose])
@@ -238,7 +246,7 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
   const getStatusText = () => {
     switch (state.phase) {
       case 'OPENING': return 'Starting up...'
-      case 'READY': return 'Tap the mic to speak'
+      case 'READY': return 'Type or tap the mic to keep going'
       case 'RECORDING': return 'Listening...'
       case 'TRANSCRIBING': return 'Processing...'
       case 'THINKING': return 'Thinking...'
@@ -251,6 +259,7 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
   const isBusy = ['TRANSCRIBING', 'THINKING', 'SPEAKING', 'COMPLETING'].includes(state.phase)
   const canRecord = state.phase === 'READY' || state.phase === 'RECORDING'
   const canEnd = ['READY', 'RECORDING', 'SPEAKING'].includes(state.phase)
+  const canType = state.phase === 'READY'
 
   return (
     <AnimatePresence>
@@ -270,6 +279,7 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
                 } else if (state.phase === 'CLOSED') {
                   handleCloseAfterComplete()
                 } else {
+                  setTypedInput('')
                   actions.reset()
                   onClose()
                 }
@@ -322,8 +332,8 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
                 {state.transcript.length === 0 && state.phase === 'READY' && (
                   <div className="flex items-center justify-center h-full">
                     <p className="text-slate-500 text-center text-sm">
-                      Tap the mic and start talking.<br />
-                      Say whatever&apos;s on your mind.
+                      Tap the mic or type below.<br />
+                      Capture whatever&apos;s on your mind.
                     </p>
                   </div>
                 )}
@@ -345,7 +355,6 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
                   </div>
                 ))}
 
-                {/* Loading indicator */}
                 {(state.phase === 'TRANSCRIBING' || state.phase === 'THINKING') && (
                   <div className="flex justify-start">
                     <div className="bg-purple-600/30 rounded-2xl px-4 py-2.5">
@@ -369,8 +378,29 @@ export function BrainDumpOverlay({ isOpen, onClose }: BrainDumpOverlayProps) {
                 )}
               </AnimatePresence>
 
-              {/* Bottom section: waveform + mic */}
+              {/* Bottom section: typing + waveform + mic */}
               <div className="px-4 pb-8 pt-4 space-y-4">
+                <form onSubmit={handleTypedSubmit} className="flex items-end gap-2">
+                  <textarea
+                    value={typedInput}
+                    onChange={(event) => setTypedInput(event.target.value)}
+                    onKeyDown={handleTypedKeyDown}
+                    rows={1}
+                    placeholder="Type your dump if you prefer..."
+                    disabled={!canType}
+                    className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-purple-500/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                    style={{ minHeight: '42px', maxHeight: '110px' }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!canType || !typedInput.trim()}
+                    className="h-10 w-10 flex-shrink-0 rounded-lg bg-purple-600 text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+                    aria-label="Send typed message"
+                  >
+                    <Send className="mx-auto h-4 w-4" />
+                  </button>
+                </form>
+
                 {/* Waveform */}
                 <VoiceWaveform
                   analyser={recorder.analyserRef.current}

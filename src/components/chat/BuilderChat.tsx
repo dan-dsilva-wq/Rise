@@ -17,6 +17,7 @@ interface Message {
 }
 
 type Approach = 'do-it' | 'guide'
+type ReasoningMode = 'single' | 'council'
 
 interface ReturnContext {
   message: string
@@ -49,6 +50,8 @@ export function BuilderChat({ project, milestones, initialMessages = [], context
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null)
   const [approach, setApproach] = useState<Approach>('guide')
+  const [reasoningMode, setReasoningMode] = useState<ReasoningMode>('single')
+  const [reasoningHint, setReasoningHint] = useState<string | null>(null)
   const [returnBannerDismissed, setReturnBannerDismissed] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -100,6 +103,7 @@ export function BuilderChat({ project, milestones, initialMessages = [], context
           })),
           projectId: project.id,
           approach,
+          reasoningMode,
           projectContext: {
             name: project.name,
             description: project.description,
@@ -117,7 +121,20 @@ export function BuilderChat({ project, milestones, initialMessages = [], context
         throw new Error('Failed to get response')
       }
 
-      const data = await response.json()
+      const data = await response.json() as {
+        message: string
+        reasoningMode?: ReasoningMode
+        requestedReasoningMode?: ReasoningMode
+        councilFallbackUsed?: boolean
+      }
+
+      if (data.requestedReasoningMode === 'council' && data.councilFallbackUsed) {
+        setReasoningHint('Council was unavailable this turn, so Rise used single-mind fallback.')
+      } else if (data.reasoningMode === 'council') {
+        setReasoningHint('Council mode active: Analyst + Critic + Strategist + Operator.')
+      } else {
+        setReasoningHint(null)
+      }
 
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
@@ -499,6 +516,37 @@ export function BuilderChat({ project, milestones, initialMessages = [], context
             </span>
           </button>
         </div>
+        <div className="flex items-center justify-center gap-1 mb-3">
+          <button
+            onClick={() => setReasoningMode('single')}
+            className={`
+              px-3 py-1 rounded-lg text-xs font-medium transition-all
+              ${reasoningMode === 'single'
+                ? 'bg-slate-700/80 text-slate-100 border border-slate-600'
+                : 'text-slate-500 hover:text-slate-400 border border-transparent'
+              }
+            `}
+          >
+            Single mind
+          </button>
+          <button
+            onClick={() => setReasoningMode('council')}
+            className={`
+              px-3 py-1 rounded-lg text-xs font-medium transition-all
+              ${reasoningMode === 'council'
+                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                : 'text-slate-500 hover:text-slate-400 border border-transparent'
+              }
+            `}
+          >
+            Council
+          </button>
+        </div>
+        {reasoningHint && (
+          <p className="mb-3 text-center text-xs text-indigo-300/80">
+            {reasoningHint}
+          </p>
+        )}
         <div className="mb-3">
           <VoiceControls
             isRecording={isRecording}

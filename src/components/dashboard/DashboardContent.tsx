@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, CheckCircle2, Compass, Moon, Sparkles, Target } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Compass, Moon, Sparkles, Target, Users } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { MorningCheckIn } from '@/components/morning/MorningCheckIn'
@@ -368,6 +368,29 @@ export function DashboardContent({
         )}
 
         <NotificationBanner />
+
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Link
+            href="/path-finder"
+            className="rounded-2xl border border-slate-800 bg-slate-800/40 px-4 py-3 hover:border-teal-500/30 transition-colors"
+          >
+            <p className="text-sm font-medium text-slate-100 inline-flex items-center gap-2">
+              <Compass className="w-4 h-4 text-teal-300" />
+              Path Finder
+            </p>
+            <p className="text-xs text-slate-400 mt-1">Explore what to build</p>
+          </Link>
+          <Link
+            href="/council"
+            className="rounded-2xl border border-slate-800 bg-slate-800/40 px-4 py-3 hover:border-indigo-500/30 transition-colors"
+          >
+            <p className="text-sm font-medium text-slate-100 inline-flex items-center gap-2">
+              <Users className="w-4 h-4 text-indigo-300" />
+              Council Room
+            </p>
+            <p className="text-xs text-slate-400 mt-1">General decision support</p>
+          </Link>
+        </div>
 
         <section className="min-h-[56vh] flex flex-col justify-center">
           <div className="text-center mb-6">

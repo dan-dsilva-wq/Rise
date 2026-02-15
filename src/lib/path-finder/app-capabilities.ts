@@ -1,4 +1,4 @@
-export type CapabilityAudience = 'general' | 'path_finder' | 'project_chat' | 'milestone_mode'
+export type CapabilityAudience = 'general' | 'path_finder' | 'project_chat' | 'milestone_mode' | 'council'
 
 interface CapabilitySection {
   title: string
@@ -84,6 +84,16 @@ const AUDIENCE_SPECIFIC: Record<CapabilityAudience, CapabilitySection[]> = {
         'Focuses on one active milestone and step progression.',
         'Supports completion tags ([COMPLETE_STEP], [COMPLETE_MILESTONE]) after explicit user confirmation.',
         'Should avoid drifting into unrelated planning when the user is in execution mode.',
+      ],
+    },
+  ],
+  council: [
+    {
+      title: 'Council Room Actions',
+      bullets: [
+        'Runs a structured multi-perspective reasoning pass: Analyst, Critic, Strategist, Operator.',
+        'Focuses on general decision-making (life/work strategy) rather than project execution details.',
+        'Returns one synthesized recommendation and practical next steps.',
       ],
     },
   ],

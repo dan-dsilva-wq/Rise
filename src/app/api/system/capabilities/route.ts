@@ -5,7 +5,7 @@ import {
   type CapabilityAudience,
 } from '@/lib/path-finder/app-capabilities'
 
-const VALID_AUDIENCES: CapabilityAudience[] = ['general', 'path_finder', 'project_chat', 'milestone_mode']
+const VALID_AUDIENCES: CapabilityAudience[] = ['general', 'path_finder', 'project_chat', 'milestone_mode', 'council']
 
 export async function GET(request: NextRequest) {
   try {

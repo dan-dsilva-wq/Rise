@@ -380,6 +380,7 @@ export default function SettingsPage() {
               <option value="path_finder">Path Finder</option>
               <option value="project_chat">Project Chat</option>
               <option value="milestone_mode">Milestone Mode</option>
+              <option value="council">Council Room</option>
             </select>
 
             <Button

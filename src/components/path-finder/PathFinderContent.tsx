@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronLeft, Sparkles } from 'lucide-react'
+import { ChevronLeft, Sparkles, Users } from 'lucide-react'
 import Link from 'next/link'
 import { PathFinderChat } from './PathFinderChat'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
@@ -35,6 +35,13 @@ export function PathFinderContent({ userId, initialConversation, initialConversa
               <p className="text-sm text-slate-400">Find what to build</p>
             </div>
           </div>
+          <Link
+            href="/council"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 hover:border-indigo-400/40 hover:text-indigo-200 transition-colors"
+          >
+            <Users className="w-3.5 h-3.5" />
+            Council
+          </Link>
         </div>
       </header>
 

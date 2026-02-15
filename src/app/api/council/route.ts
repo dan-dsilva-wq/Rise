@@ -11,6 +11,11 @@ import {
   stripInsightTags,
 } from '@/lib/ai/memoryWeaver'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
+import {
+  extractTextFromClaude,
+  getCouncilStructuredOutputInstructions,
+  parseCouncilPayload,
+} from '@/lib/ai/council'
 import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 
@@ -23,15 +28,6 @@ interface CouncilRequest {
   messages: CouncilMessage[]
 }
 
-interface CouncilPayload {
-  analyst: string
-  critic: string
-  strategist: string
-  operator: string
-  synthesis: string
-  final_answer: string
-}
-
 let anthropic: Anthropic | null = null
 function getAnthropic() {
   if (!anthropic) {
@@ -40,53 +36,6 @@ function getAnthropic() {
     })
   }
   return anthropic
-}
-
-function extractTextFromClaude(response: { content: Array<{ type: string }> }): string {
-  return response.content
-    .filter(block => block.type === 'text')
-    .map(block => (block as Anthropic.TextBlock).text)
-    .join('\n')
-}
-
-function parseCouncilPayload(raw: string): CouncilPayload | null {
-  const trimmed = raw.trim()
-  if (!trimmed) return null
-
-  const candidates: string[] = []
-  const fenced = trimmed.match(/```json\s*([\s\S]*?)```/i)
-  if (fenced?.[1]) candidates.push(fenced[1].trim())
-
-  const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-  if (jsonMatch?.[0]) candidates.push(jsonMatch[0].trim())
-  if (candidates.length === 0) candidates.push(trimmed)
-
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate) as Partial<CouncilPayload>
-      if (
-        typeof parsed.analyst === 'string' &&
-        typeof parsed.critic === 'string' &&
-        typeof parsed.strategist === 'string' &&
-        typeof parsed.operator === 'string' &&
-        typeof parsed.synthesis === 'string' &&
-        typeof parsed.final_answer === 'string'
-      ) {
-        return {
-          analyst: parsed.analyst.trim(),
-          critic: parsed.critic.trim(),
-          strategist: parsed.strategist.trim(),
-          operator: parsed.operator.trim(),
-          synthesis: parsed.synthesis.trim(),
-          final_answer: parsed.final_answer.trim(),
-        }
-      }
-    } catch {
-      // Continue to next candidate
-    }
-  }
-
-  return null
 }
 
 export async function POST(request: NextRequest) {
@@ -161,17 +110,7 @@ In "final_answer", use this structure:
 3) Tradeoffs and risks
 4) Next 3 actions (small and concrete)
 
-When you learn something durable about the user, include [INSIGHT] tags in final_answer only.
-
-Respond ONLY with valid JSON:
-{
-  "analyst": "...",
-  "critic": "...",
-  "strategist": "...",
-  "operator": "...",
-  "synthesis": "...",
-  "final_answer": "..."
-}`
+${getCouncilStructuredOutputInstructions()}`
 
     const preparedHistory = await prepareConversationHistory({
       messages: messages.map(message => ({
@@ -216,10 +155,12 @@ Respond ONLY with valid JSON:
       councilDetails = null
     }
 
-    const extractedInsights = parseInsightTags(visibleMessage)
-    if (extractedInsights.length > 0) {
+    const payloadInsights = parsedCouncil?.insights || []
+    const tagFallbackInsights = parseInsightTags(visibleMessage)
+    const insightsToPersist = [...payloadInsights, ...tagFallbackInsights]
+    if (insightsToPersist.length > 0) {
       Promise.all(
-        extractedInsights.map(insight =>
+        insightsToPersist.map(insight =>
           saveAiInsight(
             supabaseClient,
             user.id,

@@ -4,6 +4,12 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchAiContextForApi, saveAiInsight } from '@/lib/hooks/aiContextServer'
 import { cachedWeaveMemory, cachedSynthesizeUserThread, resolveActiveMilestoneStep, parseInsightTags, stripInsightTags, fetchDisplayName, buildRisePersonalityCore } from '@/lib/ai/memoryWeaver'
 import { prepareConversationHistory } from '@/lib/ai/conversationHistory'
+import {
+  extractTextFromClaude,
+  getCouncilStructuredOutputInstructions,
+  parseCouncilPayload,
+  type CouncilInsight,
+} from '@/lib/ai/council'
 import { ANTHROPIC_OPUS_MODEL } from '@/lib/ai/model-config'
 import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 
@@ -65,69 +71,6 @@ INSTRUCTIONS FOR DETERMINING YOUR EXPERT IDENTITY:
 Be the precise expert they need RIGHT NOW. Not a generalist — their specialist cofounder.`
 }
 
-function extractTextFromClaude(response: { content: Array<{ type: string }> }): string {
-  return response.content
-    .filter(block => block.type === 'text')
-    .map(block => (block as Anthropic.TextBlock).text)
-    .join('\n')
-}
-
-interface CouncilPayload {
-  analyst: string
-  critic: string
-  strategist: string
-  operator: string
-  synthesis: string
-  final_answer: string
-}
-
-function parseCouncilPayload(raw: string): CouncilPayload | null {
-  const candidates: string[] = []
-  const trimmed = raw.trim()
-  if (!trimmed) return null
-
-  const fenced = trimmed.match(/```json\s*([\s\S]*?)```/i)
-  if (fenced?.[1]) {
-    candidates.push(fenced[1].trim())
-  }
-
-  const jsonMatch = trimmed.match(/\{[\s\S]*\}/)
-  if (jsonMatch?.[0]) {
-    candidates.push(jsonMatch[0].trim())
-  }
-
-  if (candidates.length === 0) {
-    candidates.push(trimmed)
-  }
-
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate) as Partial<CouncilPayload>
-      if (
-        typeof parsed.analyst === 'string' &&
-        typeof parsed.critic === 'string' &&
-        typeof parsed.strategist === 'string' &&
-        typeof parsed.operator === 'string' &&
-        typeof parsed.synthesis === 'string' &&
-        typeof parsed.final_answer === 'string'
-      ) {
-        return {
-          analyst: parsed.analyst.trim(),
-          critic: parsed.critic.trim(),
-          strategist: parsed.strategist.trim(),
-          operator: parsed.operator.trim(),
-          synthesis: parsed.synthesis.trim(),
-          final_answer: parsed.final_answer.trim(),
-        }
-      }
-    } catch {
-      // Keep trying next candidate
-    }
-  }
-
-  return null
-}
-
 function buildCouncilSystemPrompt(baseSystemPrompt: string): string {
   return `${baseSystemPrompt}
 
@@ -140,20 +83,10 @@ Before replying, run an internal four-role council:
 
 Then synthesize one clear answer for the user.
 
-Respond ONLY with valid JSON:
-{
-  "analyst": "...",
-  "critic": "...",
-  "strategist": "...",
-  "operator": "...",
-  "synthesis": "...",
-  "final_answer": "..."
-}
-
 Rules:
 - Keep each council field concise.
 - "final_answer" must be directly user-facing and action-oriented.
-- Put any [INSIGHT] tags only inside "final_answer" if needed.`
+${getCouncilStructuredOutputInstructions()}`
 }
 
 export async function POST(request: NextRequest) {
@@ -368,6 +301,7 @@ importance: <1-10>
     let activeReasoningMode: ReasoningMode = requestedReasoningMode
     let councilFallbackUsed = false
     let assistantMessage = ''
+    let councilInsights: CouncilInsight[] = []
 
     if (requestedReasoningMode === 'council') {
       const councilResponse = await getAnthropic().messages.create({
@@ -382,6 +316,7 @@ importance: <1-10>
 
       if (parsedCouncil?.final_answer) {
         assistantMessage = parsedCouncil.final_answer
+        councilInsights = parsedCouncil.insights || []
       } else {
         councilFallbackUsed = true
         activeReasoningMode = 'single'
@@ -400,9 +335,10 @@ importance: <1-10>
 
     // Parse and save any insights from the response
     const extractedInsights = parseInsightTags(assistantMessage)
-    if (extractedInsights.length > 0) {
+    const insightsToPersist = [...councilInsights, ...extractedInsights]
+    if (insightsToPersist.length > 0) {
       Promise.all(
-        extractedInsights.map(insight =>
+        insightsToPersist.map(insight =>
           saveAiInsight(
             supabaseClient,
             user.id,

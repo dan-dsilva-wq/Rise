@@ -5,6 +5,8 @@ import { ChevronDown, ChevronLeft, Loader2, Scale, Users } from 'lucide-react'
 import Link from 'next/link'
 import { BottomNavigation } from '@/components/ui/BottomNavigation'
 import { Button } from '@/components/ui/Button'
+import { VoiceControls } from '@/components/voice/VoiceControls'
+import { useVoiceConversation } from '@/lib/hooks/useVoiceConversation'
 
 interface CouncilBreakdown {
   analyst: string
@@ -45,6 +47,17 @@ export function CouncilContent() {
   const [briefTimeline, setBriefTimeline] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const {
+    isRecording,
+    isTranscribing,
+    isSpeaking,
+    isMuted,
+    voiceError,
+    toggleRecordingAndTranscribe,
+    toggleMute,
+    clearVoiceError,
+    speakText,
+  } = useVoiceConversation()
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -97,6 +110,7 @@ export function CouncilContent() {
       }
 
       setMessages(prev => [...prev, assistantMessage])
+      void speakText(assistantMessage.content)
       if (assistantMessage.council) {
         setExpandedMessageId(assistantMessage.id)
       }
@@ -114,7 +128,7 @@ export function CouncilContent() {
       setIsLoading(false)
       inputRef.current?.focus()
     }
-  }, [isLoading, messages])
+  }, [isLoading, messages, speakText])
 
   const handleSubmit = useCallback((event?: React.FormEvent) => {
     event?.preventDefault()
@@ -127,6 +141,13 @@ export function CouncilContent() {
       void sendMessage(input)
     }
   }, [input, sendMessage])
+
+  const handleVoiceInput = useCallback(async () => {
+    if (isLoading && !isRecording) return
+    const transcript = await toggleRecordingAndTranscribe()
+    if (!transcript) return
+    await sendMessage(transcript)
+  }, [isLoading, isRecording, sendMessage, toggleRecordingAndTranscribe])
 
   const buildDecisionBrief = useCallback(() => {
     const lines: string[] = []
@@ -295,6 +316,17 @@ export function CouncilContent() {
             >
               Ask Council
             </Button>
+            <VoiceControls
+              isRecording={isRecording}
+              isTranscribing={isTranscribing}
+              isSpeaking={isSpeaking}
+              isMuted={isMuted}
+              disabled={isLoading && !isRecording}
+              error={voiceError}
+              onMicClick={handleVoiceInput}
+              onToggleMute={toggleMute}
+              onDismissError={clearVoiceError}
+            />
           </form>
         </section>
       </main>

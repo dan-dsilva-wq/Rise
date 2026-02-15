@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { ANTHROPIC_SONNET_MODEL } from '@/lib/ai/model-config'
+import { getAppCapabilitiesPromptBlock } from '@/lib/path-finder/app-capabilities'
 import type {
   AiInsight,
   BehaviorPattern,
@@ -495,7 +496,10 @@ function buildBehavioralPatternsBlock(data: IntelligencePromptData): string {
   return limitText(deriveBehavioralPatterns(data).join('\n'))
 }
 
-function buildSingleGapQuestionPrompt(data: IntelligencePromptData): string {
+function buildSingleGapQuestionPrompt(
+  data: IntelligencePromptData,
+  appCapabilitiesBlock: string
+): string {
   const userProfile = buildUserProfileBlock(data)
   const discoveredInsights = buildDiscoveredInsightsBlock(data)
   const projectsWithMilestones = buildProjectsWithMilestonesBlock(data)
@@ -526,6 +530,10 @@ ${recentConversationSummaries}
 ${behavioralPatterns}
 </BEHAVIORAL_PATTERNS>
 
+<APP_CAPABILITIES>
+${limitText(appCapabilitiesBlock)}
+</APP_CAPABILITIES>
+
 ## Your Task
 
 Analyze everything above and identify the SINGLE most important gap in your understanding of this user - something that, if you knew it, would dramatically improve your ability to help them.
@@ -550,7 +558,10 @@ Return JSON as well for machine parsing:
 {"gap":"...","question":"..."}`
 }
 
-function buildGapDetectionPrompt(data: IntelligencePromptData): string {
+function buildGapDetectionPrompt(
+  data: IntelligencePromptData,
+  appCapabilitiesBlock: string
+): string {
   const understandingSections: string[] = []
 
   if (data.userUnderstanding) {
@@ -590,6 +601,10 @@ ${insightsBlock}
 <DETECTED_PATTERNS>
 ${patternsBlock}
 </DETECTED_PATTERNS>
+
+<APP_CAPABILITIES>
+${limitText(appCapabilitiesBlock)}
+</APP_CAPABILITIES>
 
 <PREVIOUS_QUESTIONS>
 ${limitText(previousQuestionsBlock)}
@@ -930,7 +945,10 @@ export async function generateGapQuestionForUser(
   client: DbClient,
   userId: string
 ): Promise<GapQuestionResult> {
-  const promptData = await assembleIntelligencePromptDataForUser(client, userId)
+  const [promptData, appCapabilitiesBlock] = await Promise.all([
+    assembleIntelligencePromptDataForUser(client, userId),
+    getAppCapabilitiesPromptBlock('general'),
+  ])
   const fallback = buildFallbackGapQuestion(promptData)
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -944,7 +962,7 @@ export async function generateGapQuestionForUser(
       messages: [
         {
           role: 'user',
-          content: buildSingleGapQuestionPrompt(promptData),
+          content: buildSingleGapQuestionPrompt(promptData, appCapabilitiesBlock),
         },
       ],
     })
@@ -974,7 +992,10 @@ export async function generateGapAnalysisForUser(
   client: DbClient,
   userId: string
 ): Promise<GapAnalysisResult> {
-  const promptData = await assembleIntelligencePromptDataForUser(client, userId)
+  const [promptData, appCapabilitiesBlock] = await Promise.all([
+    assembleIntelligencePromptDataForUser(client, userId),
+    getAppCapabilitiesPromptBlock('general'),
+  ])
   const fallback = buildFallbackGapAnalysis(promptData)
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -988,7 +1009,7 @@ export async function generateGapAnalysisForUser(
       messages: [
         {
           role: 'user',
-          content: buildGapDetectionPrompt(promptData),
+          content: buildGapDetectionPrompt(promptData, appCapabilitiesBlock),
         },
       ],
     })
